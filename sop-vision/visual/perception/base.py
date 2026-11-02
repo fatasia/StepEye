@@ -39,10 +39,12 @@ class Context:
     geoms: dict[str, ZoneGeom]
     hand_boxes: list[tuple[float, float, float, float]] = field(default_factory=list)
     hand_points: list[tuple[float, float]] = field(default_factory=list)
+    person_boxes: list[tuple[float, float, float, float]] = field(default_factory=list)
 
     def reset(self) -> None:
         self.hand_boxes.clear()
         self.hand_points.clear()
+        self.person_boxes.clear()
 
 
 class Perceiver(Protocol):

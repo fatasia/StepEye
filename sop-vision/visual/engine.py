@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from .dsl import CompiledStep, Cond, Program
-from .events import HAND_ENTER, HAND_EXIT, OBJ_STATE, QUALITY, SIGNAL, Event
+from .events import HAND_ENTER, HAND_EXIT, OBJ_STATE, PERSON_COUNT, PERSON_ENTER, PERSON_EXIT, QUALITY, SIGNAL, Event
 
 NEG_INF = float("-inf")
 PENDING, ACTIVE, DONE = "pending", "active", "done"
@@ -49,6 +49,9 @@ class Cycle:
 class World:
     hands: dict[str, float] = field(default_factory=dict)
     zone_state: dict[str, tuple[str, float]] = field(default_factory=dict)
+    persons: dict[str, float] = field(default_factory=dict)  # zone -> 最近一次 person_enter
+    person_absent_since: dict[str, float] = field(default_factory=dict)  # zone -> 确认无人起始
+    person_count: dict[str, int] = field(default_factory=dict)
     quality_bad: bool = False
     quality_reason: str = ""
 
@@ -87,6 +90,20 @@ class Engine:
             w.hands[ev.zone] = ev.ts
         elif ev.type == HAND_EXIT and ev.zone:
             w.hands.pop(ev.zone, None)
+        elif ev.type == PERSON_ENTER and ev.zone:
+            w.persons[ev.zone] = ev.ts
+            w.person_absent_since.pop(ev.zone, None)
+        elif ev.type == PERSON_EXIT and ev.zone:
+            w.persons.pop(ev.zone, None)
+            w.person_absent_since[ev.zone] = ev.ts
+        elif ev.type == PERSON_COUNT and ev.zone:
+            n = int(ev.value or 0)
+            w.person_count[ev.zone] = n
+            if n > 0:  # 检出人但边沿事件被去抖吞掉的兜底
+                w.persons.setdefault(ev.zone, ev.ts)
+                w.person_absent_since.pop(ev.zone, None)
+            elif ev.zone not in w.persons:  # 首次确认无人:无人时钟从这一刻起算
+                w.person_absent_since.setdefault(ev.zone, ev.ts)
         elif ev.type == OBJ_STATE and ev.zone and ev.state:
             cur = w.zone_state.get(ev.zone)
             if cur is None or cur[0] != ev.state:
@@ -115,11 +132,23 @@ class Engine:
         self._emit("quality", state=ev.state, reason=w.quality_reason, ts=ts)
 
     # ---------------------------------------------------------------- 条件
-    def _cond_true(self, cond: Cond, ts: float, ev: Event | None, floor: float = NEG_INF) -> bool:
+    def _cond_true(self, cond: Cond, ts: float, ev: Event | None = None, floor: float = NEG_INF) -> bool:
         w = self.world
         if cond.hand_dwell:
             enter = w.hands.get(cond.hand_dwell.zone)
             return enter is not None and ts - max(enter, floor) >= cond.hand_dwell.min_ms / 1000
+        if cond.person_present:
+            p = cond.person_present
+            enter = w.persons.get(p.zone)
+            return enter is not None and ts - max(enter, floor) >= p.min_ms / 1000
+        if cond.person_absent:
+            p = cond.person_absent
+            since = w.person_absent_since.get(p.zone)
+            return since is not None and ts - max(since, floor) >= p.min_ms / 1000
+        if cond.person_count:
+            p = cond.person_count
+            n = w.person_count.get(p.zone, 0)
+            return n >= p.count if p.op == "ge" else n <= p.count
         if cond.obj_state:
             zs = w.zone_state.get(cond.obj_state.zone)
             return zs is not None and zs[0] == cond.obj_state.state and ts - zs[1] >= cond.obj_state.min_ms / 1000

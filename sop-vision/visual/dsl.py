@@ -32,29 +32,56 @@ class SignalCond(BaseModel):
     value: Any = None
 
 
+class PersonPresent(BaseModel):
+    zone: str
+    min_ms: int = 0
+
+
+class PersonAbsent(BaseModel):
+    zone: str
+    min_ms: int = 0
+
+
+class PersonCount(BaseModel):
+    zone: str
+    op: Literal["ge", "le"] = "ge"
+    count: int = 1
+
+
 class Cond(BaseModel):
     hand_dwell: HandDwell | None = None
     obj_state: ObjState | None = None
     signal: SignalCond | None = None
+    person_present: PersonPresent | None = None
+    person_absent: PersonAbsent | None = None
+    person_count: PersonCount | None = None
 
     @model_validator(mode="after")
     def _exactly_one(self) -> "Cond":
-        n = sum(x is not None for x in (self.hand_dwell, self.obj_state, self.signal))
+        n = sum(x is not None for x in (self.hand_dwell, self.obj_state, self.signal,
+                                        self.person_present, self.person_absent, self.person_count))
         if n != 1:
-            raise ValueError("条件必须且只能包含 hand_dwell / obj_state / signal 之一")
+            raise ValueError("条件必须且只能包含 hand_dwell / obj_state / signal / person_* 之一")
         return self
 
     @property
     def kind(self) -> str:
         if self.hand_dwell:
             return "hand_dwell"
+        if self.person_present:
+            return "person_present"
+        if self.person_absent:
+            return "person_absent"
+        if self.person_count:
+            return "person_count"
         return "obj_state" if self.obj_state else "signal"
 
     @property
     def zone(self) -> str | None:
-        if self.hand_dwell:
-            return self.hand_dwell.zone
-        return self.obj_state.zone if self.obj_state else None
+        for c in (self.hand_dwell, self.obj_state, self.person_present, self.person_absent, self.person_count):
+            if c is not None:
+                return c.zone
+        return None
 
     def describe(self) -> str:
         if self.hand_dwell:
@@ -63,6 +90,15 @@ class Cond(BaseModel):
         if self.obj_state:
             o = self.obj_state
             return f"「{o.zone}」处于 {o.state}" + (f" ≥{o.min_ms}ms" if o.min_ms else "")
+        if self.person_present:
+            p = self.person_present
+            return f"「{p.zone}」有人持续 ≥{p.min_ms}ms"
+        if self.person_absent:
+            p = self.person_absent
+            return f"「{p.zone}」无人持续 ≥{p.min_ms}ms"
+        if self.person_count:
+            p = self.person_count
+            return f"「{p.zone}」人数 {'≥' if p.op == 'ge' else '≤'}{p.count}"
         return f"收到信号 {self.signal.name}" + (f"={self.signal.value}" if self.signal.value is not None else "")
 
 
@@ -122,6 +158,16 @@ class HandsCfg(BaseModel):
     exit_frames: int = 4
 
 
+class PersonsCfg(BaseModel):
+    """人员感知(MediaPipe Pose,Apache-2.0):S16 无人值守 / S17 人员聚集的条件来源。"""
+    enabled: bool = False
+    model: str = "models/pose_landmarker_lite.task"
+    max_poses: int = 3
+    min_conf: float = 0.5
+    enter_frames: int = 2
+    exit_frames: int = 6
+
+
 class RoiStateCfg(BaseModel):
     zone: str
     mode: Literal["diff_empty", "template"]
@@ -158,6 +204,7 @@ class StationConfig(BaseModel):
     source: SourceCfg = SourceCfg()
     zones: list[Zone]
     hands: HandsCfg = HandsCfg()
+    persons: PersonsCfg = PersonsCfg()
     roi_states: list[RoiStateCfg] = []
     quality: QualityCfg = QualityCfg()
     cycle: CycleDef
