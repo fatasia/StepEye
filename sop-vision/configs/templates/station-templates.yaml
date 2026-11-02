@@ -1,0 +1,58 @@
+# 工位模板:$token 会被用户参数替换(视觉系统只认 $id/$name/$line/$rtsp)。
+# 纯安全岗无 cycle/steps,只有常驻规则;装配岗是完整 SOP 骨架。
+templates:
+  - id: patrol_post
+    name: 巡检岗(无人值守/人员聚集)
+    category: 安全
+    params: [$id, $name, $line, $rtsp]
+    note: 画好「岗位区」即可用;规则默认 5 分钟无人告警,可在 YAML 里调
+    yaml: |
+      # 巡检安全岗:无生产周期,只有常驻安全规则
+      station: $id
+      name: $name
+      line: $line
+      source: {type: rtsp, uri: "$rtsp", fps: 25, width: 1280, height: 720}
+      zones:
+        - {id: post, polygon: [[0.30,0.25],[0.85,0.25],[0.85,0.90],[0.30,0.90]]}
+      hands: {enabled: false}
+      persons: {enabled: true, enter_frames: 2, exit_frames: 6}
+      safety:
+        enabled: true
+        rules:
+          - {id: unattended, kind: person_absent, zone: post, min_s: 300, severity: warn, name: 无人值守}
+          - {id: crowd, kind: person_count, zone: post, count_ge: 3, min_s: 10, severity: warn, name: 人员聚集}
+  - id: assembly
+    name: 装配工位(SOP 骨架)
+    category: SOP
+    params: [$id, $name, $line, $rtsp]
+    note: 四步骨架(取料→装配→锁付→检);区域坐标需用「区域编辑」按现场调整
+    yaml: |
+      # 装配工位骨架:区域与条件按现场改
+      station: $id
+      name: $name
+      line: $line
+      source: {type: rtsp, uri: "$rtsp", fps: 25, width: 1280, height: 720}
+      zones:
+        - {id: bin,     polygon: [[0.04,0.20],[0.24,0.20],[0.24,0.50],[0.04,0.50]]}
+        - {id: fixture, polygon: [[0.34,0.18],[0.80,0.18],[0.80,0.85],[0.34,0.85]]}
+        - {id: part,    polygon: [[0.40,0.28],[0.52,0.28],[0.52,0.42],[0.40,0.42]]}
+      hands: {enabled: true, enter_frames: 2, exit_frames: 4}
+      roi_states:
+        - {zone: fixture, mode: diff_empty, positive_state: present, negative_state: absent}
+        - {zone: part,    mode: template,   positive_state: mated,   negative_state: unmated}
+      quality: {enabled: true, blur_min: 5.0, brightness: [30, 230], max_shift_px: 12}
+      cycle:
+        start: {obj_state: {zone: fixture, state: present, min_ms: 1000}}
+        end:   {obj_state: {zone: fixture, state: absent,  min_ms: 800}}
+        takt_s: 30
+      steps:
+        - id: S1
+          name: 取料
+          timeout_s: 10
+          evidence: {all: [{hand_dwell: {zone: bin, min_ms: 300}}]}
+        - id: S2
+          name: 装配
+          evidence: {all: [{obj_state: {zone: part, state: mated, min_ms: 500}}]}
+        - id: S3
+          name: 自检确认
+          evidence: {all: [{vlm_check: {prompt: "装配已完成且工件到位", every_s: 2.0}}]}

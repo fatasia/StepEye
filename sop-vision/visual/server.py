@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import re
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -15,9 +16,11 @@ from pydantic import BaseModel
 
 from .dsl import StationConfig, load_config
 from .evidence import CycleStore
+from .events import SIGNAL, Event
 from .inspection import InspectionService, InspectionStore, load_scenarios
 from .llm_provider import ProviderConfig, VLMProvider
 from .runtime import StationRuntime
+from .templates import list_templates, render_station
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = ROOT / "web"
@@ -113,14 +116,20 @@ class CalibrateBody(BaseModel):
     zones: list[str] | None = None
 
 
+class SignalBody(BaseModel):
+    name: str
+    value: Any = None
+
+
 def _station_config_view(rt: StationRuntime, path: Path) -> dict[str, Any]:
     cfg = rt.cfg
     return {
         "meta": rt.meta(),
         "zones": [z.model_dump() for z in cfg.zones],
         "roi_states": [r.model_dump() for r in cfg.roi_states],
-        "cycle": {"takt_s": cfg.cycle.takt_s, "start": cfg.cycle.start.describe(), "end": cfg.cycle.end.describe(),
-                  "grace_ms": cfg.cycle.grace_ms, "max_cycle_s": cfg.cycle.max_cycle_s},
+        "cycle": None if cfg.cycle is None else {"takt_s": cfg.cycle.takt_s, "start": cfg.cycle.start.describe(),
+                                                 "end": cfg.cycle.end.describe(),
+                                                 "grace_ms": cfg.cycle.grace_ms, "max_cycle_s": cfg.cycle.max_cycle_s},
         "steps": [{"id": s.id, "name": s.name, "preds": s.eff_preds, "optional": s.optional, "timeout_s": s.timeout_s,
                    "mode": s.evidence.mode, "conds": [c.describe() for c in s.evidence.conds]}
                   for s in rt.program.steps],
@@ -228,6 +237,26 @@ def create_app(manager: StationManager, hub: Hub) -> FastAPI:
     @app.get("/api/trend")
     def trend(station: str | None = None, hours: int = Query(24, ge=1, le=168)) -> list[dict[str, Any]]:
         return manager.store.hourly(hours, station)
+
+    # ---- 模板库 / 外部信号 ----
+    @app.get("/api/templates")
+    def templates() -> dict[str, Any]:
+        return list_templates()
+
+    @app.get("/api/templates/station/{tid}")
+    def station_template(tid: str, request: Request) -> dict[str, Any]:
+        try:
+            text = render_station(tid, dict(request.query_params))
+        except KeyError as e:
+            raise HTTPException(404, str(e)) from e
+        return {"id": tid, "yaml": text}
+
+    @app.post("/api/stations/{sid}/signal")
+    def station_signal(sid: str, body: SignalBody) -> dict[str, Any]:
+        """外部信号统一入口:扫码枪/扭矩枪/PLC/声学事件脚本都从这里进引擎。"""
+        rt = manager.get(sid)
+        rt.engine.process(Event(time.time(), SIGNAL, name=body.name, value=body.value))
+        return {"ok": True}
 
     # ---- 拍照即检(V 系列) ----
     def _inspection() -> InspectionService:

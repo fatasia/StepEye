@@ -1,0 +1,75 @@
+# 拍照即检场景模板:选模板 → 填进 configs/inspection.yaml → 冒烟自测 → 启用。
+# default_enabled=false 是纪律:没经过验证的组合不允许默认启用。
+templates:
+  - id: glove
+    name: 手套佩戴检查
+    category: 安全
+    mode: single
+    note: 已过 V0 迷你评测(14/14 零漏报,见 docs/V0-SMOKE.md),可直接启用后用自测复核
+    prompt: |
+      判断画面中的作业人员是否佩戴手套。只输出JSON:
+      {"verdict":"PASS|NG|UNCERTAIN","confidence":0到1的小数,"reason":"不超过30字"}
+      画面模糊或看不见手时用 UNCERTAIN。
+  - id: ppe
+    name: 安全帽/工装检查
+    category: 安全
+    mode: single
+    prompt: |
+      判断画面中的作业人员是否佩戴安全帽、穿着工装/反光衣。只输出JSON:
+      {"verdict":"PASS|NG|UNCERTAIN","confidence":0到1的小数,"reason":"不超过30字,缺什么写什么"}
+      看不清人头/上身时用 UNCERTAIN。
+  - id: smoke_fire
+    name: 烟雾/明火识别
+    category: 安全
+    mode: single
+    note: 蒸汽/反光易误报,须先自测;告警只做辅助,不替代烟感硬件
+    prompt: |
+      判断画面中是否出现烟雾或明火。只输出JSON:
+      {"verdict":"PASS|NG|UNCERTAIN","confidence":0到1的小数,"reason":"不超过30字"}
+      PASS=无烟无火;NG=出现烟雾或明火;水汽/反光拿不准用 UNCERTAIN。
+  - id: housekeeping
+    name: 台面 5S 检查
+    category: 管理
+    mode: single
+    prompt: |
+      判断工位台面是否整洁(无杂物、工具归位)。只输出JSON:
+      {"verdict":"PASS|NG|UNCERTAIN","confidence":0到1的小数,"reason":"不超过30字"}
+      NG 时 reason 里列出看到的杂物。
+  - id: package_damage
+    name: 包装箱破损检查
+    category: 质量
+    mode: single
+    prompt: |
+      判断画面中的包装箱是否有破损/变形/污染/受潮。只输出JSON:
+      {"verdict":"PASS|NG|UNCERTAIN","confidence":0到1的小数,"reason":"不超过30字"}
+  - id: label_check
+    name: 标签粘贴检查
+    category: 质量
+    mode: single
+    prompt: |
+      判断画面中的工件/箱子是否已贴标签,标签是否平整无明显歪斜。只输出JSON:
+      {"verdict":"PASS|NG|UNCERTAIN","confidence":0到1的小数,"reason":"不超过30字"}
+  - id: first_article
+    name: 首件 OK/NG 对照
+    category: 质量
+    mode: first_article
+    note: 需先上传每场景 ≤3 张 OK + ≤3 张 NG 参考图;判定规则=与 OK 共有特征不算缺陷
+    prompt: ""
+  - id: gauge_digital
+    name: 数显表读数点检
+    category: 点检
+    mode: single
+    note: 置信度低转人工;正式使用前先按 docs/ROADMAP §5 建评测集
+    prompt: |
+      读出画面中数显仪表的数值与单位。只输出JSON:
+      {"verdict":"PASS|UNCERTAIN","confidence":0到1的小数,"value":数值,"unit":"单位","reason":"不超过20字"}
+      读不清用 UNCERTAIN,不要猜数。
+  - id: gauge_pointer
+    name: 指针表读数点检
+    category: 点检
+    mode: single
+    note: 指针表最易错,严禁未建评测集就承诺;先自测再决定是否启用
+    prompt: |
+      估算画面中指针仪表的读数与单位。只输出JSON:
+      {"verdict":"PASS|UNCERTAIN","confidence":0到1的小数,"value":数值,"unit":"单位","reason":"不超过20字"}
+      读数模糊或表盘反光时必须用 UNCERTAIN,不要猜数。

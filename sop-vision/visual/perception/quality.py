@@ -1,6 +1,8 @@
-"""画质自检：模糊 / 过曝欠曝 / 相机位移。看不清时发 degraded 事件，让引擎降级为“待复核”而不是误判。
+"""画质自检：模糊 / 过曝欠曝 / 相机位移 / 光照突变。看不清时发 degraded 事件，让引擎降级为“待复核”而不是误判。
 
 相机位移只在“作业区域之外的静止背景”上估计，且手出现时跳过；劣化/恢复都需要连续多次确认，避免工件进出造成抖动。
+光照突变在背景区域上做相对亮度漂移检测:开灯/关灯/日光变化触发降级;若持续存在(灯真的换了),慢速自适应到新光照并恢复,
+短暂闪烁(叉车灯扫过/阴影)不会自适应。
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ from .base import Context
 
 CONFIRM = 3
 MIN_RESPONSE = 0.5  # 相位相关峰值低于此值视为不可信
+LIGHT_ADAPT_AFTER = 20  # 光照劣化连续确认次数达到后,自适应到新光照(约 4s @25fps/every_n=5)
 
 
 class QualityPerceiver:
@@ -22,6 +25,8 @@ class QualityPerceiver:
         self._ref: np.ndarray | None = None
         self._win: np.ndarray | None = None
         self._mask: np.ndarray | None = None
+        self._light_ref: float | None = None
+        self._light_bad_n = 0
         self.degraded = False
         self.reason = ""
         self._cand = ""
@@ -51,6 +56,13 @@ class QualityPerceiver:
     def _smooth(self, frame: np.ndarray) -> np.ndarray:
         return cv2.GaussianBlur(self._small(frame).astype(np.float32), (0, 0), 1.5)
 
+    def _bg_mean(self, smoothed: np.ndarray) -> float:
+        """背景区域平均亮度(排除作业区):光照漂移只在环境光上度量,工件进出不干扰。"""
+        if self._mask is None:
+            return float(smoothed.mean())
+        m = float(self._mask.sum())
+        return float((smoothed * self._mask).sum() / max(m, 1.0))
+
     def _raw_reason(self, frame: np.ndarray, ctx: Context) -> str | None:
         """返回劣化原因；"" 表示正常；None 表示本次无法判断（沿用上一状态）。"""
         c = self.cfg
@@ -59,6 +71,13 @@ class QualityPerceiver:
             return "blur"
         if c.brightness is not None and not (c.brightness[0] <= float(small.mean()) <= c.brightness[1]):
             return "exposure"
+        if c.lighting_drift is not None:
+            if self._light_ref is None:
+                self._light_ref = self._bg_mean(self._smooth(frame))
+                return ""
+            cur = self._bg_mean(self._smooth(frame))
+            if abs(cur - self._light_ref) > c.lighting_drift * max(self._light_ref, 1e-3):
+                return "lighting_drift"
         if c.max_shift_px is not None:
             if ctx.hand_boxes:
                 return None
@@ -78,6 +97,13 @@ class QualityPerceiver:
         if not c.enabled or self._n % c.every_n:
             return []
         reason = self._raw_reason(frame, ctx)
+        # 光照自适应计数:同状态持续帧也会走到这里(确认/保持都要累计),否则永远到不了阈值
+        if reason == "lighting_drift":
+            self._light_bad_n += 1
+            if self.degraded and self._light_bad_n >= LIGHT_ADAPT_AFTER:  # 灯真的换了:慢速自适应,恢复判定
+                self._light_ref = self._bg_mean(self._smooth(frame))
+        else:
+            self._light_bad_n = 0
         if reason is None or reason == self.reason:
             self._cand, self._cand_n = "", 0
             return []

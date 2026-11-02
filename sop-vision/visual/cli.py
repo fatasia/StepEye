@@ -67,6 +67,11 @@ def _calibrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _regress_cmd(args: argparse.Namespace) -> int:
+    from .regress import _regress
+    return _regress(args)
+
+
 def _serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -108,6 +113,13 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--data", default="data")
     s.add_argument("--inspection", help="拍照即检场景配置(如 configs/inspection.yaml);不传则禁用该功能")
     s.set_defaults(fn=_serve)
+
+    g = sub.add_parser("regress", help="评测回归:固定样本集跑分,--against 对比上一份结果防退化")
+    g.add_argument("manifest", help="回归清单 YAML(name/prompt/cases)")
+    g.add_argument("--data", help="样本目录(缺省为清单所在目录)")
+    g.add_argument("--out", help="结果 JSON 输出路径(缺省 <data>/regress_result.json)")
+    g.add_argument("--against", help="上一份结果 JSON,输出回归/改进对比")
+    g.set_defaults(fn=_regress_cmd)
 
     args = p.parse_args(argv)
     try:

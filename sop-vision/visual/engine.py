@@ -182,6 +182,8 @@ class Engine:
     # ---------------------------------------------------------------- 状态机
     def _advance(self, ts: float, ev: Event | None) -> None:
         self.now = ts
+        if self.p.cycle is None:  # 纯安全岗:世界状态由 process() 维护,无周期推进
+            return
         if self.cycle is None:
             start_ok = self._cond_true(self.p.cycle.start, ts, ev)
             if not start_ok:

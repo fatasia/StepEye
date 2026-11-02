@@ -219,6 +219,7 @@ class QualityCfg(BaseModel):
     blur_min: float | None = None
     brightness: tuple[float, float] | None = None
     max_shift_px: float | None = None
+    lighting_drift: float | None = 0.3  # 背景亮度相对漂移阈值:超过判"光照突变"并降级;持续后自适应
     every_n: int = 5
 
 
@@ -244,17 +245,23 @@ class StationConfig(BaseModel):
     safety: SafetyCfg = SafetyCfg()
     roi_states: list[RoiStateCfg] = []
     quality: QualityCfg = QualityCfg()
-    cycle: CycleDef
-    steps: list[Step] = Field(min_length=1)
+    cycle: CycleDef | None = None  # 纯安全岗(仅常驻规则)可不定义周期
+    steps: list[Step] = []
     violations: dict[str, Literal["error", "warn"]] = {}
 
     @model_validator(mode="after")
     def _check_refs(self) -> "StationConfig":
+        if not self.steps and not self.safety.rules:
+            raise ValueError("工位至少要有 SOP 步骤或常驻安全规则之一")
+        if self.steps and self.cycle is None:
+            raise ValueError("有 SOP 步骤就必须定义 cycle(周期开始/结束条件)")
         ids = [z.id for z in self.zones]
         if len(set(ids)) != len(ids):
             raise ValueError("zone id 重复")
         known = set(ids)
-        conds: list[Cond] = [self.cycle.start, self.cycle.end]
+        conds: list[Cond] = []
+        if self.cycle is not None:
+            conds += [self.cycle.start, self.cycle.end]
         for s in self.steps:
             conds += s.evidence.conds
         for c in conds:
@@ -282,7 +289,7 @@ class CompiledStep:
 class Program:
     station: str
     steps: list[CompiledStep]
-    cycle: CycleDef
+    cycle: CycleDef | None
     severity: dict[str, str]
     rules_hash: str
 
@@ -298,7 +305,7 @@ class Program:
             {
                 "zones": [z.model_dump() for z in cfg.zones],
                 "roi_states": [r.model_dump() for r in cfg.roi_states],
-                "cycle": cfg.cycle.model_dump(),
+                "cycle": cfg.cycle.model_dump() if cfg.cycle else None,
                 "steps": [s.model_dump() for s in cfg.steps],
             },
             sort_keys=True,
