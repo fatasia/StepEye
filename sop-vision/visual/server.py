@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import re
 import threading
 import time
@@ -14,6 +16,8 @@ from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .alerts import AlertStore
+from .auth import AuthError, AuthStore
 from .dsl import StationConfig, load_config
 from .evidence import CycleStore
 from .events import SIGNAL, Event
@@ -62,10 +66,13 @@ def rewrite_station_zones(path: Path, zones: list[dict[str, Any]]) -> None:
 class StationManager:
     def __init__(self, config_paths: list[Path], data_dir: Path, hub: Hub,
                  inspection_config: Path | None = None, vlm_transport=None,
-                 provider_cfg: ProviderConfig | None = None):
+                 provider_cfg: ProviderConfig | None = None,
+                 alert_store: AlertStore | None = None):
         self.data_dir = data_dir
         self.hub = hub
         self.store = CycleStore(data_dir / "sop.db")
+        self.alerts = alert_store or AlertStore(data_dir / "alerts.db")
+        self.feishu_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
         self.evidence_root = data_dir / "evidence"
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
@@ -79,7 +86,7 @@ class StationManager:
                 self.inspection = InspectionService(
                     load_scenarios(inspection_config), InspectionStore(data_dir / "sop.db"),
                     data_dir / "inspection", VLMProvider(cfg, vlm_transport),
-                    publish=self.hub.publish, refs_root=data_dir)
+                    publish=self._on_inspection_msg, refs_root=data_dir)
             else:
                 print("提示:未配置 ZHIPU_API_KEY(.env),拍照即检功能不可用,其余功能不受影响")
         for p in config_paths:
@@ -95,7 +102,36 @@ class StationManager:
         def fwd(kind: str, payload: dict[str, Any]) -> None:
             if kind in PUSH_KINDS:
                 self.hub.publish({"type": "event", "station": sid, "kind": kind, "data": payload})
+            if kind == "violation":  # SOP 违规入告警中心(按周期+类型防重)
+                rec, new = self.alerts.create(sid, "sop", payload["kind"], payload["severity"],
+                                              payload["message"], ref_id=f"{payload.get('cycle_id')}:{payload['kind']}")
+                if new:
+                    self._push_out(rec)
+            elif kind == "safety":  # 常驻安全告警(执行器已自带再武装,不防重)
+                rec, new = self.alerts.create(sid, "safety", payload["rule"], payload["severity"], payload["message"])
+                if new:
+                    self._push_out(rec)
         return fwd
+
+    def _on_inspection_msg(self, msg: dict[str, Any]) -> None:
+        """拍照即检事件:推送 WS;NG/失败结论入告警中心。"""
+        self.hub.publish(msg)
+        d = msg.get("data", {})
+        if msg.get("kind") == "inspection" and d.get("status") == "done" and d.get("verdict") == "NG":
+            rec, new = self.alerts.create(d.get("scenario", "inspection"), "inspection", "NG",
+                                          "warn", f"拍照即检判 NG:{d.get('reason', '')}", ref_id=d.get("id"))
+            if new:
+                self._push_out(rec)
+
+    def _push_out(self, rec: dict[str, Any]) -> None:
+        """告警广播 + 飞书推送(新建时调用一次;推送后回写标记防重)。"""
+        self.hub.publish({"type": "alert", "data": rec})
+        if self.feishu_webhook and not rec.get("pushed"):
+            def send():
+                if _feishu_send(self.feishu_webhook,
+                                f"[视觉告警] {rec['station']} {rec['kind']}\n{rec['message']}\n状态: 待处理"):
+                    self.alerts.mark_pushed(rec["id"])
+            threading.Thread(target=send, name="feishu", daemon=True).start()
 
     def start(self) -> None:
         if self.inspection is not None:
@@ -157,6 +193,36 @@ class ZonesBody(BaseModel):
     zones: list[dict[str, Any]]
 
 
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+class UserBody(BaseModel):
+    username: str
+    password: str
+    role: str = "operator"
+
+
+class AlertPatchBody(BaseModel):
+    status: str | None = None
+    comment: str | None = None
+
+
+def _feishu_send(url: str, text: str) -> bool:
+    """飞书群机器人 webhook,fire-and-forget;失败静默(推送不阻塞业务)。"""
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(url, data=json.dumps(
+            {"msg_type": "text", "content": {"text": text}}).encode("utf-8"),
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:  # noqa: S310
+            return r.status == 200
+    except Exception:  # noqa: BLE001 —— 推送失败只影响通知,不影响告警入库
+        return False
+
+
 def _station_config_view(rt: StationRuntime, path: Path) -> dict[str, Any]:
     cfg = rt.cfg
     return {
@@ -174,7 +240,7 @@ def _station_config_view(rt: StationRuntime, path: Path) -> dict[str, Any]:
     }
 
 
-def create_app(manager: StationManager, hub: Hub) -> FastAPI:
+def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         hub.loop = asyncio.get_running_loop()
@@ -192,10 +258,111 @@ def create_app(manager: StationManager, hub: Hub) -> FastAPI:
                     hub.publish({"type": "state", "station": sid, "data": rt.state_cache})
 
     app = FastAPI(title="SOP Vision", lifespan=lifespan)
+    app.state.manager = manager
+    app.state.auth = auth
+
+    def current_user(request: Request) -> dict | None:
+        """从 Cookie 或 Bearer 取会话;auth 未启用时返回伪 admin(本机工具模式)。"""
+        if auth is None:
+            return {"username": "local", "role": "admin"}
+        token = request.cookies.get("vsession") or ""
+        h = request.headers.get("Authorization", "")
+        if h.startswith("Bearer "):
+            token = h[7:]
+        return auth.verify_session(token)
+
+    @app.middleware("http")
+    async def auth_guard(request: Request, call_next):
+        path = request.url.path
+        if auth is not None and path.startswith("/api") \
+                and path != "/api/health" and not path.startswith("/api/auth/"):
+            try:
+                need = "admin" if path.startswith("/api/users") else \
+                    ("viewer" if request.method == "GET" else "operator")
+                AuthStore.check(current_user(request), need)
+            except AuthError as e:
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"detail": str(e)}, status_code=e.status)
+        return await call_next(request)
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
-        return {"ok": True, "stations": len(manager.runtimes)}
+        return {"ok": True, "stations": len(manager.runtimes), "auth": auth is not None}
+
+    # ---- 认证 / 用户(T5) ----
+    @app.post("/api/auth/login")
+    def auth_login(body: LoginBody) -> dict[str, Any]:
+        if auth is None:
+            raise HTTPException(400, "认证未启用(serve --auth 或 VISUAL_AUTH=1 开启)")
+        try:
+            token = auth.login(body.username, body.password)
+        except AuthError as e:
+            raise HTTPException(e.status, str(e)) from e
+        resp = Response(json.dumps({"ok": True, "username": body.username}), media_type="application/json")
+        resp.set_cookie("vsession", token, httponly=True, samesite="lax", max_age=12 * 3600, path="/")
+        return resp
+
+    @app.post("/api/auth/logout")
+    def auth_logout(request: Request) -> dict[str, Any]:
+        if auth is not None:
+            token = request.cookies.get("vsession", "")
+            h = request.headers.get("Authorization", "")
+            auth.logout(h[7:] if h.startswith("Bearer ") else token)
+        resp = Response(json.dumps({"ok": True}), media_type="application/json")
+        resp.delete_cookie("vsession", path="/")
+        return resp
+
+    @app.get("/api/auth/me")
+    def auth_me(request: Request) -> dict[str, Any]:
+        u = current_user(request)
+        if auth is not None and u is None:
+            raise HTTPException(401, "未登录")
+        return u or {"username": "local", "role": "admin"}
+
+    @app.get("/api/users")
+    def users_list(request: Request) -> list[dict[str, Any]]:
+        if auth is None:
+            raise HTTPException(400, "认证未启用")
+        return auth.list_users()
+
+    @app.post("/api/users")
+    def users_add(body: UserBody) -> dict[str, Any]:
+        if auth is None:
+            raise HTTPException(400, "认证未启用")
+        try:
+            auth.set_user(body.username, body.password, body.role)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True}
+
+    @app.delete("/api/users/{username}")
+    def users_del(username: str) -> dict[str, Any]:
+        if auth is None:
+            raise HTTPException(400, "认证未启用")
+        if not auth.delete_user(username):
+            raise HTTPException(404, f"用户不存在:{username}")
+        return {"ok": True}
+
+    # ---- 告警中心(V7) ----
+    @app.get("/api/alerts")
+    def alerts_list(status: str | None = None, source: str | None = None,
+                    limit: int = Query(100, ge=1, le=500)) -> list[dict[str, Any]]:
+        return manager.alerts.list(status=status, source=source, limit=limit)
+
+    @app.get("/api/alerts/stats")
+    def alerts_stats() -> dict[str, Any]:
+        return manager.alerts.stats()
+
+    @app.patch("/api/alerts/{aid}")
+    def alerts_patch(aid: int, body: AlertPatchBody, request: Request) -> dict[str, Any]:
+        try:
+            rec = manager.alerts.update(aid, status=body.status, comment=body.comment,
+                                        handler=current_user(request)["username"])
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if rec is None:
+            raise HTTPException(404, f"告警不存在:{aid}")
+        return rec
 
     @app.get("/api/stations")
     def stations() -> list[dict[str, Any]]:
@@ -418,6 +585,11 @@ def create_app(manager: StationManager, hub: Hub) -> FastAPI:
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
+        if auth is not None:  # 流量含画面与数据,未认证直接拒绝
+            token = sock.query_params.get("token") or sock.cookies.get("vsession", "")
+            if auth.verify_session(token) is None:
+                await sock.close(code=4401)
+                return
         await sock.accept()
         q: asyncio.Queue = asyncio.Queue(maxsize=500)
         hub.clients.add(q)
@@ -435,7 +607,8 @@ def create_app(manager: StationManager, hub: Hub) -> FastAPI:
 
 
 def build_app(config_paths: list[Path], data_dir: Path, inspection_config: Path | None = None,
-              vlm_transport=None, provider_cfg: ProviderConfig | None = None) -> FastAPI:
+              vlm_transport=None, provider_cfg: ProviderConfig | None = None,
+              auth: AuthStore | None = None, alert_store: AlertStore | None = None) -> FastAPI:
     hub = Hub()
     return create_app(StationManager(config_paths, data_dir, hub, inspection_config, vlm_transport,
-                                     provider_cfg), hub)
+                                     provider_cfg, alert_store), hub, auth)

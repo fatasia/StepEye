@@ -28,7 +28,7 @@ def client(tmp_path_factory):
 
 
 def test_health_and_stations(client):
-    assert client.get("/api/health").json() == {"ok": True, "stations": 1}
+    assert client.get("/api/health").json() == {"ok": True, "stations": 1, "auth": False}
     st = client.get("/api/stations").json()[0]
     assert st["meta"]["id"] == "DEMO-ST01" and st["meta"]["takt_s"] == 14
 

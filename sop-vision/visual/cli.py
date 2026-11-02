@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -92,8 +93,32 @@ def _serve(args: argparse.Namespace) -> int:
     from .server import build_app
 
     inspection = Path(args.inspection) if args.inspection else None
-    app = build_app([Path(c) for c in args.configs], Path(args.data), inspection_config=inspection)
+    auth = None
+    if args.auth or os.environ.get("VISUAL_AUTH") == "1":
+        from .auth import AuthStore
+        auth = AuthStore(Path(args.data) / "auth.db")
+        if auth.count() == 0:
+            print("认证已启用但还没有用户:先运行 `python -m visual passwd admin` 创建管理员", file=sys.stderr)
+    app = build_app([Path(c) for c in args.configs], Path(args.data), inspection_config=inspection, auth=auth)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
+def _passwd(args: argparse.Namespace) -> int:
+    import getpass
+
+    from .auth import AuthStore
+
+    pw = getpass.getpass(f"为 {args.username} 设置密码(至少 8 位):")
+    if getpass.getpass("再输一遍:") != pw:
+        print("两次输入不一致", file=sys.stderr)
+        return 2
+    try:
+        AuthStore(Path(args.data) / "auth.db").set_user(args.username, pw, args.role)
+    except ValueError as e:
+        print(f"错误:{e}", file=sys.stderr)
+        return 2
+    print(f"已设置用户 {args.username}({args.role})")
     return 0
 
 
@@ -126,7 +151,14 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--data", default="data")
     s.add_argument("--inspection", help="拍照即检场景配置(如 configs/inspection.yaml);不传则禁用该功能")
+    s.add_argument("--auth", action="store_true", help="启用登录认证(或环境变量 VISUAL_AUTH=1);用户用 passwd 子命令创建")
     s.set_defaults(fn=_serve)
+
+    pw = sub.add_parser("passwd", help="创建/更新登录用户(认证启用后使用)")
+    pw.add_argument("username")
+    pw.add_argument("--role", default="operator", choices=["viewer", "operator", "admin"])
+    pw.add_argument("--data", default="data")
+    pw.set_defaults(fn=_passwd)
 
     g = sub.add_parser("regress", help="评测回归:固定样本集跑分,--against 对比上一份结果防退化")
     g.add_argument("manifest", help="回归清单 YAML(name/prompt/cases)")
