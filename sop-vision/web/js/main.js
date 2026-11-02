@@ -6,10 +6,11 @@ import * as overview from "./pages/overview.js";
 import * as live from "./pages/live.js";
 import * as trace from "./pages/trace.js";
 import * as config from "./pages/config.js";
+import * as inspection from "./pages/inspection.js";
 
-const ROUTES = { overview, live, trace, config };
-const TITLES = { overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置" };
-const NAV = [["overview", "总览", "overview"], ["live", "实时监控", "live"], ["trace", "追溯", "trace"], ["config", "SOP 配置", "config"]];
+const ROUTES = { overview, live, trace, config, inspection };
+const TITLES = { overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检" };
+const NAV = [["overview", "总览", "overview"], ["live", "实时监控", "live"], ["trace", "追溯", "trace"], ["inspection", "拍照即检", "camera"], ["config", "SOP 配置", "config"]];
 const ACCENTS = [["#3ec6c1", "青"], ["#65aee8", "蓝"], ["#59c58d", "绿"], ["#d8ac52", "琥珀"], ["#b08cf0", "紫"]];
 const CONN = { open: ["实时连接", "success"], retry: ["连接中断，重连中…", "warning"], connecting: ["正在连接…", "info"] };
 

@@ -8,13 +8,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .dsl import StationConfig, load_config
 from .evidence import CycleStore
+from .inspection import InspectionService, InspectionStore, load_scenarios
+from .llm_provider import ProviderConfig, VLMProvider
 from .runtime import StationRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +48,9 @@ class Hub:
 
 
 class StationManager:
-    def __init__(self, config_paths: list[Path], data_dir: Path, hub: Hub):
+    def __init__(self, config_paths: list[Path], data_dir: Path, hub: Hub,
+                 inspection_config: Path | None = None, vlm_transport=None,
+                 provider_cfg: ProviderConfig | None = None):
         self.data_dir = data_dir
         self.hub = hub
         self.store = CycleStore(data_dir / "sop.db")
@@ -54,6 +58,17 @@ class StationManager:
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
         self.threads: list[threading.Thread] = []
+        # 拍照即检:给了配置且有凭据才启用;没凭据时端点返回明确指引,而不是悄悄坏掉
+        self.inspection: InspectionService | None = None
+        if inspection_config is not None:
+            cfg = provider_cfg or ProviderConfig.from_env()
+            if cfg.api_key:
+                self.inspection = InspectionService(
+                    load_scenarios(inspection_config), InspectionStore(data_dir / "sop.db"),
+                    data_dir / "inspection", VLMProvider(cfg, vlm_transport),
+                    publish=self.hub.publish, refs_root=data_dir)
+            else:
+                print("提示:未配置 ZHIPU_API_KEY(.env),拍照即检功能不可用,其余功能不受影响")
         for p in config_paths:
             cfg: StationConfig = load_config(p)
             if cfg.station in self.runtimes:
@@ -70,6 +85,8 @@ class StationManager:
         return fwd
 
     def start(self) -> None:
+        if self.inspection is not None:
+            self.inspection.start()
         for sid, rt in self.runtimes.items():
             t = threading.Thread(target=rt.run, name=f"station-{sid}", daemon=True)
             t.start()
@@ -80,6 +97,9 @@ class StationManager:
             rt.stop()
         for t in self.threads:
             t.join(timeout=3)
+        if self.inspection is not None:
+            self.inspection.stop()
+            self.inspection.store.close()
         self.store.close()
 
     def get(self, sid: str) -> StationRuntime:
@@ -209,6 +229,60 @@ def create_app(manager: StationManager, hub: Hub) -> FastAPI:
     def trend(station: str | None = None, hours: int = Query(24, ge=1, le=168)) -> list[dict[str, Any]]:
         return manager.store.hourly(hours, station)
 
+    # ---- 拍照即检(V 系列) ----
+    def _inspection() -> InspectionService:
+        if manager.inspection is None:
+            raise HTTPException(503, "拍照即检未启用:缺少 ZHIPU_API_KEY(在 sop-vision/.env 配置后重启服务)")
+        return manager.inspection
+
+    @app.get("/api/inspection/scenarios")
+    def inspection_scenarios() -> list[dict[str, Any]]:
+        ins = _inspection()
+        return [{"id": s.id, "name": s.name, "enabled": s.enabled, "mode": s.mode,
+                 "ok_refs": len(s.ok_refs), "ng_refs": len(s.ng_refs)}
+                for s in ins.scenarios.values()]
+
+    @app.post("/api/inspection/tasks", status_code=202)
+    async def inspection_submit(scenario_id: str = Form(...), files: list[UploadFile] = File(...)) -> dict[str, Any]:
+        ins = _inspection()
+        payloads = [await f.read() for f in files]
+        try:
+            rec = ins.submit(scenario_id, payloads)
+        except KeyError as e:
+            raise HTTPException(404, str(e)) from e
+        except PermissionError as e:
+            raise HTTPException(409, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return ins.task_view(rec)
+
+    @app.get("/api/inspection/tasks")
+    def inspection_tasks(status: str | None = None, scenario: str | None = None,
+                         limit: int = Query(50, ge=1, le=500)) -> list[dict[str, Any]]:
+        ins = _inspection()
+        return [ins.task_view(r) for r in ins.store.list(limit=limit, status=status, scenario=scenario)]
+
+    @app.get("/api/inspection/stats")
+    def inspection_stats() -> dict[str, Any]:
+        return _inspection().store.stats()
+
+    @app.get("/api/inspection/tasks/{tid}")
+    def inspection_task(tid: str) -> dict[str, Any]:
+        rec = _inspection().store.get(tid)
+        if rec is None:
+            raise HTTPException(404, f"任务不存在:{tid}")
+        return _inspection().task_view(rec)
+
+    @app.get("/api/inspection/tasks/{tid}/images/{name}")
+    def inspection_image(tid: str, name: str) -> FileResponse:
+        if not SAFE_NAME.match(tid) or not SAFE_NAME.match(name):
+            raise HTTPException(400, "非法的文件名")
+        ins = _inspection()
+        path = (ins.images_root / tid / name).resolve()
+        if ins.images_root.resolve() not in path.parents or not path.is_file():
+            raise HTTPException(404, "图片不存在")
+        return FileResponse(path, media_type="image/jpeg")
+
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
         await sock.accept()
@@ -227,6 +301,8 @@ def create_app(manager: StationManager, hub: Hub) -> FastAPI:
     return app
 
 
-def build_app(config_paths: list[Path], data_dir: Path) -> FastAPI:
+def build_app(config_paths: list[Path], data_dir: Path, inspection_config: Path | None = None,
+              vlm_transport=None, provider_cfg: ProviderConfig | None = None) -> FastAPI:
     hub = Hub()
-    return create_app(StationManager(config_paths, data_dir, hub), hub)
+    return create_app(StationManager(config_paths, data_dir, hub, inspection_config, vlm_transport,
+                                     provider_cfg), hub)

@@ -53,6 +53,7 @@ class ProviderConfig:
     api_key: str = ""
     timeout_s: float = 120.0
     max_retries: int = 2
+    temperature: float = 0.1  # 判定任务锁低温:同一张图反复判不能在 NG/待复核之间跳
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = None) -> ProviderConfig:
@@ -96,7 +97,7 @@ class VLMProvider:
         """单轮对话,返回首个回复的文本;瞬时失败退避重试,4xx 直接抛出。"""
         url = self.cfg.base_url.rstrip("/") + "/chat/completions"
         headers = {"Authorization": f"Bearer {self.cfg.api_key}"}
-        payload = {"model": self.cfg.model, "messages": messages}
+        payload = {"model": self.cfg.model, "messages": messages, "temperature": self.cfg.temperature}
         last_err: Exception | None = None
         for attempt in range(self.cfg.max_retries + 1):
             try:

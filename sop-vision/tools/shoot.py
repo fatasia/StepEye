@@ -9,7 +9,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 SIZES = [(1920, 1080), (1280, 800), (980, 800), (480, 900)]
-PAGES = [("overview", "#/overview"), ("live", "#/live/DEMO-ST01"), ("trace", "#/trace"), ("config", "#/config/DEMO-ST01")]
+PAGES = [("overview", "#/overview"), ("live", "#/live/DEMO-ST01"), ("trace", "#/trace"), ("config", "#/config/DEMO-ST01"), ("inspection", "#/inspection")]
 
 
 def main(base: str, out: str, theme: str = "dark", only: str | None = None) -> None:

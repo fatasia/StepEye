@@ -40,4 +40,17 @@ export const api = {
   stream: (id) => `/api/stations/${encodeURIComponent(id)}/stream.mjpg`,
   snapshot: (id, raw = true) => `/api/stations/${encodeURIComponent(id)}/snapshot.jpg?raw=${raw}&t=${Date.now()}`,
   frame: (cid, name) => `/api/cycles/${encodeURIComponent(cid)}/frames/${encodeURIComponent(name)}`,
+  inspectionScenarios: () => request("/api/inspection/scenarios"),
+  inspectionSubmit: (scenarioId, files) => {
+    const fd = new FormData();
+    fd.append("scenario_id", scenarioId);
+    files.forEach((f) => fd.append("files", f));
+    return request("/api/inspection/tasks", { method: "POST", body: fd });
+  },
+  inspectionTasks: (params = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== "" && v != null));
+    return request(`/api/inspection/tasks?${q}`);
+  },
+  inspectionTask: (id) => request(`/api/inspection/tasks/${encodeURIComponent(id)}`),
+  inspectionImage: (id, name) => `/api/inspection/tasks/${encodeURIComponent(id)}/images/${encodeURIComponent(name)}`,
 };

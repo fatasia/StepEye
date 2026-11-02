@@ -71,6 +71,7 @@ def test_chat_sends_auth_header_and_model():
     call = t.calls[0]
     assert call["headers"]["Authorization"] == "Bearer k-test"
     assert call["payload"]["model"] == "glm-5.3-flash"
+    assert call["payload"]["temperature"] == 0.1  # 判定任务锁低温
     assert call["url"].endswith("/chat/completions")
 
 

@@ -72,7 +72,8 @@ def _serve(args: argparse.Namespace) -> int:
 
     from .server import build_app
 
-    app = build_app([Path(c) for c in args.configs], Path(args.data))
+    inspection = Path(args.inspection) if args.inspection else None
+    app = build_app([Path(c) for c in args.configs], Path(args.data), inspection_config=inspection)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 
@@ -105,6 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
     s.add_argument("--data", default="data")
+    s.add_argument("--inspection", help="拍照即检场景配置(如 configs/inspection.yaml);不传则禁用该功能")
     s.set_defaults(fn=_serve)
 
     args = p.parse_args(argv)

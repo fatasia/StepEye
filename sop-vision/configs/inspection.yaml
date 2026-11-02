@@ -1,0 +1,18 @@
+# 拍照即检场景配置 —— 默认只启用有评测数据支撑的组合(ROADMAP 纪律)。
+# glove_check:V0 迷你评测 14/14 一致、零漏报(docs/V0-SMOKE.md)后启用;
+# first_article_demo:两步判定冒烟通过后启用,参考图由 tools/make_sim_refs.py 生成。
+scenarios:
+  - id: glove_check
+    name: 手套佩戴检查
+    enabled: true
+    mode: single
+    prompt: |
+      判断画面中的作业人员是否佩戴手套。只输出JSON:
+      {"verdict":"PASS|NG|UNCERTAIN","confidence":0到1的小数,"reason":"不超过30字"}
+      画面模糊或看不见手时用 UNCERTAIN。
+  - id: first_article_demo
+    name: 首件对照演示(仿真装配)
+    enabled: true
+    mode: first_article
+    ok_refs: [refs/first_article_demo/ok]
+    ng_refs: [refs/first_article_demo/ng]
