@@ -74,6 +74,7 @@ export const api = {
     return request(`/api/alerts?${q}`);
   },
   alertStats: () => request("/api/alerts/stats"),
+  inspectionStats: () => request("/api/inspection/stats"),
   alertPatch: (id, body) =>
     request(`/api/alerts/${encodeURIComponent(id)}`, { method: "PATCH",
                                                        headers: { "Content-Type": "application/json" },

@@ -128,10 +128,28 @@ export function render(root) {
         </section>
         <section class="panel grow"><header class="panel-head"><h2>实时告警</h2><span class="muted">最近 12 条</span></header>
           <div class="panel-body alerts" id="alerts"></div></section>
+        <section class="panel"><header class="panel-head"><h2>拍照即检 · 告警中心</h2><span class="muted">累计</span></header>
+          <div class="panel-body" id="vstats"><div class="skeleton-block" style="height:96px"></div></div></section>
       </aside>
     </div>`;
   const kpis = $("#kpis", root), wall = $("#wall", root), trendEl = $("#trend", root), alertsEl = $("#alerts", root);
   let trend = [], built = "";
+  // V8:拍照即检与告警中心统计(数据源 /api/inspection/stats + /api/alerts/stats)
+  (async () => {
+    try {
+      const [insp, al] = await Promise.all([api.inspectionStats(), api.alertStats()]);
+      const kv = (l, v) => `<div class="kv"><span class="muted">${l}</span><span class="num">${v}</span></div>`;
+      const done = insp.by_status?.done ?? 0, failed = insp.by_status?.failed ?? 0;
+      setHTML($("#vstats", root), `<div class="kv-grid">
+        ${kv("检测任务", `${done}${failed ? ` <span class="faint">失败 ${failed}</span>` : ""}`)}
+        ${kv("NG 结论", `<span class="tone-danger-text">${insp.by_verdict?.NG ?? 0}</span>`)}
+        ${kv("待处理告警", `<span class="tone-warning-text">${al.pending}</span>`)}
+        ${kv("已核误报", al.false_alarm)}
+      </div>`);
+    } catch {
+      setHTML($("#vstats", root), '<div class="inline-empty muted">统计暂不可用</div>');
+    }
+  })();
 
   const buildWall = () => {
     const sig = store.metas.map((m) => m.id).join("|");
