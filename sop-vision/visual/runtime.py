@@ -82,7 +82,8 @@ class StationRuntime:
             self.persons = MediaPipePosePersons(cfg.persons, self.geoms, self.base_dir)
         self.detector: Any = None
         if cfg.detector.enabled and src.type != "sim":
-            self.detector = MediaPipeObjectDetector(cfg.detector, self.geoms, self.base_dir)
+            from .onnx_detector import create_detector
+            self.detector = create_detector(cfg.detector, self.geoms, self.base_dir)
         # 常驻安全规则(S16/S17):独立于周期,任何时刻持续监控
         rules = [SafetyRule(id=r.id, kind=r.kind, zone=r.zone, min_s=r.min_s, count_ge=r.count_ge,
                             severity=r.severity, name=r.name) for r in cfg.safety.rules]

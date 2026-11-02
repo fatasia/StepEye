@@ -190,13 +190,14 @@ class PersonsCfg(BaseModel):
 
 
 class DetectorCfg(BaseModel):
-    """通用目标检测(MediaPipe ObjectDetector/efficientdet,Apache-2.0)。
+    """通用目标检测:.onnx(YOLO/D-FINE/RF-DETR 导出,onnxruntime)或 .tflite(MediaPipe)。
 
-    COCO 预训练直接覆盖 person / cell phone / knife 等;烟火/PPE 专用模型换 .task 文件即可,接口不变。
+    按扩展名自动选引擎;classes=要盯的类别,class_names=模型类别表(ONNX 必填,缺省 COCO80)。
     """
     enabled: bool = False
     model: str = "models/efficientdet_lite0.tflite"
     classes: list[str] = ["person"]  # 要盯的类别(须与模型标签一致)
+    class_names: list[str] = []  # ONNX 模型的完整类别表(顺序=id);缺省按 COCO80
     max_results: int = 5
     min_conf: float = 0.5
     enter_frames: int = 2

@@ -13,3 +13,9 @@ sop-vision/data/
 # 大文件:手部模型与测试视频按 README 单独下载/放置,不入库
 *.task
 *.mp4
+
+# PyInstaller 产物
+dist/
+build/
+*.spec
+*.onnx
