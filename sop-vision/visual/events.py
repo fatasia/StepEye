@@ -9,6 +9,10 @@ HAND_EXIT = "hand_exit"
 PERSON_ENTER = "person_enter"
 PERSON_EXIT = "person_exit"
 PERSON_COUNT = "person_count"
+PERSON_FALL = "person_fall"  # value: 1=倒地姿态持续 0=姿态恢复
+OBJECT_ENTER = "object_enter"
+OBJECT_EXIT = "object_exit"
+OBJECT_COUNT = "object_count"  # name=类别, value=区域内数量
 OBJ_STATE = "obj_state"
 SIGNAL = "signal"
 QUALITY = "quality"

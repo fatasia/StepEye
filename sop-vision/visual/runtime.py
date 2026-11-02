@@ -20,6 +20,7 @@ from .evidence import CycleStore, EvidenceRecorder
 from .llm_provider import ProviderConfig, VLMProvider
 from .perception.base import Context, build_geoms
 from .perception.hands import HandZoneTracker, MediaPipeHands
+from .perception.objects import MediaPipeObjectDetector
 from .perception.persons import MediaPipePosePersons
 from .perception.quality import QualityPerceiver
 from .perception.roi_state import RoiStatePerceiver
@@ -78,6 +79,9 @@ class StationRuntime:
         self.persons: Any = None
         if cfg.persons.enabled and src.type != "sim":
             self.persons = MediaPipePosePersons(cfg.persons, self.geoms, self.base_dir)
+        self.detector: Any = None
+        if cfg.detector.enabled and src.type != "sim":
+            self.detector = MediaPipeObjectDetector(cfg.detector, self.geoms, self.base_dir)
         # 常驻安全规则(S16/S17):独立于周期,任何时刻持续监控
         rules = [SafetyRule(id=r.id, kind=r.kind, zone=r.zone, min_s=r.min_s, count_ge=r.count_ge,
                             severity=r.severity, name=r.name) for r in cfg.safety.rules]
@@ -181,6 +185,8 @@ class StationRuntime:
             events += self.hands.process(frame, ts, self.ctx)
         if self.persons is not None:
             events += self.persons.process(frame, ts, self.ctx)
+        if self.detector is not None:
+            events += self.detector.process(frame, ts, self.ctx)
         events += self.roi.process(frame, ts, self.ctx)
         events += self.quality.process(frame, ts, self.ctx)
         for ev in sorted(events, key=lambda e: e.ts):
@@ -269,6 +275,16 @@ class StationRuntime:
                 self._label(img, f"{zid}{' · ' + st if st else ''}", (g.bbox[0], max(14, g.bbox[1] - 5)), col)
         for x, y in self.ctx.hand_points:
             cv2.circle(img, (int(x), int(y)), 3, COL_ACCENT, -1, cv2.LINE_AA)
+        for box in self.ctx.person_boxes:
+            cv2.rectangle(img, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), COL_HAND, 2, cv2.LINE_AA)
+        for name, box in self.ctx.object_boxes:
+            cv2.rectangle(img, (int(box[0]), int(box[1])), (int(box[2]), int(box[3])), COL_ACCENT, 2, cv2.LINE_AA)
+            self._label(img, str(name)[:20], (int(box[0]), max(12, int(box[1]) - 4)), COL_ACCENT, 0.42)
+        for zid in self.ctx.fall_zones:
+            if zid in self.geoms:
+                g = self.geoms[zid]
+                cv2.polylines(img, [g.poly.astype(np.int32)], True, (80, 80, 240), 3, cv2.LINE_AA)
+                self._label(img, "FALL", (g.bbox[0], max(14, g.bbox[1] - 5)), (80, 80, 240))
         if not hud:
             return img
         c = self.engine.cycle

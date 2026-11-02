@@ -179,10 +179,25 @@ class HandsCfg(BaseModel):
 
 
 class PersonsCfg(BaseModel):
-    """人员感知(MediaPipe Pose,Apache-2.0):S16 无人值守 / S17 人员聚集的条件来源。"""
+    """人员感知(MediaPipe Pose,Apache-2.0):S16 无人值守 / S17 人员聚集 / S4 跌倒的条件来源。"""
     enabled: bool = False
     model: str = "models/pose_landmarker_lite.task"
     max_poses: int = 3
+    min_conf: float = 0.5
+    enter_frames: int = 2
+    exit_frames: int = 6
+    fall_enabled: bool = False  # S4:躯干倾角规则判倒地,免训练
+
+
+class DetectorCfg(BaseModel):
+    """通用目标检测(MediaPipe ObjectDetector/efficientdet,Apache-2.0)。
+
+    COCO 预训练直接覆盖 person / cell phone / knife 等;烟火/PPE 专用模型换 .task 文件即可,接口不变。
+    """
+    enabled: bool = False
+    model: str = "models/efficientdet_lite0.tflite"
+    classes: list[str] = ["person"]  # 要盯的类别(须与模型标签一致)
+    max_results: int = 5
     min_conf: float = 0.5
     enter_frames: int = 2
     exit_frames: int = 6
@@ -190,12 +205,13 @@ class PersonsCfg(BaseModel):
 
 class SafetyRuleCfg(BaseModel):
     id: str
-    kind: Literal["person_absent", "person_count"]
+    kind: Literal["person_absent", "person_count", "fall", "object_present"]
     zone: str
     min_s: float = 5.0
     count_ge: int = 1
     severity: Literal["warn", "error"] = "warn"
     name: str = ""
+    target: str = ""  # object_present 专用:要盯的类别名(须与检测模型标签一致)
 
 
 class SafetyCfg(BaseModel):
@@ -242,6 +258,7 @@ class StationConfig(BaseModel):
     zones: list[Zone]
     hands: HandsCfg = HandsCfg()
     persons: PersonsCfg = PersonsCfg()
+    detector: DetectorCfg = DetectorCfg()
     safety: SafetyCfg = SafetyCfg()
     roi_states: list[RoiStateCfg] = []
     quality: QualityCfg = QualityCfg()

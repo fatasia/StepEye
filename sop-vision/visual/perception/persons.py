@@ -1,19 +1,38 @@
 """人员感知:MediaPipe PoseLandmarker(Apache-2.0)-> 区域级人数与进/出事件(含去抖)。
 
-与手部感知同构;S16 无人值守 / S17 人员聚集的条件来源。
+与手部感知同构;S16 无人值守 / S17 人员聚集 / S4 跌倒(躯干倾角规则,免训练)的条件来源。
 计数语义:区域人数需连续 N 帧稳定才更新稳定值,并在 0↔>0 边沿发 person_enter / person_exit;
 每次稳定计数变化都发 person_count(value=人数)。
 """
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 from ..dsl import PersonsCfg
-from ..events import PERSON_COUNT, PERSON_ENTER, PERSON_EXIT, Event
+from ..events import PERSON_COUNT, PERSON_ENTER, PERSON_EXIT, PERSON_FALL, Event
 from .base import Context, ZoneGeom
+
+TORSO_FALL_DEG = 50.0  # 躯干与竖直方向夹角阈值:站立/弯腰 <30°,躺地 ≈90°
+
+
+def is_fall_posture(pose_norm: list) -> bool:
+    """倒地姿态判定(纯函数,离线可测):髋中点→肩中点连线与竖直方向夹角 ≥50°。
+
+    pose_norm: 归一化关键点列表(33 点);侧身行走躯干仍近竖直,不会误报。
+    """
+    if len(pose_norm) < 25:
+        return False
+    ls, rs, lh, rh = pose_norm[11], pose_norm[12], pose_norm[23], pose_norm[24]
+    smy, hmy = (ls[1] + rs[1]) / 2, (lh[1] + rh[1]) / 2
+    dx = abs((ls[0] + rs[0]) / 2 - (lh[0] + rh[0]) / 2)
+    dy = abs(smy - hmy)  # 图像 y 向下:站立时肩在髋上方,dy 大
+    if dy < 1e-6:
+        return True  # 躯干完全水平
+    return math.degrees(math.atan2(dx, dy)) >= TORSO_FALL_DEG
 
 
 class PersonZoneTracker:
@@ -74,6 +93,31 @@ class MediaPipePosePersons:
         self._lm = vision.PoseLandmarker.create_from_options(opts)
         self._last_ms = -1
         self.tracker = PersonZoneTracker(geoms, cfg.enter_frames, cfg.exit_frames)
+        self.fall_enabled = cfg.fall_enabled
+        self._fall_state: dict[str, tuple[bool, int, bool]] = {}  # zone -> (候选值, 稳定帧数, 当前状态)
+
+    def _fall_events(self, poses_norm: list[list], ts: float) -> list[Event]:
+        """区域级跌倒去抖:任一倒地姿态者落在区稳定 N 帧 → fall=1;全区恢复稳定 N 帧 → fall=0。"""
+        events: list[Event] = []
+        falling_zones = set()
+        for pose in poses_norm:
+            for zid, g in self.geoms.items():
+                if any(g.contains(p.x, p.y) for p in (pose[11], pose[12], pose[23], pose[24])) \
+                        and is_fall_posture(pose):
+                    falling_zones.add(zid)
+        for zid in self.geoms:
+            cand = zid in falling_zones
+            c, n, state = self._fall_state.get(zid, (None, 0, False))
+            if cand == c:
+                n += 1
+            else:
+                c, n = cand, 1
+            if n >= 3 and cand != state:
+                self._fall_state[zid] = (c, n, cand)
+                events.append(Event(ts, PERSON_FALL, zone=zid, value=1 if cand else 0, source="pose_fall"))
+                continue
+            self._fall_state[zid] = (c, n, state)
+        return events
 
     def process(self, frame: np.ndarray, ts: float, ctx: Context) -> list[Event]:
         h, w = frame.shape[:2]
@@ -90,7 +134,12 @@ class MediaPipePosePersons:
                    min(w, max(xs) + padx), min(h, max(ys) + pady))
             boxes.append(box)
             ctx.person_boxes.append(box)
-        return self.tracker.update(boxes, ts)
+        events = self.tracker.update(boxes, ts)
+        if self.fall_enabled:
+            fall = self._fall_events(res.pose_landmarks, ts)
+            events += fall
+            ctx.fall_zones += [e.zone for e in fall if e.value == 1]
+        return events
 
     def close(self) -> None:
         self._lm.close()

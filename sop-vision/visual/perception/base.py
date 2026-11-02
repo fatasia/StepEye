@@ -40,11 +40,15 @@ class Context:
     hand_boxes: list[tuple[float, float, float, float]] = field(default_factory=list)
     hand_points: list[tuple[float, float]] = field(default_factory=list)
     person_boxes: list[tuple[float, float, float, float]] = field(default_factory=list)
+    object_boxes: list[tuple[str, tuple[float, float, float, float]]] = field(default_factory=list)
+    fall_zones: list[str] = field(default_factory=list)
 
     def reset(self) -> None:
         self.hand_boxes.clear()
         self.hand_points.clear()
         self.person_boxes.clear()
+        self.object_boxes.clear()
+        self.fall_zones.clear()
 
 
 class Perceiver(Protocol):
