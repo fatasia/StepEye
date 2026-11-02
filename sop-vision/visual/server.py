@@ -146,6 +146,26 @@ class StationManager:
                     self.alerts.mark_pushed(rec["id"])
             threading.Thread(target=send, name="feishu", daemon=True).start()
 
+    def add_station(self, path: Path) -> str:
+        """热加岗:运行中加载新工位 YAML(向导部署用),无需重启。"""
+        cfg: StationConfig = load_config(path)
+        if cfg.station in self.runtimes:
+            raise ValueError(f"工位 id 已存在:{cfg.station}")
+        rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        rt.listeners.append(self._forwarder(cfg.station))
+        if cfg.source.shadow and self.shadow_store is None:
+            self.shadow_store = ShadowStore(self.data_dir / "shadow.db")
+        if cfg.source.shadow:
+            start_shadow_recorder(rt, self.shadow_store)
+        self.runtimes[cfg.station] = rt
+        self.paths[cfg.station] = path
+        t = threading.Thread(target=rt.run, name=f"station-{cfg.station}", daemon=True)
+        t.start()
+        self.threads.append(t)
+        self._threads[cfg.station] = t
+        self.hub.publish({"type": "event", "station": cfg.station, "kind": "station_added", "data": {"ok": True}})
+        return cfg.station
+
     def start(self) -> None:
         if self.inspection is not None:
             self.inspection.start()
@@ -220,6 +240,19 @@ class UserBody(BaseModel):
 class AlertPatchBody(BaseModel):
     status: str | None = None
     comment: str | None = None
+
+
+class SourceBody(BaseModel):
+    type: str = "rtsp"
+    uri: str = ""
+
+
+class CompileBody(BaseModel):
+    text: str
+
+
+class StepsBody(BaseModel):
+    steps: list[dict[str, Any]]
 
 
 def _feishu_send(url: str, text: str) -> bool:
@@ -546,6 +579,102 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         if root not in path.parents or not path.is_file():
             raise HTTPException(404, "样本图片不存在")
         return FileResponse(path, media_type="image/jpeg")
+
+    # ---- 上线向导(V10) ----
+    @app.post("/api/wizard/projects")
+    def wizard_create(body: dict[str, str]) -> dict[str, Any]:
+        from .wizard import WizardStore, skeleton_yaml
+        name = str(body.get("name", "")).strip()
+        if not name:
+            raise HTTPException(400, "缺少工位名称")
+        store = WizardStore(manager.data_dir / "wizard.db")
+        rec = store.create(name, skeleton_yaml(f"WZ-{int(time.time() * 1000) % 100000}", name))
+        store.close()
+        return rec
+
+    @app.get("/api/wizard/projects")
+    def wizard_list() -> list[dict[str, Any]]:
+        from .wizard import WizardStore
+        store = WizardStore(manager.data_dir / "wizard.db")
+        rows = store.list()
+        store.close()
+        return rows
+
+    @app.get("/api/wizard/projects/{pid}")
+    def wizard_get(pid: str) -> dict[str, Any]:
+        from .wizard import WizardStore
+        store = WizardStore(manager.data_dir / "wizard.db")
+        rec = store.get(pid)
+        store.close()
+        if rec is None:
+            raise HTTPException(404, f"项目不存在:{pid}")
+        return rec
+
+    @app.post("/api/wizard/projects/{pid}/compile")
+    def wizard_compile(pid: str, body: CompileBody) -> dict[str, Any]:
+        from .wizard import WizardStore, compile_steps
+        if manager.inspection is None:
+            raise HTTPException(503, "文档编译需要大模型凭据(.env 配置 ZHIPU_API_KEY)")
+        store = WizardStore(manager.data_dir / "wizard.db")
+        if store.get(pid) is None:
+            store.close()
+            raise HTTPException(404, f"项目不存在:{pid}")
+        out = compile_steps(manager.inspection.provider, body.text)
+        store.close()
+        return out
+
+    @app.post("/api/wizard/projects/{pid}/steps")
+    def wizard_steps(pid: str, body: StepsBody) -> dict[str, Any]:
+        from .wizard import WizardStore, apply_steps
+        store = WizardStore(manager.data_dir / "wizard.db")
+        rec = store.get(pid)
+        if rec is None:
+            store.close()
+            raise HTTPException(404, f"项目不存在:{pid}")
+        if not body.steps:
+            store.close()
+            raise HTTPException(400, "至少一个步骤")
+        rec = store.update(pid, yaml_text=apply_steps(rec["yaml_text"], body.steps), status="verified")
+        store.close()
+        return rec
+
+    @app.post("/api/wizard/projects/{pid}/source")
+    def wizard_source(pid: str, body: SourceBody) -> dict[str, Any]:
+        """Step2 画面接入:填相机地址(sim 用于演示);部署前必须给出有效地址。"""
+        from .wizard import WizardStore
+        store = WizardStore(manager.data_dir / "wizard.db")
+        rec = store.get(pid)
+        if rec is None:
+            store.close()
+            raise HTTPException(404, f"项目不存在:{pid}")
+        import yaml as _yaml
+        raw = _yaml.safe_load(rec["yaml_text"]) or {}
+        raw["source"] = {"type": body.type, "uri": body.uri, "fps": 25, "width": 1280, "height": 720}
+        rec = store.update(pid, yaml_text=_yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
+        store.close()
+        return rec
+
+    @app.post("/api/wizard/projects/{pid}/deploy")
+    def wizard_deploy(pid: str) -> dict[str, Any]:
+        from .wizard import WizardStore
+        store = WizardStore(manager.data_dir / "wizard.db")
+        rec = store.get(pid)
+        if rec is None:
+            store.close()
+            raise HTTPException(404, f"项目不存在:{pid}")
+        if rec["status"] != "verified":
+            store.close()
+            raise HTTPException(409, "先确认步骤(状态 verified)再部署")
+        dest = manager.data_dir / "wizard" / f"{pid}.yaml"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(rec["yaml_text"], encoding="utf-8")
+        try:
+            sid = manager.add_station(dest)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e  # 无效 RTSP 等:fail-fast,不产生僵尸源
+        store.update(pid, status="live")
+        store.close()
+        return {"ok": True, "station": sid, "yaml": str(dest)}
 
     # ---- 模板库 / 外部信号 ----
     @app.get("/api/templates")

@@ -117,17 +117,20 @@ async function start() {
   subscribe((t) => t === "conn" && paintConn());
   window.addEventListener("hashchange", route);
   // 认证模式:未登录先给登录页,其余 API 由后端 401 兜底
+  let needsLogin = false;
   try {
     const health = await fetch("/api/health").then((r) => r.json());
-    if (health?.auth) await api.me();
-  } catch (e) {
-    const status = e instanceof ApiError ? e.status : 0;
-    if (status === 401) {
-      $("#page-title").textContent = "登录";
-      login.render(view, {}, () => location.reload());
-      return;
+    if (health?.auth) {
+      await api.me(); // 任何失败(401/网络抖动)都视为未登录,避免掉进错误块
+      needsLogin = false;
     }
-    // /api/health 都失败:服务未起,照旧走 bootstrap 给出重试块
+  } catch (e) {
+    needsLogin = true;
+  }
+  if (needsLogin) {
+    $("#page-title").textContent = "登录";
+    login.render(view, {}, () => location.reload());
+    return;
   }
   try {
     await bootstrap();

@@ -72,7 +72,8 @@ class StationRuntime:
             for zid in self.roi.trackers:
                 self.roi.trackers[zid].set_reference(self.source.scene.reference(zid))
         else:
-            self.source = CvSource(src.type, src.uri, src.fps, src.realtime, src.loop, (src.width, src.height))
+            self.source = CvSource(src.type, src.uri, src.fps, src.realtime, src.loop, (src.width, src.height),
+                                   stop_event=self.stop_event)
             if cfg.hands.enabled:
                 self.hands = hands_override or MediaPipeHands(cfg.hands, self.geoms, self.base_dir)
         # 人员感知(安全规则/vlm 无关,仅真实源;sim 无人员真值)

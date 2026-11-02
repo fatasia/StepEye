@@ -132,25 +132,34 @@ class Timeline:
 
 
 def demo_timeline(scene: Scene, scenarios: tuple[str, ...] = ("ok", "missing", "wrong_order"), gap: float = 2.0) -> Timeline:
-    """三个周期：正常 / 漏贴标签 / 先贴标签（错序）。"""
+    """三个周期：正常 / 漏贴标签 / 先贴标签（错序）。
+
+    区域容错:通用工位(如向导部署)只有部分/零个 demo 区域时,缺区域的动作与置位直接跳过,
+    不再 KeyError——sim 对任意 zones 配置都可运行(至少可演示人员类安全规则)。
+    """
     tl = Timeline()
+    geoms = scene.geoms
     c = scene.center
     t0 = 1.0
     for kind in scenarios:
         tl.set(t0, workpiece=True)
         t = t0
-        if kind == "wrong_order":
+        if kind == "wrong_order" and "label_zone" in geoms:
             tl.hand(t + 1.6, c("label_zone")); tl.hand(t + 2.6, c("label_zone")); tl.hand(t + 2.8, None)
             tl.set(t + 2.2, label_zone=True)
             t += 3.0
-        tl.hand(t + 2.0, c("bin_harness")); tl.hand(t + 3.0, c("bin_harness"))
-        tl.hand(t + 3.8, c("connector_J1")); tl.hand(t + 4.6, c("connector_J1")); tl.hand(t + 4.8, None)
-        tl.set(t + 4.0, connector_J1=True)
-        tl.hand(t + 5.6, c("B1")); tl.hand(t + 6.8, c("B1")); tl.hand(t + 7.0, None)
-        tl.set(t + 6.4, B1=True)
-        tl.hand(t + 7.6, c("B2")); tl.hand(t + 8.6, c("B2")); tl.hand(t + 8.8, None)
-        tl.set(t + 8.2, B2=True)
-        if kind == "ok":
+        if "bin_harness" in geoms:
+            tl.hand(t + 2.0, c("bin_harness")); tl.hand(t + 3.0, c("bin_harness"))
+        if "connector_J1" in geoms:
+            tl.hand(t + 3.8, c("connector_J1")); tl.hand(t + 4.6, c("connector_J1")); tl.hand(t + 4.8, None)
+            tl.set(t + 4.0, connector_J1=True)
+        if "B1" in geoms:
+            tl.hand(t + 5.6, c("B1")); tl.hand(t + 6.8, c("B1")); tl.hand(t + 7.0, None)
+            tl.set(t + 6.4, B1=True)
+        if "B2" in geoms:
+            tl.hand(t + 7.6, c("B2")); tl.hand(t + 8.6, c("B2")); tl.hand(t + 8.8, None)
+            tl.set(t + 8.2, B2=True)
+        if kind == "ok" and "label_zone" in geoms:
             tl.hand(t + 9.4, c("label_zone")); tl.hand(t + 10.2, c("label_zone")); tl.hand(t + 10.4, None)
             tl.set(t + 9.8, label_zone=True)
             t += 11.5
