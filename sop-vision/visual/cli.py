@@ -116,6 +116,25 @@ def _shadow_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def _dataset_import(args: argparse.Namespace) -> int:
+    from .datasets import build_dataset
+
+    classes = [c.strip() for c in Path(args.classes).read_text(encoding="utf-8").splitlines() if c.strip()]
+    if not classes:
+        print("classes 文件为空", file=sys.stderr)
+        return 2
+    try:
+        out = build_dataset(Path(args.src), Path(args.out), classes, val_ratio=args.val_ratio)
+    except (ValueError, FileNotFoundError) as e:
+        print(f"错误:{e}", file=sys.stderr)
+        return 2
+    print(f"数据集就绪: train {out['train_n']} / val {out['val_n']}  类别 {out['classes']}")
+    for prob in out["problems"][:5]:
+        print(f"  注意: {prob}")
+    print(f"-> {out['dataset_yaml']}")
+    return 0
+
+
 def _passwd(args: argparse.Namespace) -> int:
     import getpass
 
@@ -172,6 +191,13 @@ def main(argv: list[str] | None = None) -> int:
     pw.add_argument("--role", default="operator", choices=["viewer", "operator", "admin"])
     pw.add_argument("--data", default="data")
     pw.set_defaults(fn=_passwd)
+
+    di = sub.add_parser("dataset-import", help="标注导入:X-AnyLabeling json / YOLO 目录 → 规范数据集(TRAINING.md)")
+    di.add_argument("--src", required=True, help="源目录")
+    di.add_argument("--out", required=True, help="输出数据集根目录")
+    di.add_argument("--classes", required=True, help="classes.txt(每行一类,顺序=class id)")
+    di.add_argument("--val-ratio", type=float, default=0.15)
+    di.set_defaults(fn=_dataset_import)
 
     sh = sub.add_parser("shadow-report", help="影子模式报告:漏检/误杀/待标注(准确率验收地基)")
     sh.add_argument("--data", default="data")

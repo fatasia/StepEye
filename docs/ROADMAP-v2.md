@@ -224,10 +224,13 @@ T5 认证 RBAC·V7 告警中心(三源汇入/防重/飞书)·前端 7 页(总览
 T10 相机上传·V8 统计卡·微调手册·部署脚本·README 工业指南
 
 **受外部条件阻塞,非代码未完(如实)**:
-- exe 构建验证:本轮执行中(PyInstaller 6.22.3;mediapipe 懒加载不进包,功能需随包带 models/)
+- exe 构建验证:**✅ 已完成**(visual-server.exe 740MB,health/API/静态页实测;deploy/build_windows.bat + entry.py)
 - 烟火/PPE 模型训练:等 ≥500 张/类标注数据(管线/闸门已建,见 TRAINING.md)
 - 蒸馏执行:等影子模式攒 ≥1 周真值数据(4060 一夜可蒸 2B;租 4090 两小时)
 - 开放词汇引擎(OWLv2/Grounded-SAM2):需 torch+transformers 环境(数 GB 装),标定向导增强用
 - 多枪机大角度实测:需现场硬件
+
+**V10/V11/V12 已全部落地(2026-11-03)**:向导(文档编译+热加岗)、时间轴标注器(抽帧三产物)、
+数据集导入(X-AnyLabeling/YOLO→规范数据集,`visual dataset-import`)。全套 **130 测试**。
 
 **其余任务全部关闭。** 后续一切新增需求走 ROADMAP-v2 任务表新增行,不走"待办清单"。
