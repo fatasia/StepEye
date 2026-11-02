@@ -247,6 +247,16 @@ class SourceBody(BaseModel):
     uri: str = ""
 
 
+class IntervalsBody(BaseModel):
+    intervals: list[dict[str, Any]]
+    extract: bool = True
+    per_interval: int = 2
+
+
+class TruthBody(BaseModel):
+    truth: str
+
+
 class CompileBody(BaseModel):
     text: str
 
@@ -675,6 +685,117 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         store.update(pid, status="live")
         store.close()
         return {"ok": True, "station": sid, "yaml": str(dest)}
+
+    # ---- 视频时间轴标注(V11) ----
+    @app.post("/api/timelines", status_code=201)
+    async def timeline_create(name: str = Form(...), video: UploadFile = File(...)) -> dict[str, Any]:
+        from .timeline import TimelineStore, probe_video
+        data = await video.read()
+        vid_dir = manager.data_dir / "timelines"
+        vid_dir.mkdir(parents=True, exist_ok=True)
+        safe = f"{int(time.time() * 1000)}-{(SAFE_NAME.match(video.filename) and video.filename) or 'video.mp4'}"
+        vpath = vid_dir / safe
+        vpath.write_bytes(data)
+        try:
+            duration, fps = probe_video(vpath)
+        except ValueError as e:
+            vpath.unlink(missing_ok=True)
+            raise HTTPException(400, str(e)) from e
+        store = TimelineStore(manager.data_dir / "timelines.db")
+        rec = store.create(name, safe, duration, fps)
+        store.close()
+        return rec
+
+    @app.get("/api/timelines")
+    def timeline_list() -> list[dict[str, Any]]:
+        from .timeline import TimelineStore
+        store = TimelineStore(manager.data_dir / "timelines.db")
+        rows = store.list()
+        store.close()
+        return rows
+
+    @app.get("/api/timelines/{tid}")
+    def timeline_get(tid: str) -> dict[str, Any]:
+        from .timeline import TimelineStore
+        store = TimelineStore(manager.data_dir / "timelines.db")
+        rec = store.get(tid)
+        store.close()
+        if rec is None:
+            raise HTTPException(404, f"标注项目不存在:{tid}")
+        return rec
+
+    @app.post("/api/timelines/{tid}/intervals")
+    def timeline_intervals(tid: str, body: IntervalsBody) -> dict[str, Any]:
+        """保存区间标注;extract=True 时校验+抽帧,产出回归 manifest 行。"""
+        from .timeline import TimelineStore, check_intervals, extract_interval_frames, write_manifest
+        store = TimelineStore(manager.data_dir / "timelines.db")
+        rec = store.get(tid)
+        if rec is None:
+            store.close()
+            raise HTTPException(404, f"标注项目不存在:{tid}")
+        check = check_intervals(body.intervals, float(rec["duration_s"]))
+        if not check["ok"]:
+            store.close()
+            raise HTTPException(400, ";".join(check["problems"][:3]))
+        rec = store.update(tid, intervals=body.intervals, status="annotated")
+        extracted = 0
+        if body.extract:
+            vpath = manager.data_dir / "timelines" / rec["video"]
+            frames_dir = manager.data_dir / "timelines" / tid / "frames"
+            rows = extract_interval_frames(vpath, body.intervals, frames_dir, body.per_interval)
+            write_manifest(frames_dir, rows)
+            extracted = len(rows)
+        store.close()
+        return {**rec, "check": check, "extracted": extracted,
+                "frames_url_prefix": f"/api/timelines/{tid}/frames"}
+
+    @app.get("/api/timelines/{tid}/video")
+    def timeline_video(tid: str) -> FileResponse:
+        from .timeline import TimelineStore
+        store = TimelineStore(manager.data_dir / "timelines.db")
+        rec = store.get(tid)
+        store.close()
+        if rec is None:
+            raise HTTPException(404, "标注项目不存在")
+        path = (manager.data_dir / "timelines" / rec["video"]).resolve()
+        root = (manager.data_dir / "timelines").resolve()
+        if root not in path.parents or not path.is_file():
+            raise HTTPException(404, "视频不存在")
+        return FileResponse(path, media_type="video/mp4")
+
+    # ---- 影子真值(V7 回流) ----
+    @app.get("/api/shadow/samples")
+    def shadow_samples(unlabeled: int = Query(1), limit: int = Query(50, ge=1, le=500)) -> list[dict[str, Any]]:
+        from .shadow import ShadowStore
+        store = ShadowStore(manager.data_dir / "shadow.db")
+        with store._lock:
+            q = "SELECT id, kind, station, ref_id, system_verdict, confidence, truth, created FROM shadow_samples"
+            if unlabeled:
+                q += " WHERE truth IS NULL"
+            q += " ORDER BY id DESC LIMIT ?"
+            rows = store._db.execute(q, [limit]).fetchall()
+        keys = ("id", "kind", "station", "ref_id", "system_verdict", "confidence", "truth", "created")
+        return [dict(zip(keys, r)) for r in rows]
+
+    @app.post("/api/shadow/{sid}/truth")
+    def shadow_truth(sid: int, body: TruthBody) -> dict[str, Any]:
+        from .shadow import ShadowStore
+        if body.truth not in ("PASS", "NG"):
+            raise HTTPException(400, "truth 必须是 PASS 或 NG")
+        store = ShadowStore(manager.data_dir / "shadow.db")
+        store.set_truth(sid, body.truth)
+        store.close()
+        return {"ok": True}
+
+    @app.get("/api/timelines/{tid}/frames/{name}")
+    def timeline_frame(tid: str, name: str) -> FileResponse:
+        if not SAFE_NAME.match(tid) or not SAFE_NAME.match(name):
+            raise HTTPException(400, "非法的文件名")
+        path = (manager.data_dir / "timelines" / tid / "frames" / name).resolve()
+        root = (manager.data_dir / "timelines" / tid / "frames").resolve()
+        if root not in path.parents or not path.is_file():
+            raise HTTPException(404, "抽帧不存在")
+        return FileResponse(path, media_type="image/jpeg")
 
     # ---- 模板库 / 外部信号 ----
     @app.get("/api/templates")

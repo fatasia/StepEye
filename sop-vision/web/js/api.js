@@ -87,4 +87,19 @@ export const api = {
   },
   sampleManifest: (limit = 100) => request(`/api/samples/manifest?limit=${limit}`),
   sampleImage: (name) => `/api/samples/images/${encodeURIComponent(name)}`,
+  timelineCreate: (name, file) => {
+    const fd = new FormData();
+    fd.append("name", name); fd.append("video", file);
+    return request("/api/timelines", { method: "POST", body: fd });
+  },
+  timelineList: () => request("/api/timelines"),
+  timelineIntervals: (id, intervals) =>
+    request(`/api/timelines/${encodeURIComponent(id)}/intervals`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ intervals }) }),
+  timelineFrame: (id, name) => `/api/timelines/${encodeURIComponent(id)}/frames/${encodeURIComponent(name)}`,
+  timelineVideo: (id) => `/api/timelines/${encodeURIComponent(id)}/video`,
+  shadowSamples: (unlabeled = true) => request(`/api/shadow/samples?unlabeled=${unlabeled ? 1 : 0}`),
+  shadowTruth: (id, truth) =>
+    request(`/api/shadow/${encodeURIComponent(id)}/truth`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ truth }) }),
 };
