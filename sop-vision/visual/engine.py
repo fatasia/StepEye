@@ -152,6 +152,10 @@ class Engine:
         if cond.obj_state:
             zs = w.zone_state.get(cond.obj_state.zone)
             return zs is not None and zs[0] == cond.obj_state.state and ts - zs[1] >= cond.obj_state.min_ms / 1000
+        if cond.vlm_check:
+            # 运行时把 VLM 判定结果写成 OBJ_STATE(伪区域 vlm:xxx, ok);判过即保持(真值不回退)
+            zs = w.zone_state.get(cond.vlm_check.key)
+            return zs is not None and zs[0] == "ok"
         s = cond.signal
         return bool(ev and ev.type == SIGNAL and ev.name == s.name and (s.value is None or ev.value == s.value))
 

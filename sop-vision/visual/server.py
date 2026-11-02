@@ -22,7 +22,7 @@ from .runtime import StationRuntime
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = ROOT / "web"
 SAFE_NAME = re.compile(r"^[\w.\-]+$")
-PUSH_KINDS = {"cycle_start", "step_done", "violation", "cycle_end", "quality", "calibrated"}
+PUSH_KINDS = {"cycle_start", "step_done", "violation", "cycle_end", "quality", "calibrated", "safety"}
 
 
 class Hub:

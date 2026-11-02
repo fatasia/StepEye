@@ -1,8 +1,11 @@
 """工位运行时：取帧 -> 感知 -> 原子事件 -> SOP 引擎 -> 证据 / 推送。"""
 from __future__ import annotations
 
+import base64
+import queue
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -12,12 +15,15 @@ import numpy as np
 
 from .dsl import Program, StationConfig
 from .engine import Engine
-from .events import Event
+from .events import OBJ_STATE, Event
 from .evidence import CycleStore, EvidenceRecorder
+from .llm_provider import ProviderConfig, VLMProvider
 from .perception.base import Context, build_geoms
 from .perception.hands import HandZoneTracker, MediaPipeHands
+from .perception.persons import MediaPipePosePersons
 from .perception.quality import QualityPerceiver
 from .perception.roi_state import RoiStatePerceiver
+from .safety import SafetyMonitor, SafetyRule
 from .sim import SimHands, SimSource
 from .sources import CvSource
 
@@ -68,6 +74,30 @@ class StationRuntime:
             self.source = CvSource(src.type, src.uri, src.fps, src.realtime, src.loop, (src.width, src.height))
             if cfg.hands.enabled:
                 self.hands = hands_override or MediaPipeHands(cfg.hands, self.geoms, self.base_dir)
+        # 人员感知(安全规则/vlm 无关,仅真实源;sim 无人员真值)
+        self.persons: Any = None
+        if cfg.persons.enabled and src.type != "sim":
+            self.persons = MediaPipePosePersons(cfg.persons, self.geoms, self.base_dir)
+        # 常驻安全规则(S16/S17):独立于周期,任何时刻持续监控
+        rules = [SafetyRule(id=r.id, kind=r.kind, zone=r.zone, min_s=r.min_s, count_ge=r.count_ge,
+                            severity=r.severity, name=r.name) for r in cfg.safety.rules]
+        self.safety = SafetyMonitor(rules) if rules else None
+        # vlm_check:后台线程判帧,不阻塞视频循环;结果以 OBJ_STATE(伪区域)进引擎
+        self._vlm_conds = {}
+        for st in self.program.steps:
+            for c in st.evidence.conds:  # CompiledStep 字段平铺,无 .spec
+                if c.kind == "vlm_check":
+                    self._vlm_conds[c.vlm_check.key] = c.vlm_check
+        self._vlm_provider: VLMProvider | None = None
+        self._vlm_q: queue.Queue = queue.Queue()
+        self._vlm_results: deque[tuple[str, bool]] = deque()
+        self._vlm_last: dict[str, float] = {}
+        self._vlm_ok: set[str] = set()
+        self._vlm_thread: threading.Thread | None = None
+        if self._vlm_conds and ProviderConfig.from_env().api_key:
+            self._vlm_provider = VLMProvider(ProviderConfig.from_env())
+            self._vlm_thread = threading.Thread(target=self._vlm_worker, name=f"vlm-{cfg.station}", daemon=True)
+            self._vlm_thread.start()
         self.recorder = EvidenceRecorder(data_dir / "evidence", self.store, lambda: self.annotated,
                                          {"hands": "mediapipe-hand-landmarker" if src.type != "sim" else "sim",
                                           "roi_state": "opencv-roi@1"})
@@ -76,6 +106,8 @@ class StationRuntime:
 
     # ------------------------------------------------------------ 事件分发
     def _on_engine_event(self, kind: str, p: dict[str, Any]) -> None:
+        if kind == "cycle_start":
+            self._vlm_ok.clear()  # 新周期重新判定 vlm 条件
         if kind == "violation":
             self.alerts.insert(0, {"station": self.cfg.station, "cycle_id": p["cycle_id"], "at": int(time.time() * 1000),
                                    **{k: p[k] for k in ("kind", "severity", "step", "message")}})
@@ -98,6 +130,47 @@ class StationRuntime:
             for fn in self.listeners:
                 fn("calibrated", {"zones": done})
 
+    # ------------------------------------------------------------ vlm_check 语言层判定
+    @staticmethod
+    def _vlm_prompt(prompt: str) -> str:
+        return (f'判断画面是否满足条件:「{prompt}」。只输出JSON:'
+                '{"verdict":"yes|no|unclear","confidence":0到1的小数,"reason":"不超过20字"}')
+
+    def _vlm_worker(self) -> None:
+        while not self.stop_event.is_set():
+            try:
+                item = self._vlm_q.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            if item is None:
+                return
+            key, prompt, jpeg = item
+            b64 = base64.b64encode(jpeg).decode()
+            out = self._vlm_provider.inspect([b64], self._vlm_prompt(prompt))
+            self._vlm_results.append((key, bool(out["ok"] and str(out["verdict"]).lower() in ("yes", "true", "pass"))))
+
+    def _vlm_drain(self, ts: float, frame: np.ndarray) -> None:
+        """收判定结果(真→写伪区域状态),并按抽帧间隔把激活步骤的 vlm 条件送判。"""
+        while self._vlm_results:
+            key, yes = self._vlm_results.popleft()
+            if yes:
+                self._vlm_ok.add(key)
+                self.engine.process(Event(ts, OBJ_STATE, zone=key, state="ok"))
+        if self._vlm_provider is None or not self.engine.cycle:
+            return
+        active_keys = {c.vlm_check.key for st in self.engine.cycle.steps if st.status == "ACTIVE"
+                       for c in st.spec.evidence.conds if c.kind == "vlm_check"}
+        ok, buf = cv2.imencode(".jpg", self.raw, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ok:
+            return
+        for key, vc in self._vlm_conds.items():
+            if key not in active_keys or key in self._vlm_ok or self._vlm_q.qsize() > 4:
+                continue
+            if ts - self._vlm_last.get(key, -1e9) < vc.every_s:
+                continue
+            self._vlm_last[key] = ts
+            self._vlm_q.put((key, vc.prompt, buf.tobytes()))
+
     # ------------------------------------------------------------ 主循环
     def process_frame(self, ts: float, frame: np.ndarray) -> list[Event]:
         self.raw = frame
@@ -106,11 +179,23 @@ class StationRuntime:
         events: list[Event] = []
         if self.hands is not None:
             events += self.hands.process(frame, ts, self.ctx)
+        if self.persons is not None:
+            events += self.persons.process(frame, ts, self.ctx)
         events += self.roi.process(frame, ts, self.ctx)
         events += self.quality.process(frame, ts, self.ctx)
         for ev in sorted(events, key=lambda e: e.ts):
             self.engine.process(ev)
+            if self.safety is not None:
+                self.safety.process(ev)
         self.engine.tick(ts)
+        if self.safety is not None:
+            for alert in self.safety.tick(ts):
+                self.alerts.insert(0, {"station": self.cfg.station, "cycle_id": None,
+                                       "at": int(time.time() * 1000), **alert})
+                del self.alerts[50:]
+                for fn in self.listeners:
+                    fn("safety", alert)
+        self._vlm_drain(ts, frame)
         self.annotated = self._draw(frame, hud=True)
         self.stream = self._draw(frame, hud=False)
         self.recorder.flush()
@@ -143,6 +228,9 @@ class StationRuntime:
 
     def stop(self) -> None:
         self.stop_event.set()
+        if self._vlm_thread is not None:
+            self._vlm_q.put(None)
+            self._vlm_thread.join(timeout=2)
 
     def close(self) -> None:
         self.stop_event.set()

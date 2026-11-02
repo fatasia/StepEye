@@ -48,6 +48,18 @@ class PersonCount(BaseModel):
     count: int = 1
 
 
+class VlmCheck(BaseModel):
+    """语言层步骤判定:VLM 对周期内抽帧判定提示词是否成立(泛化靠语言,不靠坐标)。"""
+    prompt: str
+    every_s: float = 2.0  # 抽帧间隔
+    min_conf: float = 0.6
+
+    @property
+    def key(self) -> str:
+        import hashlib
+        return f"vlm:{hashlib.sha256(self.prompt.encode()).hexdigest()[:10]}"
+
+
 class Cond(BaseModel):
     hand_dwell: HandDwell | None = None
     obj_state: ObjState | None = None
@@ -55,13 +67,15 @@ class Cond(BaseModel):
     person_present: PersonPresent | None = None
     person_absent: PersonAbsent | None = None
     person_count: PersonCount | None = None
+    vlm_check: VlmCheck | None = None
 
     @model_validator(mode="after")
     def _exactly_one(self) -> "Cond":
         n = sum(x is not None for x in (self.hand_dwell, self.obj_state, self.signal,
-                                        self.person_present, self.person_absent, self.person_count))
+                                        self.person_present, self.person_absent, self.person_count,
+                                        self.vlm_check))
         if n != 1:
-            raise ValueError("条件必须且只能包含 hand_dwell / obj_state / signal / person_* 之一")
+            raise ValueError("条件必须且只能包含 hand_dwell / obj_state / signal / person_* / vlm_check 之一")
         return self
 
     @property
@@ -74,10 +88,14 @@ class Cond(BaseModel):
             return "person_absent"
         if self.person_count:
             return "person_count"
+        if self.vlm_check:
+            return "vlm_check"
         return "obj_state" if self.obj_state else "signal"
 
     @property
     def zone(self) -> str | None:
+        if self.vlm_check:
+            return self.vlm_check.key  # 伪区域:判定结果以 OBJ_STATE(key, ok) 事件进引擎
         for c in (self.hand_dwell, self.obj_state, self.person_present, self.person_absent, self.person_count):
             if c is not None:
                 return c.zone
@@ -99,6 +117,8 @@ class Cond(BaseModel):
         if self.person_count:
             p = self.person_count
             return f"「{p.zone}」人数 {'≥' if p.op == 'ge' else '≤'}{p.count}"
+        if self.vlm_check:
+            return f"VLM 判定:{self.vlm_check.prompt}"
         return f"收到信号 {self.signal.name}" + (f"={self.signal.value}" if self.signal.value is not None else "")
 
 
@@ -168,6 +188,22 @@ class PersonsCfg(BaseModel):
     exit_frames: int = 6
 
 
+class SafetyRuleCfg(BaseModel):
+    id: str
+    kind: Literal["person_absent", "person_count"]
+    zone: str
+    min_s: float = 5.0
+    count_ge: int = 1
+    severity: Literal["warn", "error"] = "warn"
+    name: str = ""
+
+
+class SafetyCfg(BaseModel):
+    """常驻安全规则:与生产周期无关的持续监控(S16/S17),由 SafetyMonitor 执行。"""
+    enabled: bool = False
+    rules: list[SafetyRuleCfg] = []
+
+
 class RoiStateCfg(BaseModel):
     zone: str
     mode: Literal["diff_empty", "template"]
@@ -205,6 +241,7 @@ class StationConfig(BaseModel):
     zones: list[Zone]
     hands: HandsCfg = HandsCfg()
     persons: PersonsCfg = PersonsCfg()
+    safety: SafetyCfg = SafetyCfg()
     roi_states: list[RoiStateCfg] = []
     quality: QualityCfg = QualityCfg()
     cycle: CycleDef
@@ -221,8 +258,8 @@ class StationConfig(BaseModel):
         for s in self.steps:
             conds += s.evidence.conds
         for c in conds:
-            # foreach 模板变量在编译期替换后再校验
-            if c.zone and "${" not in c.zone and c.zone not in known:
+            # foreach 模板变量在编译期替换后再校验;vlm_check 的伪区域由运行时判定产生,不要求预定义
+            if c.zone and c.kind != "vlm_check" and "${" not in c.zone and c.zone not in known:
                 raise ValueError(f"条件引用了未定义的 zone: {c.zone}")
         for r in self.roi_states:
             if r.zone not in known:
@@ -255,7 +292,7 @@ class Program:
         known = {z.id for z in cfg.zones}
         for st in steps:
             for c in st.evidence.conds:
-                if c.zone and c.zone not in known:
+                if c.zone and c.kind != "vlm_check" and c.zone not in known:
                     raise ValueError(f"步骤 {st.id} 引用了未定义的 zone: {c.zone}")
         payload = json.dumps(
             {
