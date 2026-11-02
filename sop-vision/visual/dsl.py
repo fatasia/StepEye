@@ -247,6 +247,7 @@ class SourceCfg(BaseModel):
     loop: bool = False
     width: int = 640
     height: int = 480
+    shadow: bool = False  # 影子模式:判定照跑,结果只进影子库不进正式统计(上线验收用)
     scenarios: list[Literal["ok", "missing", "wrong_order"]] = ["ok", "missing", "wrong_order"]  # 仅 sim
 
 

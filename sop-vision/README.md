@@ -136,3 +136,24 @@ tests/  tools/     测试与界面验收脚本
 - 本项目代码许可待定。
 - MediaPipe 及其手部模型为 Apache-2.0。
 - 视频与图像数据集的许可需单独确认，**商用前请核对每个模型与数据集的许可**（例如 Ultralytics YOLO 为 AGPL-3.0，MVTec AD 数据集禁止商用）。当前依赖不含这两者。
+
+## 部署与运维(工业级)
+
+```powershell
+# 认证模式(生产必开):先建管理员,再启动
+python -m visual passwd admin --role admin
+python -m visual serve configs\工位.yaml --auth --inspection configs\inspection.yaml
+# 影子模式(上线验收强制):判定照跑,结果只进 shadow.db,不进正式统计
+python -m visual serve ... --shadow
+python -m visual shadow-report --data data     # 漏检/误杀/待标注
+# 定点相机自动上传:文件名前缀=场景id
+python tools/cam_uploader.py --server http://127.0.0.1:8000 --watch D:\camdrop
+# Windows 打包:deploy\build_windows.bat(产物 dist\visual-server\)
+```
+
+- **认证**:`--auth` 或 `VISUAL_AUTH=1`;三级角色 viewer(只读)< operator(操作)< admin(用户管理);
+  REST 全量拦截,WS 未认证拒连;会话 12h,Cookie HttpOnly。
+- **WS 鉴权**:认证启用后 `/ws` 校验 Cookie 或 `?token=`(脚本用 Bearer 登录换取)。
+- **飞书推送**:环境变量 `FEISHU_WEBHOOK_URL` 配群机器人 webhook,告警创建即推、回写标记防重。
+- **影子模式纪律**:真值标注完成前不向客户报任何准确率数字(README 已知限制 #1 的制度化解法)。
+- **微调管线**:见 docs/TRAINING.md(样本闭环→YOLO 格式数据集→D-FINE/RF-DETR→回归闸门→上岗)。

@@ -99,8 +99,20 @@ def _serve(args: argparse.Namespace) -> int:
         auth = AuthStore(Path(args.data) / "auth.db")
         if auth.count() == 0:
             print("认证已启用但还没有用户:先运行 `python -m visual passwd admin` 创建管理员", file=sys.stderr)
-    app = build_app([Path(c) for c in args.configs], Path(args.data), inspection_config=inspection, auth=auth)
+    app = build_app([Path(c) for c in args.configs], Path(args.data), inspection_config=inspection,
+                    auth=auth, shadow=args.shadow)
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
+def _shadow_report(args: argparse.Namespace) -> int:
+    from .shadow import ShadowStore
+
+    rep = ShadowStore(Path(args.data) / "shadow.db").report(kind=args.kind, since=args.since)
+    print(json.dumps(rep, ensure_ascii=False, indent=1))
+    out = Path(args.out) if args.out else Path(args.data) / "shadow_report.json"
+    out.write_text(json.dumps(rep, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"-> {out}")
     return 0
 
 
@@ -152,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--data", default="data")
     s.add_argument("--inspection", help="拍照即检场景配置(如 configs/inspection.yaml);不传则禁用该功能")
     s.add_argument("--auth", action="store_true", help="启用登录认证(或环境变量 VISUAL_AUTH=1);用户用 passwd 子命令创建")
+    s.add_argument("--shadow", action="store_true", help="影子模式:全工位只记录不动作,结果进 shadow.db 供验收统计")
     s.set_defaults(fn=_serve)
 
     pw = sub.add_parser("passwd", help="创建/更新登录用户(认证启用后使用)")
@@ -159,6 +172,13 @@ def main(argv: list[str] | None = None) -> int:
     pw.add_argument("--role", default="operator", choices=["viewer", "operator", "admin"])
     pw.add_argument("--data", default="data")
     pw.set_defaults(fn=_passwd)
+
+    sh = sub.add_parser("shadow-report", help="影子模式报告:漏检/误杀/待标注(准确率验收地基)")
+    sh.add_argument("--data", default="data")
+    sh.add_argument("--kind", help="只统计某类样本(如 sop_cycle / inspection)")
+    sh.add_argument("--since", help="只统计该时刻之后,如 2026-11-01")
+    sh.add_argument("--out", help="报告 JSON 输出路径(缺省 <data>/shadow_report.json)")
+    sh.set_defaults(fn=_shadow_report)
 
     g = sub.add_parser("regress", help="评测回归:固定样本集跑分,--against 对比上一份结果防退化")
     g.add_argument("manifest", help="回归清单 YAML(name/prompt/cases)")

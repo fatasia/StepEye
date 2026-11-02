@@ -24,6 +24,7 @@ from .events import SIGNAL, Event
 from .inspection import InspectionService, InspectionStore, load_scenarios
 from .llm_provider import ProviderConfig, VLMProvider
 from .runtime import StationRuntime
+from .shadow import ShadowStore, start_shadow_recorder
 from .templates import list_templates, render_station
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,12 +68,13 @@ class StationManager:
     def __init__(self, config_paths: list[Path], data_dir: Path, hub: Hub,
                  inspection_config: Path | None = None, vlm_transport=None,
                  provider_cfg: ProviderConfig | None = None,
-                 alert_store: AlertStore | None = None):
+                 alert_store: AlertStore | None = None, shadow: bool = False):
         self.data_dir = data_dir
         self.hub = hub
         self.store = CycleStore(data_dir / "sop.db")
         self.alerts = alert_store or AlertStore(data_dir / "alerts.db")
         self.feishu_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
+        self.shadow_store: ShadowStore | None = None
         self.evidence_root = data_dir / "evidence"
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
@@ -91,10 +93,16 @@ class StationManager:
                 print("提示:未配置 ZHIPU_API_KEY(.env),拍照即检功能不可用,其余功能不受影响")
         for p in config_paths:
             cfg: StationConfig = load_config(p)
+            if shadow:
+                cfg.source.shadow = True  # serve --shadow:全工位强制影子模式
             if cfg.station in self.runtimes:
                 raise ValueError(f"工位 id 重复: {cfg.station}")
             rt = StationRuntime(cfg, data_dir, base_dir=ROOT, store=self.store)
             rt.listeners.append(self._forwarder(cfg.station))
+            if cfg.source.shadow:
+                if self.shadow_store is None:
+                    self.shadow_store = ShadowStore(data_dir / "shadow.db")
+                start_shadow_recorder(rt, self.shadow_store)
             self.runtimes[cfg.station] = rt
             self.paths[cfg.station] = p
 
@@ -114,9 +122,14 @@ class StationManager:
         return fwd
 
     def _on_inspection_msg(self, msg: dict[str, Any]) -> None:
-        """拍照即检事件:推送 WS;NG/失败结论入告警中心。"""
+        """拍照即检事件:推送 WS;NG/失败结论入告警中心;结论进影子库供真值标注。"""
         self.hub.publish(msg)
         d = msg.get("data", {})
+        if msg.get("kind") == "inspection" and d.get("status") == "done":
+            if self.shadow_store is not None:
+                self.shadow_store.add("inspection", d.get("scenario", ""), d.get("id", ""),
+                                      str(d.get("verdict")), d.get("confidence"),
+                                      {"reason": d.get("reason", "")})
         if msg.get("kind") == "inspection" and d.get("status") == "done" and d.get("verdict") == "NG":
             rec, new = self.alerts.create(d.get("scenario", "inspection"), "inspection", "NG",
                                           "warn", f"拍照即检判 NG:{d.get('reason', '')}", ref_id=d.get("id"))
@@ -633,7 +646,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
 def build_app(config_paths: list[Path], data_dir: Path, inspection_config: Path | None = None,
               vlm_transport=None, provider_cfg: ProviderConfig | None = None,
-              auth: AuthStore | None = None, alert_store: AlertStore | None = None) -> FastAPI:
+              auth: AuthStore | None = None, alert_store: AlertStore | None = None,
+              shadow: bool = False) -> FastAPI:
     hub = Hub()
     return create_app(StationManager(config_paths, data_dir, hub, inspection_config, vlm_transport,
-                                     provider_cfg, alert_store), hub, auth)
+                                     provider_cfg, alert_store, shadow), hub, auth)
