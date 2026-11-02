@@ -58,10 +58,11 @@ class Scene:
     def render(self, idx: int, hand: bool = True) -> np.ndarray:
         img = self.bench.copy()
         g = self.geoms
-        x0, y0, x1, y1 = g["bin_harness"].bbox
-        cv2.rectangle(img, (x0, y0), (x1, y1), (60, 60, 60), -1)
-        cv2.rectangle(img, (x0, y0), (x1, y1), (86, 86, 86), 2)
-        if self.on["workpiece"]:
+        if "bin_harness" in g:  # 通用工位(向导部署)可能没有 demo 区域:缺就跳过绘制
+            x0, y0, x1, y1 = g["bin_harness"].bbox
+            cv2.rectangle(img, (x0, y0), (x1, y1), (60, 60, 60), -1)
+            cv2.rectangle(img, (x0, y0), (x1, y1), (86, 86, 86), 2)
+        if self.on["workpiece"] and "fixture" in g:
             x0, y0, x1, y1 = g["fixture"].bbox
             cv2.rectangle(img, (x0, y0), (x1, y1), (172, 164, 154), -1)
             for yy in range(y0, y1, 24):
