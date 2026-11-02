@@ -50,6 +50,15 @@ class Hub:
             pass
 
 
+def rewrite_station_zones(path: Path, zones: list[dict[str, Any]]) -> None:
+    """把编辑后的 zones 写回工位 YAML(其余键原样保留;YAML 注释会丢失)。"""
+    import yaml
+
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    raw["zones"] = zones
+    path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+
 class StationManager:
     def __init__(self, config_paths: list[Path], data_dir: Path, hub: Hub,
                  inspection_config: Path | None = None, vlm_transport=None,
@@ -61,6 +70,7 @@ class StationManager:
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
         self.threads: list[threading.Thread] = []
+        self._threads: dict[str, threading.Thread] = {}
         # 拍照即检:给了配置且有凭据才启用;没凭据时端点返回明确指引,而不是悄悄坏掉
         self.inspection: InspectionService | None = None
         if inspection_config is not None:
@@ -94,6 +104,28 @@ class StationManager:
             t = threading.Thread(target=rt.run, name=f"station-{sid}", daemon=True)
             t.start()
             self.threads.append(t)
+            self._threads[sid] = t
+
+    def reload(self, sid: str) -> None:
+        """配置变更后热重载:停旧线程,按 YAML 重建运行时(证据与库共享)。"""
+        old = self.runtimes.get(sid)
+        if old is None:
+            raise HTTPException(404, f"工位不存在:{sid}")
+        old.stop()
+        t = self._threads.get(sid)
+        if t is not None:
+            t.join(timeout=5)
+        cfg: StationConfig = load_config(self.paths[sid])
+        if cfg.station != sid:
+            raise HTTPException(400, f"配置中的 station id({cfg.station})与工位({sid})不一致,不能重载")
+        rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        rt.listeners.append(self._forwarder(sid))
+        self.runtimes[sid] = rt
+        nt = threading.Thread(target=rt.run, name=f"station-{sid}", daemon=True)
+        nt.start()
+        self.threads.append(nt)
+        self._threads[sid] = nt
+        self.hub.publish({"type": "event", "station": sid, "kind": "reloaded", "data": {"ok": True}})
 
     def stop(self) -> None:
         for rt in self.runtimes.values():
@@ -119,6 +151,10 @@ class CalibrateBody(BaseModel):
 class SignalBody(BaseModel):
     name: str
     value: Any = None
+
+
+class ZonesBody(BaseModel):
+    zones: list[dict[str, Any]]
 
 
 def _station_config_view(rt: StationRuntime, path: Path) -> dict[str, Any]:
@@ -208,6 +244,42 @@ def create_app(manager: StationManager, hub: Hub) -> FastAPI:
             raise HTTPException(400, f"这些区域没有配置结果核验，无法标定：{', '.join(unknown)}")
         rt.request_calibration(body.zones)
         return {"ok": True, "zones": body.zones or list(rt.roi.trackers)}
+
+    @app.post("/api/stations/{sid}/zones")
+    def station_zones(sid: str, body: ZonesBody) -> dict[str, Any]:
+        """区域编辑保存:先内存校验(含 roi_states 引用完整性),通过才写 YAML 并热重载。"""
+        path = manager.paths.get(sid)
+        if path is None:
+            raise HTTPException(404, f"工位不存在:{sid}")
+        zones = body.zones
+        if not zones:
+            raise HTTPException(400, "至少保留一个区域")
+        ids = [str(z.get("id", "")) for z in zones]
+        if len(set(ids)) != len(ids) or any(not SAFE_NAME.match(i) for i in ids):
+            raise HTTPException(400, "区域 id 必须非空、不含特殊字符且不重复")
+        cleaned = []
+        for z in zones:
+            poly = z.get("polygon")
+            if not isinstance(poly, list) or len(poly) != 4:
+                raise HTTPException(400, f"区域 {z.get('id')} 必须是 4 点矩形")
+            try:
+                pts = [[float(x), float(y)] for x, y in poly]
+            except (TypeError, ValueError):
+                raise HTTPException(400, f"区域 {z.get('id')} 坐标必须是数字") from None
+            if any(not (0.0 <= v <= 1.0) for x, y in pts for v in (x, y)):
+                raise HTTPException(400, f"区域 {z.get('id')} 坐标必须在 0~1 之间")
+            cleaned.append({"id": str(z["id"]), "polygon": pts})
+        import yaml as _yaml
+        raw = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        raw["zones"] = cleaned
+        try:
+            StationConfig.model_validate(raw)
+        except Exception as e:  # noqa: BLE001 —— 把校验错误原文给用户,比笼统 500 有用
+            detail = str(e).splitlines()[0][:200]
+            raise HTTPException(400, f"修改后的配置校验未通过(如 roi_states 引用了删除的区域),未保存:{detail}") from e
+        rewrite_station_zones(path, cleaned)
+        manager.reload(sid)
+        return {"ok": True, "zones": len(cleaned)}
 
     @app.get("/api/cycles")
     def cycles(station: str | None = None, result: str | None = None, sn: str | None = None,

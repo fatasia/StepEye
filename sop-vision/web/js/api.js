@@ -37,6 +37,17 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ zones }),
     }),
+  saveZones: (id, zones) =>
+    request(`/api/stations/${encodeURIComponent(id)}/zones`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ zones }),
+    }),
+  templates: () => request("/api/templates"),
+  stationTemplate: (tid, params = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== "" && v != null));
+    return request(`/api/templates/station/${encodeURIComponent(tid)}?${q}`);
+  },
   stream: (id) => `/api/stations/${encodeURIComponent(id)}/stream.mjpg`,
   snapshot: (id, raw = true) => `/api/stations/${encodeURIComponent(id)}/snapshot.jpg?raw=${raw}&t=${Date.now()}`,
   frame: (cid, name) => `/api/cycles/${encodeURIComponent(cid)}/frames/${encodeURIComponent(name)}`,

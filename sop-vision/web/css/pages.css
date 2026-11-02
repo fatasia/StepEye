@@ -129,3 +129,17 @@
   color: var(--text-muted); cursor: pointer; transition: border-color .15s, color .15s; }
 .dropzone:hover, .dropzone:focus-visible, .dropzone.drag { border-color: var(--accent); color: var(--text); outline: none; }
 #i-note { flex-basis: 100%; }
+
+/* ---------- 区域编辑模式 ---------- */
+.zone-svg.edit { cursor: crosshair; touch-action: none; }
+.zone-svg.edit .ez rect { fill: color-mix(in srgb, var(--accent-primary) 10%, transparent); stroke: var(--accent-primary); stroke-width: 2; cursor: move; }
+.zone-svg.edit .ez.sel rect { stroke-width: 3; }
+.zone-svg.edit .ez text { fill: var(--accent-primary); font-size: 12px; pointer-events: none; }
+.zone-svg.edit .ez-handle { fill: var(--accent-primary); stroke: var(--surface-1); stroke-width: 1.5; cursor: nwse-resize; }
+.ez-panel { margin-top: var(--s-2); }
+.ez-list { max-height: 200px; overflow: auto; }
+.ez-row { display: flex; gap: var(--s-2); align-items: center; padding: var(--s-1) var(--s-1); border-radius: var(--r-ctl); }
+.ez-row.sel { background: color-mix(in srgb, var(--accent-primary) 8%, transparent); }
+.ez-row input { flex: 1; min-width: 0; height: 26px; padding: 0 var(--s-2); background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); color: var(--text-strong); font-size: 12px; }
+.ez-row input:focus { border-color: var(--accent-primary); outline: none; }
+.ez-actions { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
