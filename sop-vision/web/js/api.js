@@ -64,4 +64,26 @@ export const api = {
   },
   inspectionTask: (id) => request(`/api/inspection/tasks/${encodeURIComponent(id)}`),
   inspectionImage: (id, name) => `/api/inspection/tasks/${encodeURIComponent(id)}/images/${encodeURIComponent(name)}`,
+  login: (username, password) =>
+    request("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" },
+                                 body: JSON.stringify({ username, password }) }),
+  logout: () => request("/api/auth/logout", { method: "POST" }),
+  me: () => request("/api/auth/me"),
+  alerts: (params = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== "" && v != null));
+    return request(`/api/alerts?${q}`);
+  },
+  alertStats: () => request("/api/alerts/stats"),
+  alertPatch: (id, body) =>
+    request(`/api/alerts/${encodeURIComponent(id)}`, { method: "PATCH",
+                                                       headers: { "Content-Type": "application/json" },
+                                                       body: JSON.stringify(body) }),
+  sampleGenerate: (ref, label, engine, n, description) => {
+    const fd = new FormData();
+    fd.append("ref", ref); fd.append("label", label); fd.append("engine", engine);
+    fd.append("n", String(n)); fd.append("description", description);
+    return request("/api/samples/generate", { method: "POST", body: fd });
+  },
+  sampleManifest: (limit = 100) => request(`/api/samples/manifest?limit=${limit}`),
+  sampleImage: (name) => `/api/samples/images/${encodeURIComponent(name)}`,
 };

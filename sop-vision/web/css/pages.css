@@ -143,3 +143,11 @@
 .ez-row input { flex: 1; min-width: 0; height: 26px; padding: 0 var(--s-2); background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); color: var(--text-strong); font-size: 12px; }
 .ez-row input:focus { border-color: var(--accent-primary); outline: none; }
 .ez-actions { display: flex; gap: var(--s-2); margin-top: var(--s-2); }
+
+/* ---------- 登录页 ---------- */
+.login-wrap { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 48px); padding: var(--s-4); }
+.login-panel { width: min(400px, 100%); }
+.login-field { display: flex; width: 100%; margin-bottom: var(--s-2); }
+.login-field input { flex: 1; background: transparent; border: none; color: var(--text-strong); outline: none; }
+.login-panel .btn-primary { width: 100%; margin-top: var(--s-2); }
+.d-head textarea, #a-comment { width: 100%; margin-top: var(--s-2); background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); color: var(--text-strong); padding: var(--s-2); font-size: 13px; resize: vertical; }

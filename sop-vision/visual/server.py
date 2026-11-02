@@ -509,6 +509,31 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
                 "manifest": str(mp.relative_to(manager.data_dir)).replace("\\", "/"),
                 "manifest_hint": "标注继承自 label;生成式样本仅冷启动/调试用,不进验收集"}
 
+    @app.get("/api/samples/manifest")
+    def samples_manifest(limit: int = Query(100, ge=1, le=1000)) -> list[dict[str, Any]]:
+        """样本 manifest 倒序最近 N 行(跨批量合并)。"""
+        mp = manager.data_dir / "samplegen" / "batch" / "samples.manifest.jsonl"
+        if not mp.is_file():
+            return []
+        lines = mp.read_text(encoding="utf-8").strip().splitlines()
+        out = []
+        for line in reversed(lines[-limit:]):
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+        return out
+
+    @app.get("/api/samples/images/{name}")
+    def samples_image(name: str) -> FileResponse:
+        if not SAFE_NAME.match(name):
+            raise HTTPException(400, "非法的文件名")
+        path = (manager.data_dir / "samplegen" / "batch" / name).resolve()
+        root = (manager.data_dir / "samplegen" / "batch").resolve()
+        if root not in path.parents or not path.is_file():
+            raise HTTPException(404, "样本图片不存在")
+        return FileResponse(path, media_type="image/jpeg")
+
     # ---- 模板库 / 外部信号 ----
     @app.get("/api/templates")
     def templates() -> dict[str, Any]:

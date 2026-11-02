@@ -1,4 +1,5 @@
 import { icon, LOGO } from "./icons.js";
+import { api, ApiError } from "./api.js";
 import { bootstrap, connect, store, subscribe } from "./store.js";
 import { errorBlock, onEsc } from "./ui.js";
 import { $, fmtClock } from "./util.js";
@@ -7,10 +8,13 @@ import * as live from "./pages/live.js";
 import * as trace from "./pages/trace.js";
 import * as config from "./pages/config.js";
 import * as inspection from "./pages/inspection.js";
+import * as alerts from "./pages/alerts.js";
+import * as samples from "./pages/samples.js";
+import * as login from "./pages/login.js";
 
-const ROUTES = { overview, live, trace, config, inspection };
-const TITLES = { overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检" };
-const NAV = [["overview", "总览", "overview"], ["live", "实时监控", "live"], ["trace", "追溯", "trace"], ["inspection", "拍照即检", "camera"], ["config", "SOP 配置", "config"]];
+const ROUTES = { overview, live, trace, config, inspection, alerts, samples };
+const TITLES = { overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库" };
+const NAV = [["overview", "总览", "overview"], ["live", "实时监控", "live"], ["trace", "追溯", "trace"], ["inspection", "拍照即检", "camera"], ["alerts", "告警中心", "inbox"], ["samples", "样本库", "copy"], ["config", "SOP 配置", "config"]];
 const ACCENTS = [["#3ec6c1", "青"], ["#65aee8", "蓝"], ["#59c58d", "绿"], ["#d8ac52", "琥珀"], ["#b08cf0", "紫"]];
 const CONN = { open: ["实时连接", "success"], retry: ["连接中断，重连中…", "warning"], connecting: ["正在连接…", "info"] };
 
@@ -112,6 +116,19 @@ async function start() {
   setInterval(tickClock, 1000);
   subscribe((t) => t === "conn" && paintConn());
   window.addEventListener("hashchange", route);
+  // 认证模式:未登录先给登录页,其余 API 由后端 401 兜底
+  try {
+    const health = await fetch("/api/health").then((r) => r.json());
+    if (health?.auth) await api.me();
+  } catch (e) {
+    const status = e instanceof ApiError ? e.status : 0;
+    if (status === 401) {
+      $("#page-title").textContent = "登录";
+      login.render(view, {}, () => location.reload());
+      return;
+    }
+    // /api/health 都失败:服务未起,照旧走 bootstrap 给出重试块
+  }
   try {
     await bootstrap();
   } catch (e) {
