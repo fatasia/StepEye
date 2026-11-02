@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 运行产物(SQLite、证据包、V0 冒烟输出)
+sop-vision/data/
+.v0/
+
+# 凭据 —— 绝不入库
+.env
+
+# 大文件:手部模型与测试视频按 README 单独下载/放置,不入库
+*.task
+*.mp4

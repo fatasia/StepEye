@@ -1,0 +1,85 @@
+/* 设计令牌：唯一来源。强调色由 --accent-primary 派生，运行时可被用户覆盖。 */
+:root {
+  --bg-0: #0b1114;
+  --surface-1: #11191d;
+  --surface-2: #172126;
+  --surface-3: #1c282e;
+  --line-subtle: rgba(167, 183, 190, .10);
+  --line: rgba(167, 183, 190, .14);
+  --line-strong: rgba(167, 183, 190, .26);
+  --text-strong: #e6ecef;
+  --text: #a7b2b8;
+  --text-muted: #8b989f;
+  --text-faint: #738189;
+
+  --accent-primary: #3ec6c1;
+  --accent: var(--accent-primary);
+  --accent-hover: color-mix(in srgb, var(--accent) 82%, white);
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 42%, transparent);
+  --on-accent: #06201f;
+
+  --success: #59c58d;
+  --warning: #d8ac52;
+  --danger: #e27478;
+  --info: #65aee8;
+  --success-soft: color-mix(in srgb, var(--success) 14%, transparent);
+  --warning-soft: color-mix(in srgb, var(--warning) 14%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+  --info-soft: color-mix(in srgb, var(--info) 14%, transparent);
+
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px; --s-8: 48px;
+  --r-panel: 6px; --r-ctl: 4px; --r-pill: 999px;
+
+  --z-nav: 10; --z-dropdown: 20; --z-drawer: 30; --z-modal: 40; --z-toast: 50;
+
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --ease-inout: cubic-bezier(.65, 0, .35, 1);
+  --dur-micro: 160ms; --dur-panel: 360ms; --dur-stagger: 60ms;
+
+  --font-ui: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "Consolas", "Microsoft YaHei", monospace;
+
+  --nav-w: 208px; --topbar-h: 48px;
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, .45);
+  --shadow-card: 0 6px 20px rgba(0, 0, 0, .18);
+  --scrim: rgba(5, 9, 11, .62);
+  /* 叠在视频/图像上的元素：与主题无关，始终保证在画面上的对比度 */
+  --media-text: #e6ecef;
+  --media-text-muted: #cfd8dc;
+  --media-chip-bg: rgba(8, 14, 17, .66);
+  --media-chip-line: rgba(167, 183, 190, .2);
+  --media-stroke: rgba(0, 0, 0, .7);
+  --media-scrim: rgba(4, 8, 10, .82);
+  --atmos-a: color-mix(in srgb, var(--accent) 7%, transparent);
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg-0: #eef2f4;
+  --surface-1: #ffffff;
+  --surface-2: #f6f8f9;
+  --surface-3: #edf1f3;
+  --line-subtle: rgba(40, 60, 70, .08);
+  --line: rgba(40, 60, 70, .14);
+  --line-strong: rgba(40, 60, 70, .28);
+  --text-strong: #10191d;
+  --text: #3b484f;
+  --text-muted: #5b6a72;
+  --text-faint: #7b8991;
+  --on-accent: #ffffff;
+  --success: #2f9e66;
+  --warning: #a97a1c;
+  --danger: #c4474c;
+  --info: #2f7fc1;
+  --shadow-pop: 0 12px 32px rgba(20, 40, 50, .18);
+  --shadow-card: 0 6px 20px rgba(20, 40, 50, .12);
+  --scrim: rgba(20, 30, 36, .38);
+  --atmos-a: color-mix(in srgb, var(--accent) 9%, transparent);
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-micro: 0ms; --dur-panel: 0ms; --dur-stagger: 0ms; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

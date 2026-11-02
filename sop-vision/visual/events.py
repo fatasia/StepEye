@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+# 感知层只产生原子事件，业务判定（SOP/安全/质量）统一由规则引擎完成。
+HAND_ENTER = "hand_enter"
+HAND_EXIT = "hand_exit"
+OBJ_STATE = "obj_state"
+SIGNAL = "signal"
+QUALITY = "quality"
+
+
+@dataclass(slots=True)
+class Event:
+    ts: float
+    type: str
+    zone: str | None = None
+    state: str | None = None
+    name: str | None = None
+    value: Any = None
+    conf: float = 1.0
+    source: str = ""
+    data: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: v for k, v in asdict(self).items() if v not in (None, {}, "")}

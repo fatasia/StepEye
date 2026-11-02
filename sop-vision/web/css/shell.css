@@ -1,0 +1,99 @@
+.app {
+  position: relative; z-index: 1;
+  display: grid; height: 100vh;
+  grid-template-columns: var(--nav-w) minmax(0, 1fr);
+  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+}
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: var(--s-4);
+  padding: 0 var(--s-4);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  position: relative; z-index: var(--z-nav);
+}
+.brand { display: flex; align-items: center; gap: var(--s-2); width: calc(var(--nav-w) - var(--s-4)); flex: none; }
+.brand-name { font-weight: 700; letter-spacing: .06em; color: var(--text-strong); font-size: 15px; white-space: nowrap; }
+.brand-sub { color: var(--text-muted); font-size: 12px; padding-left: var(--s-2); border-left: 1px solid var(--line-strong); }
+.page-title { font-size: 14px; font-weight: 600; color: var(--text-strong); flex: 1; min-width: 0; }
+.topbar-right { display: flex; align-items: center; gap: var(--s-3); }
+.clock { color: var(--text-muted); font-size: 12px; }
+.conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.conn .dot { width: 7px; height: 7px; }
+.menu-anchor { position: relative; }
+.menu {
+  position: absolute; right: 0; top: calc(100% + var(--s-2)); z-index: var(--z-dropdown);
+  min-width: 188px; padding: var(--s-3);
+  background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-panel); box-shadow: var(--shadow-pop);
+}
+.menu[hidden] { display: none; }
+.menu-title { font-size: 12px; color: var(--text-muted); margin-bottom: var(--s-2); }
+.swatches { display: flex; gap: var(--s-2); }
+.swatch {
+  width: 24px; height: 24px; border-radius: var(--r-pill); border: 2px solid transparent;
+  background: var(--c); box-shadow: 0 0 0 1px var(--line-strong);
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+.swatch:hover { transform: scale(1.12); }
+
+.icon-btn {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0;
+  background: transparent; border: 1px solid transparent; border-radius: var(--r-ctl); color: var(--text-muted);
+  transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+}
+.icon-btn:hover { background: var(--surface-3); color: var(--text-strong); }
+.nav-toggle { display: none; }
+
+/* ---------- 导航 ---------- */
+.nav {
+  display: flex; flex-direction: column; gap: var(--s-1);
+  padding: var(--s-3) var(--s-2);
+  background: color-mix(in srgb, var(--surface-1) 70%, transparent);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+.nav a {
+  display: flex; align-items: center; gap: var(--s-3);
+  height: 38px; padding: 0 var(--s-3);
+  color: var(--text); border-radius: var(--r-ctl); position: relative;
+  transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+}
+.nav a:hover { background: var(--surface-3); color: var(--text-strong); }
+.nav a.on { background: var(--accent-soft); color: var(--text-strong); }
+.nav a.on::before { content: ""; position: absolute; left: -8px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--accent); }
+.nav a.on .ico { color: var(--accent); }
+.nav-scrim { display: none; }
+
+.main { overflow: auto; padding: var(--s-4); min-width: 0; }
+.page { animation: page-in var(--dur-panel) var(--ease-out) both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 1279px) {
+  :root { --nav-w: 56px; }
+  .nav a span { display: none; }
+  .nav a { justify-content: center; padding: 0; }
+  .brand-sub { display: none; }
+  .brand { width: auto; }
+  .brand-name { display: none; }
+}
+@media (max-width: 799px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .nav-toggle { display: inline-grid; }
+  .brand-name { display: inline; }
+  .nav {
+    position: fixed; z-index: var(--z-drawer); top: var(--topbar-h); bottom: 0; left: 0; width: 220px;
+    transform: translateX(-100%); transition: transform var(--dur-panel) var(--ease-out);
+    background: var(--surface-1);
+  }
+  .nav a span { display: inline; }
+  .nav a { justify-content: flex-start; padding: 0 var(--s-3); }
+  .app.nav-open .nav { transform: none; }
+  .app.nav-open .nav-scrim { display: block; position: fixed; inset: var(--topbar-h) 0 0 0; z-index: calc(var(--z-drawer) - 1); background: var(--scrim); }
+  .clock { display: none; }
+  .conn span { display: none; }
+  .main { padding: var(--s-3); }
+}

@@ -1,0 +1,50 @@
+# 演示工位（纯视觉模式）：仿真画面 + 真实的 ROI 结果核验 + SOP 状态机。
+# 真实部署把 source 改成 rtsp / file / camera，并按现场标注 zones。
+station: DEMO-ST02
+name: 控制器装配工位
+line: 演示产线 A
+source: {type: sim, fps: 25, realtime: true, loop: true, width: 640, height: 480, scenarios: [ok, ok, wrong_order, missing]}
+
+zones:
+  - {id: bin_harness,  polygon: [[0.04,0.20],[0.24,0.20],[0.24,0.50],[0.04,0.50]]}
+  - {id: fixture,      polygon: [[0.34,0.18],[0.80,0.18],[0.80,0.85],[0.34,0.85]]}
+  - {id: connector_J1, polygon: [[0.40,0.28],[0.52,0.28],[0.52,0.42],[0.40,0.42]]}
+  - {id: B1,           polygon: [[0.58,0.28],[0.64,0.28],[0.64,0.36],[0.58,0.36]]}
+  - {id: B2,           polygon: [[0.67,0.28],[0.73,0.28],[0.73,0.36],[0.67,0.36]]}
+  - {id: label_zone,   polygon: [[0.55,0.58],[0.74,0.58],[0.74,0.74],[0.55,0.74]]}
+
+hands: {enabled: true, enter_frames: 2, exit_frames: 4}
+
+# 结果核验：无需训练，只需在现场“标定”一次参考图
+roi_states:
+  - {zone: fixture,      mode: diff_empty, positive_state: present, negative_state: absent}
+  - {zone: connector_J1, mode: template,   positive_state: mated,   negative_state: unmated}
+  - {zone: B1,           mode: template,   positive_state: in,      negative_state: out}
+  - {zone: B2,           mode: template,   positive_state: in,      negative_state: out}
+  - {zone: label_zone,   mode: template,   positive_state: present, negative_state: absent}
+
+quality: {enabled: true, blur_min: 5.0, brightness: [30, 230], max_shift_px: 12}
+
+cycle:
+  start: {obj_state: {zone: fixture, state: present, min_ms: 1000}}   # 工件到位并稳定
+  end:   {obj_state: {zone: fixture, state: absent,  min_ms: 800}}    # 工件离开
+  takt_s: 14
+  grace_ms: 1500
+
+steps:
+  - id: S1
+    name: 取线束
+    timeout_s: 8
+    evidence: {all: [{hand_dwell: {zone: bin_harness, min_ms: 300}}]}
+  - id: S2
+    name: 插接连接器
+    evidence: {all: [{obj_state: {zone: connector_J1, state: mated, min_ms: 500}}]}
+  - id: S3
+    name: 锁付螺丝
+    foreach: {var: hole, values: [B1, B2], order: strict}
+    evidence: {all: [{obj_state: {zone: "${hole}", state: in, min_ms: 300}}]}
+  - id: S4
+    name: 贴标签
+    evidence: {all: [{obj_state: {zone: label_zone, state: present, min_ms: 300}}]}
+
+violations: {step_timeout: warn, cycle_overtime: warn}
