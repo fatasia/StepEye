@@ -72,6 +72,20 @@ def _regress_cmd(args: argparse.Namespace) -> int:
     return _regress(args)
 
 
+def _gen_samples(args: argparse.Namespace) -> int:
+    from .samplegen import COGVIEW_MAX_BATCH, generate_batch, write_manifest
+
+    if args.engine == "cogview" and args.n > COGVIEW_MAX_BATCH:
+        print(f"生成式一次最多 {COGVIEW_MAX_BATCH} 张(保真度有限,别当验收样本)", file=sys.stderr)
+        return 2
+    rows = generate_batch(Path(args.ref), args.label.upper(), args.desc, args.n, Path(args.out),
+                          engine=args.engine, seed=args.seed)
+    ok_n = sum(1 for r in rows if r.get("file"))
+    mp = write_manifest(Path(args.out), rows)
+    print(f"生成 {ok_n}/{len(rows)} 张 -> {Path(args.out)}  manifest -> {mp}")
+    return 0 if ok_n else 1
+
+
 def _serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -119,7 +133,20 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--data", help="样本目录(缺省为清单所在目录)")
     g.add_argument("--out", help="结果 JSON 输出路径(缺省 <data>/regress_result.json)")
     g.add_argument("--against", help="上一份结果 JSON,输出回归/改进对比")
+    g.add_argument("--store", action="store_true", help="结果入库 <data>/regress.db(版本化)")
+    g.add_argument("--card", help="产出能力边界卡 markdown 到指定路径")
     g.set_defaults(fn=_regress_cmd)
+
+    s2 = sub.add_parser("gen-samples", help="样本生成:参考图+描述 → 批量带标注样本")
+    s2.add_argument("--ref", required=True, help="参考图路径")
+    s2.add_argument("--label", required=True, help="样本标签(OK/NG/...),标注直接继承")
+    s2.add_argument("--desc", default="与参考图同类场景", help="样本描述(生成式引擎用)")
+    s2.add_argument("--n", type=int, default=10, help="生成数量(augment 默认10;cogview 上限8)")
+    s2.add_argument("--engine", choices=["augment", "cogview"], default="augment",
+                    help="augment=离线变换(秒级);cogview=生成式(VLM 写提示词→CogView)")
+    s2.add_argument("--out", required=True, help="输出目录(manifest 追加写入)")
+    s2.add_argument("--seed", type=int, default=7)
+    s2.set_defaults(fn=_gen_samples)
 
     args = p.parse_args(argv)
     try:
