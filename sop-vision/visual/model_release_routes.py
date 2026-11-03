@@ -47,8 +47,13 @@ def _require(request: Request, roles: tuple[str, ...]) -> None:
         raise HTTPException(403, "需要 " + "/".join(roles) + " 角色")
 
 
-def router(releases: ModelReleases, evaluations) -> APIRouter:
-    """evaluations 为 holdout_routes.HoldoutEvaluations,仅依赖其 .get(report_id)。"""
+def router(releases: ModelReleases, evaluations, manager=None) -> APIRouter:
+    """evaluations 为 holdout_routes.HoldoutEvaluations,仅依赖其 .get(report_id)。
+
+    manager 提供时,激活/回滚成功后立即触发该场景工位热重载使账本生效;
+    工位不存在(未加载)静默跳过——下次加载自会读取账本;周期进行中(409)
+    返回 pending_reload=True,由调用方稍后重载。
+    """
     api = APIRouter()
 
     def dispatch(action, *args):
@@ -59,13 +64,26 @@ def router(releases: ModelReleases, evaluations) -> APIRouter:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
 
+    def apply_to_station(scene: str, record: dict) -> dict:
+        applied = pending = False
+        if manager is not None and manager.runtimes.get(scene) is not None:
+            try:
+                manager.reload(scene)
+                applied = True
+            except HTTPException as exc:
+                if exc.status_code != 409:
+                    raise
+                pending = True
+        return {**record, "applied_to_runtime": applied, "pending_reload": pending}
+
     @api.post("/api/model-releases", status_code=201)
     def create(body: CandidateBody, request: Request) -> dict:
         _require(request, ("operator", "admin"))
         try:
             return create_candidate(releases, evaluations, engine_id=body.engine_id,
                                     model_sha256=body.model_sha256, evaluation_id=body.evaluation_id,
-                                    adapter=body.adapter, classes=body.classes, actor=_actor(request))
+                                    adapter=body.adapter, classes=body.classes, actor=_actor(request),
+                                    engines=manager.label_engines if manager is not None else None)
         except KeyError:
             raise HTTPException(404, "评测报告不存在") from None
         except ValueError as exc:
@@ -86,12 +104,14 @@ def router(releases: ModelReleases, evaluations) -> APIRouter:
     @api.post("/api/model-releases/{release_id}/activate")
     def activate(release_id: str, body: ActivateBody, request: Request) -> dict:
         _require(request, ("admin",))
-        return dispatch(releases.activate, release_id, body.scene, _actor(request))
+        record = dispatch(releases.activate, release_id, body.scene, _actor(request))
+        return apply_to_station(body.scene, record)
 
     @api.post("/api/model-releases/{release_id}/rollback")
     def rollback(release_id: str, request: Request) -> dict:
         _require(request, ("admin",))
-        return dispatch(releases.rollback, release_id, _actor(request))
+        record = dispatch(releases.rollback, release_id, _actor(request))
+        return apply_to_station(record["scene"], record)
 
     @api.get("/api/model-releases/{release_id}")
     def detail(release_id: str) -> dict:

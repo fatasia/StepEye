@@ -100,9 +100,14 @@ class StationManager:
         self.hub = hub
         self.store = CycleStore(data_dir / "sop.db")
         self._owns_alerts = alert_store is None
-        # 治理门面:create 叠加风暴抑制与预算闸门,其余方法透传;close 经透传到达真实 store
-        from .alert_governance import GovernedAlerts
-        self.alerts = GovernedAlerts(alert_store or AlertStore(data_dir / "alerts.db"))
+        # 治理门面:create 叠加风暴抑制/冷却/预算闸门,其余方法透传;close 经透传到达真实 store
+        from .alert_governance import GovernedAlerts, RuleCooldown
+        try:
+            cooldown_s = float(os.environ.get("STEPEYE_ALERT_COOLDOWN_S", "0") or 0)
+        except ValueError:
+            cooldown_s = 0.0
+        self.alerts = GovernedAlerts(alert_store or AlertStore(data_dir / "alerts.db"),
+                                     cooldown=RuleCooldown(cooldown_s))
         self.feishu_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
         from .notifications import NotificationDispatcher
         from .llm_provider import _default_env_path
@@ -159,6 +164,7 @@ class StationManager:
             self.inspection.provider = DynamicAIProvider(self.ai_services, self.inspection.provider)
         for p in config_paths:
             cfg: StationConfig = load_config(p)
+            cfg = self._apply_active_release(cfg)
             if shadow:
                 cfg.source.shadow = True  # serve --shadow:全工位强制影子模式
             if cfg.station in self.runtimes:
@@ -227,9 +233,37 @@ class StationManager:
                     self.alerts.mark_pushed(rec["id"])
             threading.Thread(target=send, name="feishu", daemon=True).start()
 
+    def _apply_active_release(self, cfg: StationConfig) -> StationConfig:
+        """发布账本生效路径:激活的发布覆盖该工位检测器。
+
+        模型文件按账本记录的候选时路径读取,SHA 与审批时不一致或文件缺失则跳过
+        覆盖并发布事件,绝不半套生效;回滚恢复旧版本不依赖引擎登记的当前状态。
+        """
+        from .label_jobs import fingerprint
+        release = self.model_releases.active_for(cfg.station)
+        if release is None:
+            return cfg
+        path = release.get("model_path") or ""
+        reason = ""
+        if not path or not Path(path).is_file():
+            reason = "model_missing"
+        elif fingerprint(Path(path)) != release["model_sha256"]:
+            reason = "model_sha_mismatch"
+        if reason:
+            self.hub.publish({"type": "event", "station": cfg.station, "kind": "release_skipped",
+                              "data": {"reason": reason, "release_id": release["id"]}})
+            return cfg
+        detector = cfg.detector.model_copy(update={
+            "enabled": True, "model": path, "adapter": release["adapter"],
+            "classes": list(release["classes"]), "class_names": list(release["classes"])})
+        self.hub.publish({"type": "event", "station": cfg.station, "kind": "release_applied",
+                          "data": {"release_id": release["id"], "engine_id": release["engine_id"]}})
+        return cfg.model_copy(update={"detector": detector})
+
     def add_station(self, path: Path) -> str:
         """热加岗:运行中加载新工位 YAML(向导部署用),无需重启。"""
         cfg: StationConfig = load_config(path)
+        cfg = self._apply_active_release(cfg)
         if cfg.station in self.runtimes:
             raise ValueError(f"工位 id 已存在:{cfg.station}")
         rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
@@ -270,6 +304,7 @@ class StationManager:
         if old.engine.cycle is not None:
             raise HTTPException(409, "工位周期进行中，不能重载配置")
         cfg: StationConfig = load_config(self.paths[sid])
+        cfg = self._apply_active_release(cfg)
         if cfg.station != sid:
             raise HTTPException(400, "配置 station id 与工位不一致")
         from .dsl import Program
@@ -513,7 +548,7 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .stock_reconciliation_routes import router as stock_recon_router
     app.include_router(stock_recon_router(manager.stock_recon))
     from .model_release_routes import router as model_release_router
-    app.include_router(model_release_router(manager.model_releases, manager.holdout_evaluations))
+    app.include_router(model_release_router(manager.model_releases, manager.holdout_evaluations, manager))
     from .quality_routes import router as quality_router
     app.include_router(quality_router(manager.quality_reports))
     from .recipe_routes import router as recipe_router

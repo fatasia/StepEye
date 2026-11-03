@@ -33,8 +33,12 @@ def _validated_fields(engine_id, model_sha256, evaluation_id, adapter, classes):
 
 
 def create_candidate(releases, evaluations, *, engine_id, model_sha256, evaluation_id,
-                     adapter, classes, actor):
-    """校验 HE 报告绑定关系后写入 candidate;报告缺失抛 KeyError(路由映射 404)。"""
+                     adapter, classes, actor, engines=None):
+    """校验 HE 报告绑定关系后写入 candidate;报告缺失抛 KeyError(路由映射 404)。
+
+    engines 提供时快照模型文件路径随账本存档——回滚按记录路径+SHA 恢复,
+    不依赖后续可能被新版本覆盖的引擎登记状态。
+    """
     classes = _validated_fields(engine_id, model_sha256, evaluation_id, adapter, classes)
     report = evaluations.get(evaluation_id)
     if report.get("kind") != "detection_validation":
@@ -49,8 +53,11 @@ def create_candidate(releases, evaluations, *, engine_id, model_sha256, evaluati
         raise ValueError("该评测报告已进入发布流程;审批是独立动作,需未发布的评测")
     if list((report.get("evaluation") or {}).get("classes") or {}) != classes:
         raise ValueError("candidate 类别表与评测报告类别表不一致")
+    model_path = ""
+    if engines is not None:
+        model_path = engines.snapshot(engine_id)["model_path"]
     return releases.create(engine_id=engine_id, model_sha256=model_sha256, evaluation_id=evaluation_id,
-                           adapter=adapter, classes=classes, actor=actor)
+                           adapter=adapter, classes=classes, actor=actor, model_path=model_path)
 
 
 class ModelReleases:
@@ -113,6 +120,13 @@ class ModelReleases:
                          (uuid.uuid4().hex, record["id"], record["revision"],
                           record["updated_at"], raw))
 
+    def active_for(self, scene: str):
+        """当前生效于该 scene 的发布记录;无则 None。工位加载/重载经此读取生效路径。"""
+        with self._guard:
+            if self._closed:
+                raise ValueError("模型发布账本服务已关闭")
+            return self._active_on_locked(scene)
+
     def _bump(self, current, *, status, action, actor, extra=None):
         now = time.time()
         transition = {"action": action, "actor": actor, "at": now}
@@ -120,13 +134,16 @@ class ModelReleases:
         return {**current, "revision": current["revision"] + 1, "status": status,
                 "updated_at": now, "updated_by": actor, "last_transition": transition}
 
-    def create(self, *, engine_id, model_sha256, evaluation_id, adapter, classes, actor):
+    def create(self, *, engine_id, model_sha256, evaluation_id, adapter, classes, actor,
+               model_path=""):
         classes = _validated_fields(engine_id, model_sha256, evaluation_id, adapter, classes)
         if not isinstance(actor, str) or not actor.strip() or len(actor) > 100:
             raise ValueError("actor 无效")
+        if not isinstance(model_path, str):
+            raise ValueError("model_path 无效")
         now = time.time()
         record = {"id": "MR-" + uuid.uuid4().hex, "revision": 1, "status": "candidate",
-                  "engine_id": engine_id, "model_sha256": model_sha256,
+                  "engine_id": engine_id, "model_sha256": model_sha256, "model_path": model_path,
                   "evaluation_id": evaluation_id, "adapter": adapter, "classes": classes,
                   "created_at": now, "created_by": actor, "updated_at": now, "updated_by": actor,
                   "approved_by": None, "approved_at": None, "scene": None,
