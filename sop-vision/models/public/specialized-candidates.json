@@ -1,0 +1,350 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-03",
+  "scope": [
+    "S11 floor water/wet surfaces/stains",
+    "Q7 adhesive-bead discontinuity/excess"
+  ],
+  "automatic_registration": false,
+  "production_models_changed": false,
+  "torch_or_pickle_loaded": false,
+  "trained": false,
+  "models": [
+    {
+      "id": "wetfloor-convnext-tiny-q8",
+      "task": "image_classification",
+      "scope": "S11 partial: visible wet/dry floor image, not spill localization or generic stain classification",
+      "publisher": "builtbyd3v",
+      "source": {
+        "repository": "https://huggingface.co/builtbyd3v/spot-wetfloor-convnext-tiny",
+        "revision": "942bd9c786bcb4b0e3b1521c6763a88a66134e6e",
+        "download_url": "https://huggingface.co/builtbyd3v/spot-wetfloor-convnext-tiny/resolve/942bd9c786bcb4b0e3b1521c6763a88a66134e6e/onnx/model_quantized.onnx",
+        "model_card_sha256": "2438e75f6f24ed677b80c881e4a473fdc96333cad7465bc2e18e17e5826172b0"
+      },
+      "artifact": {
+        "path": ".v0/specialized-models/wetfloor-convnext-q8.onnx",
+        "bytes": 33821316,
+        "sha256": "87caee35e68b0de6846ff169978321e4e8aeb6f715d700962d1f998534e315a0"
+      },
+      "published_lfs_sha256_matches": true,
+      "licenses": {
+        "weights": "CC-BY-4.0 (publisher declared)",
+        "base": "Apache-2.0 facebook/convnext-tiny-224",
+        "data": "publisher reports Mendeley CC-BY-4.0 and Kaggle CC0; Mendeley V4 primary page checked",
+        "release_approved": false
+      },
+      "classes": [
+        "dry",
+        "wet"
+      ],
+      "input": {
+        "name": "pixel_values",
+        "dtype": "float32",
+        "shape": [
+          "batch_size",
+          3,
+          224,
+          224
+        ]
+      },
+      "output": {
+        "name": "logits",
+        "shape": [
+          "batch_size",
+          2
+        ]
+      },
+      "onnx_opset": 17,
+      "external_data": false,
+      "custom_op_domains": [],
+      "preprocessing": {
+        "color": "RGB",
+        "resize": "PIL bicubic shorter side 256; long side integer truncation",
+        "crop": "center 224x224",
+        "rescale": 0.00392156862745098,
+        "mean": [
+          0.485,
+          0.456,
+          0.406
+        ],
+        "std": [
+          0.229,
+          0.224,
+          0.225
+        ]
+      },
+      "validation": {
+        "onnx_checker": "passed",
+        "backend": "ONNX Runtime CPUExecutionProvider",
+        "image": {
+          "path": ".v0/specialized-models/halifax-wet-floor.jpg",
+          "bytes": 136601,
+          "sha256": "c951d7c6c5c1c31d5a8d387ae77c052a9117ba2e9cf4c12f2062b6e695c3db3c"
+        },
+        "image_source": "https://commons.wikimedia.org/wiki/File:A_slippy_floor,_Halifax_station_-_geograph.org.uk_-_2587394.jpg",
+        "image_attribution": "Phil Champion / Geograph, CC-BY-SA-2.0",
+        "training_overlap_audited": false,
+        "scores": {
+          "dry": 0.9982193948085745,
+          "wet": 0.0017806051914254523
+        },
+        "top_label": "dry",
+        "inference_ms": 48.13,
+        "report": ".v0/specialized-models/wetfloor-probe.json",
+        "accuracy": null
+      },
+      "adapter_compatible": false,
+      "registry_status": "not_registered",
+      "status": "downloaded_real_inference_passed_not_validated_for_S11",
+      "production_ready": false,
+      "blockers": [
+        "Classification logits are not YOLO boxes; existing detection registry must not guess this format.",
+        "Outdoor training data; no industrial floor/IR/target-line validation.",
+        "Public slippy-floor probe returned dry 0.9982; no independently labelled test set.",
+        "dry is not safe; no coverage claim for oil, thin films, generic stains or slippery-floor friction."
+      ]
+    },
+    {
+      "id": "gan-synth-adhesive-yolov4-tiny",
+      "task": "object_detection",
+      "scope": "Q7 partial: adhesive-bead discontinuity/excess, not 3D volume or conformal-coating inspection",
+      "publisher": "Ricardo Silva Peres et al. / Introsys structural adhesive study",
+      "source": {
+        "repository": "https://github.com/RicardoSPeres/GAN_Synth_Adhesive",
+        "revision": "b309653ec5ef27013f5dc0d6ce1fc7bf4763c148",
+        "download_url": "https://raw.githubusercontent.com/RicardoSPeres/GAN_Synth_Adhesive/b309653ec5ef27013f5dc0d6ce1fc7bf4763c148/Weights/yolov4-tiny-obj_best_aug.weights",
+        "git_blob_sha1": "12d0908633abcecb26a740e8a361edd23fc7d15c",
+        "paper": "https://doi.org/10.3390/app11073086"
+      },
+      "artifact": {
+        "path": ".v0/specialized-models/glue-yolov4-tiny-aug.weights",
+        "bytes": 23530556,
+        "sha256": "c51a715e886f585a1046a6b09f62270d212a8715a0e5428490c7897a88ced3a3"
+      },
+      "format": "Darknet binary .weights + .cfg, not ONNX",
+      "classes": [
+        "discontinuity",
+        "excess"
+      ],
+      "licenses": {
+        "weights": "not_declared_at_inspected_revision",
+        "dataset": "not_declared_at_inspected_release",
+        "code": "no repository LICENSE found",
+        "paper": "CC-BY-4.0 does not establish weights/data permission",
+        "release_approved": false
+      },
+      "configuration": {
+        "original": {
+          "path": ".v0/specialized-models/glue-yolov4-tiny.cfg",
+          "bytes": 3027,
+          "sha256": "fa811c39b6298cf5dc7244caa6026a0ac1aaf19d2b5eaf192997c1a3e2fc42e7"
+        },
+        "names": {
+          "path": ".v0/specialized-models/glue-classes.names",
+          "bytes": 20,
+          "sha256": "6eb55e0c6a3086592fda05b7f9842f650164fde95ca2c6f787d67611555b1cee"
+        },
+        "source_class_count": 80,
+        "names_class_count": 2,
+        "source_inference": "rejected: outputs 85 columns with nonfinite values",
+        "derived": {
+          "path": ".v0/specialized-models/glue-yolov4-tiny-2class-derived.cfg",
+          "bytes": 3304,
+          "sha256": "44dbebf92ad2dba2ebcc3da31d2058cd5a94b37ad9901c3e00973b1866cca3bb"
+        },
+        "derived_changes": {
+          "yolo_classes": "80 -> 2 (both heads)",
+          "preceding_conv_filters": "255 -> 21 = 3*(2+5) (both heads)"
+        },
+        "derived_is_official": false,
+        "actual_weight_floats": 5882634,
+        "derived_expected_weight_floats": 5882634,
+        "weights_all_finite": true
+      },
+      "validation": {
+        "backend": "OpenCV-DNN 4.11 CPU in isolated .v0/specialized-models/probe-venv",
+        "main_environment_changed": false,
+        "main_opencv5": "Darknet importer removed; cannot run source format",
+        "input": [
+          1,
+          3,
+          416,
+          416
+        ],
+        "preprocessing": "RGB /255, direct resize416, no crop",
+        "outputs": [
+          [
+            507,
+            7
+          ],
+          [
+            2028,
+            7
+          ]
+        ],
+        "image": {
+          "path": ".v0/specialized-models/glue-holdout/1.png",
+          "bytes": 276525,
+          "sha256": "87590ddf9360e3e75e27a33fc3ff630ebfa0b667d29ab49881c3f3635ddba93b"
+        },
+        "annotation": {
+          "path": ".v0/specialized-models/glue-holdout/1.txt",
+          "bytes": 228,
+          "sha256": "e8902078552c95e0456000dedffdd6b5c184a8c32eb33d925032a3517fa2cb9a"
+        },
+        "source_split": "publisher holdout; not independent target-line test",
+        "threshold": 0.25,
+        "nms_iou": 0.45,
+        "detected_labels": [
+          "discontinuity",
+          "discontinuity",
+          "discontinuity",
+          "discontinuity"
+        ],
+        "confidence_range": [
+          0.27965840697288513,
+          0.9772498607635498
+        ],
+        "original_annotation_count": 6,
+        "inference_ms": 134.19,
+        "report": ".v0/specialized-models/glue-probe.json",
+        "accuracy": null
+      },
+      "adapter_compatible": false,
+      "registry_status": "not_registered",
+      "status": "derived_cfg_real_inference_passed_license_pending",
+      "production_ready": false,
+      "blockers": [
+        "No explicit weights/data license; not commercial-approved.",
+        "Published cfg does not match two-class checkpoint; corrected cfg is a local documented derivation.",
+        "No ONNX export or current StepEye backend for Darknet.",
+        "Fixed holdout smoke test is not target-line accuracy, glue-width/volume measurement or complete Q7 acceptance."
+      ]
+    }
+  ],
+  "datasets": [
+    {
+      "id": "stagnant-water-wet-surface-v4",
+      "scope": "S11 water/wet-surface detector training candidate",
+      "url": "https://data.mendeley.com/datasets/y6zyrnxbfm/4",
+      "revision": "doi:10.17632/y6zyrnxbfm.4",
+      "publisher": "Kailas Patil; Sonali Bhutad",
+      "license": "CC-BY-4.0",
+      "primary_license_checked": true,
+      "published_images": 1976,
+      "published_image_size": [
+        256,
+        256
+      ],
+      "published_classes": [
+        "water",
+        "wet surface"
+      ],
+      "published_annotation_format": "YOLO detection",
+      "downloaded_complete": false,
+      "metadata": {
+        "path": ".v0/specialized-models/stagnant-water-v4.html",
+        "bytes": 120649,
+        "sha256": "23ded64dae8a9ad6f0839b1b16416c8a478afdfa0d87abb21569c9878ec26907"
+      },
+      "training_ready": false,
+      "next_step": "Download annotated folders, verify image/label pairs and original class order; group phone bursts/locations before split; do not relabel missing annotations as dry/background."
+    },
+    {
+      "id": "gan-synth-adhesive-v1-holdout",
+      "scope": "Q7 discontinuity/excess study",
+      "url": "https://github.com/RicardoSPeres/GAN_Synth_Adhesive/releases/tag/v1.0",
+      "revision": "v1.0",
+      "release_id": 40704032,
+      "asset": {
+        "path": ".v0/specialized-models/glue-holdout.zip",
+        "bytes": 5893478,
+        "sha256": "5fd644fbaf110aa5b5d5666f476613bd683da327385f57ba8461d0211280159f"
+      },
+      "archive_crc": "passed",
+      "actual_images": 19,
+      "actual_label_files": 19,
+      "class_box_counts": {
+        "discontinuity": 40,
+        "excess": 17
+      },
+      "missing_labels": 0,
+      "invalid_labels": 0,
+      "published_holdout_count": 18,
+      "count_mismatch": "release says18; archive actually contains19 image/label pairs",
+      "license": "not_declared",
+      "training_ready": false,
+      "other_published_assets": [
+        {
+          "name": "adhesive1024.zip",
+          "bytes": 29958085,
+          "url": "https://github.com/RicardoSPeres/GAN_Synth_Adhesive/releases/download/v1.0/adhesive1024.zip",
+          "downloaded": false
+        },
+        {
+          "name": "holdout.zip",
+          "bytes": 5893478,
+          "url": "https://github.com/RicardoSPeres/GAN_Synth_Adhesive/releases/download/v1.0/holdout.zip",
+          "downloaded": true
+        },
+        {
+          "name": "obj.zip",
+          "bytes": 464507393,
+          "url": "https://github.com/RicardoSPeres/GAN_Synth_Adhesive/releases/download/v1.0/obj.zip",
+          "downloaded": false
+        },
+        {
+          "name": "test.zip",
+          "bytes": 13452285,
+          "url": "https://github.com/RicardoSPeres/GAN_Synth_Adhesive/releases/download/v1.0/test.zip",
+          "downloaded": false
+        }
+      ],
+      "next_step": "Resolve explicit weights/data permission and correct checkpoint/cfg contract; author obj.zip contains real+synthetic train data, not a new independently grouped field dataset."
+    },
+    {
+      "id": "unimatch-glue-300",
+      "scope": "Q7 glue segmentation data lead, not installed model",
+      "url": "https://github.com/He001123/UniMatch/tree/7dc782c873817fb61713b9f31e29293c7a59744d/GlueDataset_300",
+      "revision": "7dc782c873817fb61713b9f31e29293c7a59744d",
+      "tree_jpg_count": 298,
+      "tree_png_mask_count": 300,
+      "complete_downloaded": false,
+      "license": "data_origin_and_permission_not_established; repository MIT credits upstream Lihe Yang",
+      "weights_available_in_tree": false,
+      "training_ready": false,
+      "blockers": [
+        "Do not assume upstream code MIT applies to contributed factory images.",
+        "Filename crops/adjacent capture timestamps require parent-image/batch grouping, not shuffled splits.",
+        "Mask/class mapping and complete pairing not yet audited."
+      ]
+    }
+  ],
+  "rejected_leads": [
+    {
+      "id": "kareem1232/spill_leak_detection_nano",
+      "revision": "26eeaf9464458c81e106d019caa4ad1db43b41ba",
+      "reason": "Only PT checkpoints in inspected tree; no README, explicit license, class map or ONNX. Not loaded or registered."
+    },
+    {
+      "id": "srao0996/segformer-b0-finetuned-segments-sealants-2",
+      "revision": "ecfa00bae042d4a1c2bebaa40a1a1c83fa5e8d99",
+      "reason": "Inspected tree contains only .gitattributes; no weights. Name alone does not establish industrial glue relevance."
+    },
+    {
+      "id": "RicardoSPeres/simulation-synth-adhesive",
+      "url": "https://ricardosperes.github.io/simulation-synth-adhesive/",
+      "reason": "Author result site remains accessible, but paper-linked GitHub repository returns404; no downloadable model obtained from this repository."
+    },
+    {
+      "id": "wet-floor-sign-and-satellite-spill-models",
+      "reason": "Wet-floor signage and marine SAR oil slicks are not floor water/stain detectors; excluded rather than relabelled."
+    }
+  ],
+  "reproduction": {
+    "validation": "python .v0/specialized-models/validate.py",
+    "derived_cfg": "python .v0/specialized-models/derive_glue_cfg.py",
+    "real_inference": ".v0/specialized-models/probe-venv/Scripts/python.exe .v0/specialized-models/probe.py",
+    "reports_root": ".v0/specialized-models/"
+  }
+}

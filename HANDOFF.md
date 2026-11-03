@@ -157,3 +157,5 @@ YOLO ZIP 导入已接Web：名称映射、逐项问题、草稿复核、合成�
 - 安全帽探针默认关闭，按需异步执行、最新帧有界队列、原时间戳/身份/TTL校验，接入既有PPE告警。高级开关真实保存重载通过；画质/断流清证据，空闲释放，原生线程关闭未完成会明确返回false。
 - 质量工具新增双ROI框选边缘测量；真实Web软件几何50mm、重新框选状态、页面异常0。未作相机光学精度结论。
 - 本批相关169项pytest、下载器5项离线检查及3份JS语法检查通过。UI记录在.v0/output/playwright/helmet-config与edge-measurement。其余任务继续以docs/TASK-COVERAGE.md为准。
+
+提交980bd6a已推送，GitHub Actions 41606725007的Windows/Linux主测试与MCP四个job全部通过。新增地面湿干分类和胶路候选下载实测记录见docs/PUBLIC-SPECIALIZED-MODELS.md；均未自动注册或生产启用。
