@@ -17,7 +17,8 @@ async function request(url, opts) {
     try {
       detail = (await res.json()).detail ?? "";
     } catch { /* 非 JSON 响应 */ }
-    throw new ApiError(detail || `请求失败（HTTP ${res.status}）。请稍后重试。`, res.status);
+    const message = typeof detail === "string" ? detail : detail?.message || `请求失败（HTTP ${res.status}）。请稍后重试。`;
+    throw new ApiError(message || `请求失败（HTTP ${res.status}）。请稍后重试。`, res.status);
   }
   return res.json();
 }
@@ -49,6 +50,8 @@ export const api = {
     return request(`/api/templates/station/${encodeURIComponent(tid)}?${q}`);
   },
   stream: (id) => `/api/stations/${encodeURIComponent(id)}/stream.mjpg`,
+  recordings: (id, start, end) => request(`/api/stations/${encodeURIComponent(id)}/recordings?${new URLSearchParams({ start, end })}`),
+  recordingVideo: (id, name) => `/api/stations/${encodeURIComponent(id)}/recordings/${encodeURIComponent(name)}`,
   snapshot: (id, raw = true) => `/api/stations/${encodeURIComponent(id)}/snapshot.jpg?raw=${raw}&t=${Date.now()}`,
   frame: (cid, name) => `/api/cycles/${encodeURIComponent(cid)}/frames/${encodeURIComponent(name)}`,
   inspectionScenarios: () => request("/api/inspection/scenarios"),
@@ -98,13 +101,21 @@ export const api = {
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ intervals }) }),
   timelineFrame: (id, name) => `/api/timelines/${encodeURIComponent(id)}/frames/${encodeURIComponent(name)}`,
   timelineVideo: (id) => `/api/timelines/${encodeURIComponent(id)}/video`,
-  shadowSamples: (unlabeled = true) => request(`/api/shadow/samples?unlabeled=${unlabeled ? 1 : 0}`),
+  shadowSamples: (unlabeled = true, limit = 500) => request(`/api/shadow/samples?unlabeled=${unlabeled ? 1 : 0}&limit=${limit}`),
+  shadowSample: (id) => request(`/api/shadow/${encodeURIComponent(id)}`),
+  shadowReport: () => request("/api/shadow/report"),
   plansList: () => request("/api/plans"),
-  sitePoint: (planId, name, kind, x, y) =>
+  plan: (id) => request(`/api/plans/${encodeURIComponent(id)}`),
+  geoMap: () => request("/api/geo/map"),
+  planUpload: (name, file) => {
+    const fd = new FormData(); fd.append("name", name); fd.append("image", file);
+    return request("/api/plans", { method: "POST", body: fd });
+  },
+  sitePoint: (planId, name, kind, x, y, stationId = "") =>
     request(`/api/plans/${encodeURIComponent(planId)}/points`, { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, kind, x, y }) }),
-  sitePointDelete: (ptid) => request(`/api/plans/${encodeURIComponent(ptid)}`, { method: "DELETE" }),
+      body: JSON.stringify({ name, kind, x, y, station_id: stationId }) }),
+  sitePointDelete: (planId, ptid) => request(`/api/plans/${encodeURIComponent(planId)}/points/${encodeURIComponent(ptid)}`, { method: "DELETE" }),
   shadowTruth: (id, truth) =>
     request(`/api/shadow/${encodeURIComponent(id)}/truth`, { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ truth }) }),

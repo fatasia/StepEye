@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from visual.inspection import InspectionStore, load_scenarios
-from visual.llm_provider import Transport
+from visual.llm_provider import ProviderConfig, Transport
 from visual.server import build_app
 
 VERDICT_JSON = '{"verdict": "NG", "confidence": 0.9, "reason": "双手裸露"}'
@@ -69,7 +69,8 @@ def env(tmp_path):
     cfg = tmp_path / "inspection.yaml"
     write_yaml(cfg, "refs/fa/ok", "refs/fa/ng")
     transport = CannedTransport()
-    app = build_app([], data, inspection_config=cfg, vlm_transport=transport)
+    app = build_app([], data, inspection_config=cfg, vlm_transport=transport,
+                    provider_cfg=ProviderConfig(api_key="local-test-transport"))
     # 必须进入上下文:lifespan 里才会启动判定线程
     with TestClient(app) as client:
         yield client, transport, data

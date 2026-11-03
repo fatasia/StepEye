@@ -118,6 +118,7 @@ function alertsHtml() {
 
 export function render(root) {
   root.innerHTML = `
+    <header class="command-head"><div><span class="command-kicker">STEPEYE / OPERATIONS</span><h2>生产态势<span class="command-live">实时</span></h2><p>规则、视觉与现场事件，同一张运行视图。</p></div><div class="command-fleet" id="fleet-state"></div><a class="btn btn-primary" href="#/sitemap">进入空间态势 ${icon("overview", 14)}</a></header>
     <section class="kpis" id="kpis" aria-label="关键指标">${skeletonKpis()}</section>
     <div class="ov-grid">
       <section class="wall" id="wall" aria-label="工位墙"></section>
@@ -161,6 +162,9 @@ export function render(root) {
   };
   const paint = () => {
     buildWall();
+    const online = store.metas.filter((m) => stationStatus(m.id) !== "offline").length;
+    const risks = store.metas.filter((m) => ["alarm", "warn"].includes(stationStatus(m.id))).length;
+    setHTML($("#fleet-state", root), `<span><b class="num">${online}<small> / ${store.metas.length}</small></b>工位在线</span><span class="${risks ? "tone-warning-text" : ""}"><b class="num">${risks}</b>需关注</span>`);
     wall.querySelectorAll(".st-card").forEach((el) => patchCard(el, store.metas.find((m) => m.id === el.dataset.id)));
     setHTML(kpis, kpiHtml(trend));
     setHTML(alertsEl, alertsHtml());

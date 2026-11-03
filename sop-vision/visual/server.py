@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+import uuid
 
 import cv2
 import numpy as np
@@ -17,7 +18,7 @@ from typing import Any
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .alerts import AlertStore
 from .auth import AuthError, AuthStore
@@ -26,6 +27,10 @@ from .evidence import CycleStore
 from .events import SIGNAL, Event
 from .inspection import InspectionService, InspectionStore, load_scenarios
 from .llm_provider import ProviderConfig, VLMProvider
+from .media import MediaBridge, MediaError
+from .patrol import LOCAL_TZ, PatrolPlan, PatrolStore
+from .recordings import RecordingIndex, parse_time
+from .fusion import SignalAuditStore, SignalError, SignalInbox, SignalPacket
 from .runtime import StationRuntime
 from .shadow import ShadowStore, start_shadow_recorder
 from .templates import list_templates, render_station
@@ -80,6 +85,9 @@ class StationManager:
         self.shadow_store: ShadowStore | None = None
         from .geo import GeoStore
         self.geo = GeoStore(data_dir / "geo.db")
+        self.patrol = PatrolStore(data_dir / "patrol.db")
+        self.signal_store = SignalAuditStore(data_dir / "signals.db")
+        self.signal_store.recover_abandoned()
         self.evidence_root = data_dir / "evidence"
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
@@ -103,6 +111,8 @@ class StationManager:
             if cfg.station in self.runtimes:
                 raise ValueError(f"工位 id 重复: {cfg.station}")
             rt = StationRuntime(cfg, data_dir, base_dir=ROOT, store=self.store)
+            rt.frame_observers.append(self.patrol.observe_runtime)
+            rt.signal_inbox = SignalInbox(self.signal_store, scope=cfg.station)
             rt.listeners.append(self._forwarder(cfg.station))
             if cfg.source.shadow:
                 if self.shadow_store is None:
@@ -157,6 +167,8 @@ class StationManager:
         if cfg.station in self.runtimes:
             raise ValueError(f"工位 id 已存在:{cfg.station}")
         rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        rt.frame_observers.append(self.patrol.observe_runtime)
+        rt.signal_inbox = SignalInbox(self.signal_store, scope=cfg.station)
         rt.listeners.append(self._forwarder(cfg.station))
         if cfg.source.shadow and self.shadow_store is None:
             self.shadow_store = ShadowStore(self.data_dir / "shadow.db")
@@ -189,10 +201,13 @@ class StationManager:
         t = self._threads.get(sid)
         if t is not None:
             t.join(timeout=5)
+        old.signal_inbox.close()
         cfg: StationConfig = load_config(self.paths[sid])
         if cfg.station != sid:
             raise HTTPException(400, f"配置中的 station id({cfg.station})与工位({sid})不一致,不能重载")
         rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        rt.frame_observers.append(self.patrol.observe_runtime)
+        rt.signal_inbox = SignalInbox(self.signal_store, scope=cfg.station)
         rt.listeners.append(self._forwarder(sid))
         self.runtimes[sid] = rt
         nt = threading.Thread(target=rt.run, name=f"station-{sid}", daemon=True)
@@ -206,10 +221,14 @@ class StationManager:
             rt.stop()
         for t in self.threads:
             t.join(timeout=3)
+        for rt in self.runtimes.values():
+            rt.signal_inbox.close()
         if self.inspection is not None:
             self.inspection.stop()
             self.inspection.store.close()
         self.store.close()
+        self.patrol.close()
+        self.signal_store.close()
 
     def get(self, sid: str) -> StationRuntime:
         rt = self.runtimes.get(sid)
@@ -271,15 +290,16 @@ class PlanPointBody(BaseModel):
     kind: str = "camera"
     x: float
     y: float
+    station_id: str = ""
 
 
 class OnvifDiscoverBody(BaseModel):
-    timeout_s: float = 3.0
+    timeout_s: float = Field(default=3.0, ge=1, le=15, allow_inf_nan=False)
 
 
 class OnvifAdoptBody(BaseModel):
-    host: str
-    port: int = 80
+    host: str = Field(min_length=1, max_length=253, pattern=r"^[A-Za-z0-9_.:-]+$")
+    port: int = Field(default=80, ge=1, le=65535)
     user: str
     password: str
 
@@ -333,9 +353,20 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         hub.loop = asyncio.get_running_loop()
         manager.start()
         task = asyncio.create_task(_push_states())
-        yield
-        task.cancel()
-        manager.stop()
+        sweep = asyncio.create_task(_sweep_previews())
+        try:
+            yield
+        finally:
+            task.cancel()
+            sweep.cancel()
+            await asyncio.gather(task, sweep, return_exceptions=True)
+            await asyncio.to_thread(app.state.media.close)
+            manager.stop()
+
+    async def _sweep_previews() -> None:
+        while True:
+            await asyncio.sleep(30)
+            app.state.media.expire_sessions()
 
     async def _push_states() -> None:
         while True:
@@ -347,6 +378,10 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app = FastAPI(title="SOP Vision", lifespan=lifespan)
     app.state.manager = manager
     app.state.auth = auth
+    app.state.media = MediaBridge.from_env()
+    from .llm_provider import _default_env_path, load_env_file
+    record_dir = os.getenv("MONIBUCA_RECORD_DIR", load_env_file(_default_env_path()).get("MONIBUCA_RECORD_DIR", ""))
+    app.state.recordings = RecordingIndex(Path(record_dir)) if record_dir else None
 
     def current_user(request: Request) -> dict | None:
         """从 Cookie 或 Bearer 取会话;auth 未启用时返回伪 admin(本机工具模式)。"""
@@ -364,8 +399,11 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         if auth is not None and path.startswith("/api") \
                 and path != "/api/health" and not path.startswith("/api/auth/"):
             try:
+                preview_read = (request.method == "POST" and re.fullmatch(r"/api/stations/[^/]+/preview", path)) or \
+                    (request.method == "DELETE" and re.fullmatch(r"/api/stations/[^/]+/preview/[\w-]+", path)) or \
+                    (request.method == "POST" and re.fullmatch(r"/api/stations/[^/]+/preview/[\w-]+/lease", path))
                 need = "admin" if path.startswith("/api/users") else \
-                    ("viewer" if request.method == "GET" else "operator")
+                    ("viewer" if request.method == "GET" or preview_read else "operator")
                 AuthStore.check(current_user(request), need)
             except AuthError as e:
                 from fastapi.responses import JSONResponse
@@ -375,6 +413,31 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     @app.get("/api/health")
     def health() -> dict[str, Any]:
         return {"ok": True, "stations": len(manager.runtimes), "auth": auth is not None}
+
+    @app.get("/api/patrol/plans")
+    def patrol_plans() -> list[dict[str, Any]]:
+        return manager.patrol.plans()
+
+    @app.post("/api/patrol/plans", status_code=201)
+    def patrol_add(body: PatrolPlan) -> dict[str, Any]:
+        rt = manager.get(body.station)
+        if body.zone not in {z.id for z in rt.cfg.zones}:
+            raise HTTPException(400, "区域不属于所选工位")
+        return manager.patrol.add_plan(body)
+
+    @app.delete("/api/patrol/plans/{pid}")
+    def patrol_delete(pid: str) -> dict[str, Any]:
+        if not manager.patrol.delete_plan(pid):
+            raise HTTPException(404, "巡更计划不存在或已停用")
+        return {"ok": True}
+
+    @app.get("/api/patrol/report")
+    def patrol_report(day: str | None = None) -> dict[str, Any]:
+        from datetime import datetime
+        try:
+            return manager.patrol.report(day or datetime.now(LOCAL_TZ).date())
+        except ValueError:
+            raise HTTPException(400, "日期必须为 YYYY-MM-DD") from None
 
     # ---- 认证 / 用户(T5) ----
     @app.post("/api/auth/login")
@@ -462,7 +525,57 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
     @app.get("/api/stations/{sid}/config")
     def station_config(sid: str) -> dict[str, Any]:
-        return _station_config_view(manager.get(sid), manager.paths[sid])
+        rt = manager.get(sid)
+        view = _station_config_view(rt, manager.paths[sid])
+        available = bool(app.state.media.base and rt.cfg.source.preview_stream)
+        view["preview"] = {"available": available,
+                           "reason": "" if available else "未配置 Monibuca 预览，当前为带检测叠加的分析画面"}
+        return view
+
+    @app.post("/api/stations/{sid}/preview")
+    async def preview_offer(sid: str, request: Request) -> Response:
+        rt = manager.get(sid)
+        if not rt.cfg.source.preview_stream:
+            raise HTTPException(409, "工位未配置 source.preview_stream")
+        if request.headers.get("content-type", "").split(";")[0] != "application/sdp":
+            raise HTTPException(415, "预览信令需要 application/sdp")
+        body = bytearray()
+        async for chunk in request.stream():
+            body.extend(chunk)
+            if len(body) > 128 * 1024:
+                raise HTTPException(413, "SDP 超过 128KB")
+        if not body.lstrip().startswith(b"v=0"):
+            raise HTTPException(400, "无效 SDP Offer")
+        try:
+            answer, token = await asyncio.to_thread(app.state.media.offer, rt.cfg.source.preview_stream,
+                                                   bytes(body), sid, current_user(request)["username"])
+        except MediaError as e:
+            raise HTTPException(e.status, str(e)) from None
+        if token and await request.is_disconnected():
+            await asyncio.to_thread(app.state.media.release, token, sid, current_user(request)["username"])
+            return Response(status_code=499)
+        headers = {"Cache-Control": "no-store"}
+        if token:
+            headers["Location"] = f"/api/stations/{sid}/preview/{token}"
+        return Response(answer, status_code=201, media_type="application/sdp", headers=headers)
+
+    @app.delete("/api/stations/{sid}/preview/{token}", status_code=204)
+    def preview_release(sid: str, token: str, request: Request) -> Response:
+        manager.get(sid)
+        try:
+            app.state.media.release(token, sid, current_user(request)["username"])
+        except MediaError as e:
+            raise HTTPException(e.status, str(e)) from None
+        return Response(status_code=204)
+
+    @app.post("/api/stations/{sid}/preview/{token}/lease", status_code=204)
+    def preview_lease(sid: str, token: str, request: Request) -> Response:
+        manager.get(sid)
+        try:
+            app.state.media.renew(token, sid, current_user(request)["username"])
+        except MediaError as e:
+            raise HTTPException(e.status, str(e)) from None
+        return Response(status_code=204)
 
     @app.get("/api/stations/{sid}/snapshot.jpg")
     def snapshot(sid: str, raw: bool = False) -> Response:
@@ -470,6 +583,36 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         if data is None:
             raise HTTPException(503, "画面尚未就绪，请稍后重试")
         return Response(data, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+    def recording_stream(sid: str) -> str:
+        rt = manager.get(sid)
+        if app.state.recordings is None:
+            raise HTTPException(503, "未配置 MONIBUCA_RECORD_DIR，请将 Monibuca 录像目录配置为本机可读路径")
+        if not rt.cfg.source.preview_stream:
+            raise HTTPException(409, "工位未配置 source.preview_stream，无法绑定录像")
+        stream = rt.cfg.source.preview_stream
+        if any(other.cfg.source.preview_stream and other.cfg.source.preview_stream != stream and
+               other.cfg.source.preview_stream.replace("/", "_") == stream.replace("/", "_")
+               for other in manager.runtimes.values()):
+            raise HTTPException(409, "录像文件名前缀与另一条流冲突，请调整流路径或使用独立录像目录")
+        return stream
+
+    @app.get("/api/stations/{sid}/recordings")
+    def recordings_list(sid: str, start: str, end: str) -> dict[str, Any]:
+        stream_path = recording_stream(sid)
+        try:
+            return app.state.recordings.list(stream_path, parse_time(start), parse_time(end))
+        except (ValueError, FileNotFoundError) as e:
+            raise HTTPException(400, str(e)) from None
+
+    @app.get("/api/stations/{sid}/recordings/{name}")
+    def recordings_video(sid: str, name: str) -> FileResponse:
+        stream_path = recording_stream(sid)
+        try:
+            path = app.state.recordings.path(stream_path, name)
+        except (ValueError, FileNotFoundError):
+            raise HTTPException(404, "录像不存在或不属于所选工位") from None
+        return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "private, no-store"})
 
     @app.get("/api/stations/{sid}/stream.mjpg")
     async def stream(sid: str, request: Request) -> StreamingResponse:
@@ -774,18 +917,22 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
     @app.get("/api/cameras/gb28181/status")
     def gb28181_status() -> dict[str, Any]:
-        return {"configured": bool(os.environ.get("GB28181_WVP_URL")), "hint": "配置 GB28181_WVP_URL/USER/PASS 后启用;部署侧为 wvp-pro + ZLMediaKit"}
+        env = {**load_env_file(_default_env_path()), **os.environ}
+        return {"configured": bool(env.get("GB28181_WVP_URL")), "hint": "配置 GB28181_WVP_URL/USER/PASS 后启用;部署侧为 wvp-pro + ZLMediaKit"}
 
     @app.post("/api/cameras/gb28181/sync")
     def gb28181_sync() -> dict[str, Any]:
         """从 wvp-pro 拉设备目录(含国标必选经纬度)→ GIS 点位库。"""
-        if not os.environ.get("GB28181_WVP_URL"):
+        env = {**load_env_file(_default_env_path()), **os.environ}
+        if not env.get("GB28181_WVP_URL"):
             raise HTTPException(400, "未配置 GB28181_WVP_URL(部署 wvp-pro + ZLMediaKit 后填写)")
         from .gb28181 import WvpClient
         from .geo import sync_from_device_list
-        c = WvpClient(os.environ["GB28181_WVP_URL"], os.environ.get("GB28181_USER", "admin"),
-                      os.environ.get("GB28181_PASS", ""))
-        devs = c.devices()
+        c = WvpClient(env["GB28181_WVP_URL"], env.get("GB28181_USER", "admin"), env.get("GB28181_PASS", ""))
+        try:
+            devs = c.devices()
+        except Exception:
+            raise HTTPException(502, "WVP 目录读取失败，请检查服务、版本、会话和权限") from None
         synced = sync_from_device_list(devs, manager.geo)
         return {"ok": True, "devices": len(devs), "synced": len(synced)}
 
@@ -799,9 +946,11 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         data = await image.read()
         if len(data) > 20 * 1024 * 1024:
             raise HTTPException(400, "图片超过 20MB")
+        if cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR) is None:
+            raise HTTPException(400, "上传内容不是可解码的图片")
         pdir = manager.data_dir / "plans"
         pdir.mkdir(parents=True, exist_ok=True)
-        safe = f"{int(time.time() * 1000)}{ext}"
+        safe = f"{uuid.uuid4().hex}{ext}"
         (pdir / safe).write_bytes(data)
         store = PlanStore(manager.data_dir / "plans.db")
         rec = store.create(name, safe)
@@ -860,7 +1009,7 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
             store.close()
             raise HTTPException(404, f"平面图不存在:{pid}")
         try:
-            rec = store.add_point(pid, body.name, body.kind, body.x, body.y)
+            rec = store.add_point(pid, body.name, body.kind, body.x, body.y, body.station_id)
         except ValueError as e:
             store.close()
             raise HTTPException(400, str(e)) from e
@@ -871,7 +1020,7 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     def plans_del_point(pid: str, ptid: str) -> dict[str, Any]:
         from .plans import PlanStore
         store = PlanStore(manager.data_dir / "plans.db")
-        ok = store.delete_point(ptid)
+        ok = store.delete_point(ptid, pid)
         store.close()
         if not ok:
             raise HTTPException(404, "点位不存在")
@@ -959,14 +1108,29 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     def shadow_samples(unlabeled: int = Query(1), limit: int = Query(50, ge=1, le=500)) -> list[dict[str, Any]]:
         from .shadow import ShadowStore
         store = ShadowStore(manager.data_dir / "shadow.db")
-        with store._lock:
-            q = "SELECT id, kind, station, ref_id, system_verdict, confidence, truth, created FROM shadow_samples"
-            if unlabeled:
-                q += " WHERE truth IS NULL"
-            q += " ORDER BY id DESC LIMIT ?"
-            rows = store._db.execute(q, [limit]).fetchall()
-        keys = ("id", "kind", "station", "ref_id", "system_verdict", "confidence", "truth", "created")
-        return [dict(zip(keys, r)) for r in rows]
+        try:
+            return store.list(bool(unlabeled), limit)
+        finally:
+            store.close()
+
+    @app.get("/api/shadow/report")
+    def shadow_report() -> dict[str, Any]:
+        store = ShadowStore(manager.data_dir / "shadow.db")
+        try:
+            return store.report()
+        finally:
+            store.close()
+
+    @app.get("/api/shadow/{sample_id}")
+    def shadow_sample(sample_id: int) -> dict[str, Any]:
+        store = ShadowStore(manager.data_dir / "shadow.db")
+        try:
+            row = store.get(sample_id)
+            if row is None:
+                raise HTTPException(404, "影子样本不存在")
+            return row
+        finally:
+            store.close()
 
     @app.post("/api/shadow/{sid}/truth")
     def shadow_truth(sid: int, body: TruthBody) -> dict[str, Any]:
@@ -974,8 +1138,11 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         if body.truth not in ("PASS", "NG"):
             raise HTTPException(400, "truth 必须是 PASS 或 NG")
         store = ShadowStore(manager.data_dir / "shadow.db")
-        store.set_truth(sid, body.truth)
-        store.close()
+        try:
+            if not store.set_truth(sid, body.truth):
+                raise HTTPException(404, "影子样本不存在")
+        finally:
+            store.close()
         return {"ok": True}
 
     @app.get("/api/timelines/{tid}/frames/{name}")
@@ -1045,12 +1212,29 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
             raise HTTPException(404, str(e)) from e
         return {"id": tid, "yaml": text}
 
-    @app.post("/api/stations/{sid}/signal")
+    @app.post("/api/stations/{sid}/signal", status_code=202)
     def station_signal(sid: str, body: SignalBody) -> dict[str, Any]:
-        """外部信号统一入口:扫码枪/扭矩枪/PLC/声学事件脚本都从这里进引擎。"""
+        """兼容人工 HTTP 信号：只入队，不从请求线程推进引擎。"""
         rt = manager.get(sid)
-        rt.engine.process(Event(time.time(), SIGNAL, name=body.name, value=body.value))
-        return {"ok": True}
+        try:
+            return {"ok": True, **rt.signal_inbox.push_legacy(body.name, body.value)}
+        except SignalError as e:
+            raise HTTPException(e.status, {"code": e.code, "message": str(e)}) from None
+
+    @app.post("/api/stations/{sid}/signals", status_code=202)
+    def station_signals(sid: str, body: SignalPacket) -> dict[str, Any]:
+        rt = manager.get(sid)
+        if body.source not in rt.cfg.signal_sources:
+            raise HTTPException(403, "信号来源未在工位 signal_sources 中注册")
+        try:
+            return rt.signal_inbox.push(body)
+        except SignalError as e:
+            raise HTTPException(e.status, {"code": e.code, "message": str(e)}) from None
+
+    @app.get("/api/stations/{sid}/signals/audit")
+    def station_signal_audit(sid: str, limit: int = Query(100, ge=1, le=500)) -> list[dict[str, Any]]:
+        manager.get(sid)
+        return manager.signal_store.audit(sid, limit)
 
     # ---- 拍照即检(V 系列) ----
     def _inspection() -> InspectionService:

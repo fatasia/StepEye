@@ -169,3 +169,16 @@ python tools/cam_uploader.py --server http://127.0.0.1:8000 --watch D:\camdrop
 ONVIF/GB28181 的发现与坐标读取已平台化:`/api/cameras/onvif/*`、`/api/cameras/gb28181/sync`。
 ONVIF 由平台侧自接(visual/onvif.py,真机联调待验证);GB28181 走 Monibuca 插件(官网称永久免费,
 具体开源许可以仓库为准,启用前核对)。
+
+
+## 原生部署与本轮接入
+
+Windows/Linux原生服务共用Web，不需要Docker。新增空间态势、巡更、录像调阅和观测健康；设备信号由采集线程统一求值，坏画质不作为通过证据。
+
+- [原生Monibuca与录像部署](../docs/MONIBUCA.md)
+- [多源信号与光照门禁](../docs/FUSION-LIGHTING.md)
+- [训练准备及实际缺口](../docs/TRAINING-READINESS.md)
+- [现场上线验收](../docs/INDUSTRIAL-ACCEPTANCE.md)
+- [自动标注与MCP实施方案](../docs/AUTO-LABEL-MCP-PLAN.md)
+
+本机工程验证不替代真机、真实训练和现场影子；最新状态以 [HANDOFF](../HANDOFF.md) 与 [ROADMAP-v2](../docs/ROADMAP-v2.md) 为准。

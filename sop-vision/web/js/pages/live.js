@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { mountPreview } from "../preview.js";
 import { icon } from "../icons.js";
 import { store, subscribe, stationStatus } from "../store.js";
 import { badge, emptyBlock, errorBlock, STEP_STATUS, stationBadge, violationTag } from "../ui.js";
@@ -62,7 +63,7 @@ export function render(root, params) {
     return () => {};
   }
   root.innerHTML = `<div class="live"><section class="panel skeleton-block" style="min-height:480px"></section><aside class="live-side"><section class="panel skeleton-block" style="min-height:360px"></section></aside></div>`;
-  let off = () => {}, dead = false;
+  let off = () => {}, stopPreview = () => {}, dead = false;
 
   const load = async () => {
     let cfg;
@@ -83,7 +84,10 @@ export function render(root, params) {
               <label class="select-wrap"><span class="sr-only">切换工位</span><select id="sel">${store.metas.map((m) => `<option value="${esc(m.id)}" ${m.id === id ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label></div>
             <span data-r="status"></span>
           </header>
-          <div class="video-wrap"><img src="${api.stream(id)}" alt="${esc(meta.name)} 实时画面">
+          <div class="preview-tools"><span class="muted" data-preview-note role="status"></span><div class="head-left">
+            <button class="btn btn-sm" data-preview-retry>WebRTC / 重试</button><button class="btn btn-sm" data-preview-analysis>分析画面</button></div></div>
+          <div class="video-wrap"><img data-analysis src="${api.stream(id)}" alt="${esc(meta.name)} 分析画面">
+            <video data-webrtc autoplay muted playsinline hidden aria-label="${esc(meta.name)} WebRTC 原始画面"></video>
             <div class="video-hud"><span class="hud-chip" data-r="cycle"></span><span class="hud-chip num" data-r="timer"></span></div></div>
           <div class="takt-panel"><div class="takt-head"><span>节拍进度</span><span class="num muted" data-r="taktText"></span></div><div data-r="takt"></div></div>
         </section>
@@ -91,9 +95,11 @@ export function render(root, params) {
           <section class="panel"><header class="panel-head"><h2>步骤轨道</h2><span class="muted num" data-r="progress"></span></header><ol class="rail" data-r="rail"></ol></section>
           <section class="panel"><header class="panel-head"><h2>违规</h2></header><div class="panel-body viol" data-r="viol"></div></section>
           <section class="panel"><header class="panel-head"><h2>区域状态</h2><span class="muted">手 / 物件</span></header><div class="panel-body zone-chips" data-r="zones"></div></section>
+          <section class="panel"><header class="panel-head"><h2>观测健康</h2><span class="muted">质量 / 融合</span></header><div class="panel-body" data-r="health"></div></section>
         </aside>
       </div>`;
     $("#sel", root).onchange = (e) => (location.hash = `#/live/${encodeURIComponent(e.target.value)}`);
+    stopPreview = mountPreview(root, id, cfg.preview);
     const r = (k) => root.querySelector(`[data-r="${k}"]`);
     const paint = () => {
       const st = store.states.get(id);
@@ -108,10 +114,19 @@ export function render(root, params) {
       setHTML(r("rail"), railHtml(cfg.steps, c));
       setHTML(r("viol"), violHtml(c));
       setHTML(r("zones"), zonesHtml(st));
+      const q = st?.quality, fusion = st?.fusion;
+      const fmt = (v, suffix = "") => Number.isFinite(v) ? `${v.toFixed(1)}${suffix}` : "—";
+      setHTML(r("health"), `<div class="kv"><span>视觉门禁</span><b class="tone-${q?.degraded ? "warning" : q?.observation === "disabled" ? "muted" : "success"}-text">${q?.degraded ? "暂停取证" : q?.observation === "disabled" ? "未启用" : q ? "可取证" : "待观测"}</b></div>
+        <div class="kv"><span>亮度漂移</span><span class="num">${fmt(q?.brightness_drift == null ? null : q.brightness_drift * 100, "%")}</span></div>
+        <div class="kv"><span>背景可用</span><span class="num">${Number.isFinite(q?.background_pixels) ? q.background_pixels + " px" : "—"}</span></div>
+        ${q?.reason ? `<div class="muted">${esc(q.reason)}</div>` : ""}
+        <div class="kv"><span>有效设备信号</span><span class="num">${fusion?.signals?.filter((s) => s.quality === "ok").length ?? 0}</span></div>
+        ${fusion?.conflicts?.length ? `<div class="tone-warning-text">来源冲突：${fusion.conflicts.map(esc).join("、")}</div>` : ""}
+        ${fusion?.unknown?.length ? `<div class="muted">信号待核实：${fusion.unknown.map(esc).join("、")}</div>` : ""}`);
     };
     paint();
     off = subscribe((t, p) => { if (t === "state" ? p === id : t === "event" || t === "conn") paint(); });
   };
   load();
-  return () => { dead = true; off(); };
+  return () => { dead = true; off(); stopPreview(); };
 }

@@ -28,6 +28,9 @@ class PlanStore:
                          " image TEXT, created TEXT, updated TEXT)")
         self._db.execute("CREATE TABLE IF NOT EXISTS plan_points (id TEXT PRIMARY KEY, plan_id TEXT,"
                          " name TEXT, kind TEXT, x REAL, y REAL, created TEXT)")
+        columns = {r[1] for r in self._db.execute("PRAGMA table_info(plan_points)")}
+        if "station_id" not in columns:
+            self._db.execute("ALTER TABLE plan_points ADD COLUMN station_id TEXT NOT NULL DEFAULT ''")
         self._db.execute("CREATE INDEX IF NOT EXISTS idx_ppts ON plan_points(plan_id)")
         self._db.commit()
 
@@ -42,7 +45,7 @@ class PlanStore:
 
     @staticmethod
     def _point(row) -> dict[str, Any]:
-        keys = ("id", "plan_id", "name", "kind", "x", "y", "created")
+        keys = ("id", "plan_id", "name", "kind", "x", "y", "created", "station_id")
         return dict(zip(keys, row))
 
     # ---- 平面图 ----
@@ -72,33 +75,40 @@ class PlanStore:
         return cur.rowcount > 0
 
     # ---- 点位 ----
-    def add_point(self, plan_id: str, name: str, kind: str, x: float, y: float) -> dict[str, Any]:
+    def add_point(self, plan_id: str, name: str, kind: str, x: float, y: float,
+                  station_id: str = "") -> dict[str, Any]:
         if not (0 <= x <= 1 and 0 <= y <= 1):
             raise ValueError("打点坐标需在 0~1(归一化)")
         if kind not in ("camera", "station", "sensor"):
             raise ValueError("kind 必须是 camera/station/sensor")
+        name = name.strip()
+        if not name or len(name) > 100:
+            raise ValueError("点位名称需为 1~100 字")
+        if self.get(plan_id) is None:
+            raise ValueError("平面图不存在")
         pid = f"PT-{uuid.uuid4().hex[:8].upper()}"
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
         with self._lock:
-            self._db.execute("INSERT INTO plan_points VALUES (?,?,?,?,?,?,?)",
-                             (pid, plan_id, name, kind, x, y, now))
+            self._db.execute("INSERT INTO plan_points (id,plan_id,name,kind,x,y,created,station_id) VALUES (?,?,?,?,?,?,?,?)",
+                             (pid, plan_id, name, kind, x, y, now, station_id.strip()))
             self._db.commit()
         return self.get_point(pid)  # type: ignore[return-value]
 
     def get_point(self, pid: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._db.execute(
-                "SELECT id,plan_id,name,kind,x,y,created FROM plan_points WHERE id=?", (pid,)).fetchone()
+                "SELECT id,plan_id,name,kind,x,y,created,station_id FROM plan_points WHERE id=?", (pid,)).fetchone()
         return self._point(row) if row else None
 
     def points(self, plan_id: str) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._db.execute(
-                "SELECT id,plan_id,name,kind,x,y,created FROM plan_points WHERE plan_id=? ORDER BY created", (plan_id,)).fetchall()
+                "SELECT id,plan_id,name,kind,x,y,created,station_id FROM plan_points WHERE plan_id=? ORDER BY created", (plan_id,)).fetchall()
         return [self._point(r) for r in rows]
 
-    def delete_point(self, pid: str) -> bool:
+    def delete_point(self, pid: str, plan_id: str | None = None) -> bool:
         with self._lock:
-            cur = self._db.execute("DELETE FROM plan_points WHERE id=?", (pid,))
+            cur = self._db.execute("DELETE FROM plan_points WHERE id=?" + (" AND plan_id=?" if plan_id else ""),
+                                   (pid, plan_id) if plan_id else (pid,))
             self._db.commit()
         return cur.rowcount > 0

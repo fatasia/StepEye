@@ -1,6 +1,8 @@
 """光照突变算法与模板/信号端点的离线测试。"""
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +11,7 @@ from visual.dsl import QualityCfg
 from visual.engine import Engine
 from visual.events import SIGNAL, Event
 from visual.perception.base import Context, build_geoms
-from visual.perception.quality import LIGHT_ADAPT_AFTER, CONFIRM, QualityPerceiver
+from visual.perception.quality import CONFIRM, QualityPerceiver
 from visual.server import build_app
 from visual.templates import list_templates, render_station
 
@@ -26,7 +28,7 @@ def _cfg() -> QualityCfg:
     return QualityCfg(enabled=True, blur_min=2.0, brightness=(0, 255), lighting_drift=0.3, every_n=1)
 
 
-def test_lighting_drift_degrades_then_recovers():
+def test_lighting_drift_stays_degraded_until_original_light_returns():
     q = QualityPerceiver(_cfg())
     ctx = Context({})
     events = []
@@ -37,16 +39,15 @@ def test_lighting_drift_degrades_then_recovers():
         events += q.process(_frame(170, 10 + i), 1.0 + 0.1 * i, ctx)
     assert q.degraded and q.reason == "lighting_drift"
     assert events[-1].state == "degraded" and events[-1].value == "lighting_drift"
-    # 持续劣化 LIGHT_ADAPT_AFTER 次确认 → 自适应新光照 → 恢复
-    n = CONFIRM
-    recovered = False
-    for i in range(LIGHT_ADAPT_AFTER + CONFIRM + 5):
-        evs = q.process(_frame(170, 30 + i), 2.0 + 0.1 * i, ctx)
-        n += 1
-        if evs and evs[-1].state == "ok":
-            recovered = True
-            break
-    assert recovered, "持续光照变化后应自适应恢复,而不是永远降级"
+    # 原策略约4秒自动适应会把持续异常洗白；生产默认固定参考，需恢复或人工重标定。
+    # 这是验收策略修复，不改变 HANDOFF 记录的 VLM/检测历史实测数字。
+    for i in range(80):
+        assert not q.process(_frame(170, 30 + i), 2.0 + 0.1 * i, ctx)
+    assert q.degraded and q.reason == "lighting_drift"
+    recovered = []
+    for i in range(8):
+        recovered += q.process(_frame(100, 120 + i), 12.0 + 0.1 * i, ctx)
+    assert not q.degraded and recovered[-1].state == "ok"
 
 
 def test_lighting_brief_flicker_does_not_adapt():
@@ -56,7 +57,7 @@ def test_lighting_brief_flicker_does_not_adapt():
         q.process(_frame(100, i), 0.1 * i, ctx)
     for i in range(CONFIRM):  # 短暂变亮 → 降级
         q.process(_frame(170, 10 + i), 1.0 + 0.1 * i, ctx)
-    for i in range(LIGHT_ADAPT_AFTER - CONFIRM):  # 回到原亮度:恢复而不是记住"新基準"
+    for i in range(10):  # 回到原亮度:恢复而不是记住"新基準"
         evs = q.process(_frame(100, 20 + i), 2.0 + 0.1 * i, ctx)
     assert q.degraded is False
     for i in range(CONFIRM):  # 再变亮 → 仍应立刻检出(基準没被闪烁污染)
@@ -65,7 +66,11 @@ def test_lighting_brief_flicker_does_not_adapt():
 
 
 def test_lighting_disabled_when_none():
-    q = QualityPerceiver(QualityCfg(enabled=True, blur_min=2.0, brightness=(0, 255), lighting_drift=None, every_n=1))
+    # 本测试只验证关闭光照漂移；绝对饱和监测独立配置，另有覆盖。
+    cfg = QualityCfg(enabled=True, blur_min=2.0, brightness=(0, 255), lighting_drift=None, every_n=1).model_dump()
+    cfg.update(max_dark_fraction=None, max_bright_fraction=None,
+               max_tile_dark_fraction=None, max_tile_bright_fraction=None)
+    q = QualityPerceiver(SimpleNamespace(**cfg))
     ctx = Context({})
     for i in range(20):
         assert q.process(_frame(100 + 8 * i, i), 0.1 * i, ctx) == []

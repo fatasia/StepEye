@@ -46,14 +46,39 @@ class ShadowStore:
             cur = self._db.execute(
                 "INSERT INTO shadow_samples (kind, station, ref_id, system_verdict, confidence, truth, created, body)"
                 " VALUES (?,?,?,?,?,NULL,?,?)",
-                (kind, station, ref_id, system_verdict, confidence, now, json.dumps(body, ensure_ascii=False)))
+                (kind, station, ref_id, "NG" if system_verdict == "FAIL" else system_verdict,
+                 confidence, now, json.dumps(body, ensure_ascii=False)))
             self._db.commit()
         return cur.lastrowid
 
-    def set_truth(self, sample_id: int, truth: str) -> None:
+    def set_truth(self, sample_id: int, truth: str) -> bool:
+        if truth not in ("PASS", "NG"):
+            raise ValueError("truth 必须是 PASS 或 NG")
         with self._lock:
-            self._db.execute("UPDATE shadow_samples SET truth=? WHERE id=?", (truth, sample_id))
+            cur = self._db.execute("UPDATE shadow_samples SET truth=? WHERE id=?", (truth, sample_id))
             self._db.commit()
+        return cur.rowcount > 0
+
+    @staticmethod
+    def _sample(row) -> dict[str, Any]:
+        d = dict(zip(("id", "kind", "station", "ref_id", "system_verdict", "confidence", "truth", "created", "body"), row))
+        d["body"] = json.loads(d["body"] or "{}")
+        if d["system_verdict"] == "FAIL":
+            d["system_verdict"] = "NG"
+        return d
+
+    def get(self, sample_id: int) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._db.execute("SELECT id,kind,station,ref_id,system_verdict,confidence,truth,created,body "
+                                   "FROM shadow_samples WHERE id=?", (sample_id,)).fetchone()
+        return self._sample(row) if row else None
+
+    def list(self, unlabeled: bool = True, limit: int = 50) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute("SELECT id,kind,station,ref_id,system_verdict,confidence,truth,created,body "
+                                    "FROM shadow_samples" + (" WHERE truth IS NULL" if unlabeled else "") +
+                                    " ORDER BY id DESC LIMIT ?", (max(1, min(limit, 500)),)).fetchall()
+        return [self._sample(r) for r in rows]
 
     def report(self, kind: str | None = None, since: str | None = None) -> dict[str, Any]:
         """按真值算混淆:漏检(system=PASS truth=NG)、误杀(system=NG truth=PASS)、待标注数。"""
@@ -71,11 +96,16 @@ class ShadowStore:
         kinds: dict[str, Any] = {}
         for k, sys_v, truth, n in rows:
             d = kinds.setdefault(k, {"labeled": 0, "unlabeled": 0, "miss": 0, "false_alarm": 0,
-                                     "correct": 0, "agree_rate": None})
+                                     "correct": 0, "evaluated": 0, "uncertain": 0, "agree_rate": None})
             if truth is None:
                 d["unlabeled"] += n
                 continue
             d["labeled"] += n
+            sys_v = "NG" if sys_v == "FAIL" else sys_v
+            if sys_v not in ("PASS", "NG"):
+                d["uncertain"] += n
+                continue
+            d["evaluated"] += n
             if sys_v == truth:
                 d["correct"] += n
             elif truth == "NG":
@@ -83,8 +113,8 @@ class ShadowStore:
             elif truth == "PASS":
                 d["false_alarm"] += n  # 误杀
         for d in kinds.values():
-            if d["labeled"]:
-                d["agree_rate"] = round(d["correct"] / d["labeled"], 3)
+            if d["evaluated"]:
+                d["agree_rate"] = round(d["correct"] / d["evaluated"], 3)
         return {"kinds": kinds, "generated": datetime.now().isoformat(timespec="seconds")}
 
 

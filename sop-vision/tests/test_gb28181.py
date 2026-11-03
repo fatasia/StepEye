@@ -13,6 +13,8 @@ class FakeHttp:
 
     def post(self, url, payload, headers=None):
         assert payload["username"] == "admin"
+        import hashlib
+        assert payload["password"] == hashlib.md5(b"pw").hexdigest()
         return {"code": 0, "data": {"accessToken": "T123"}}
 
     def get(self, url):
@@ -53,3 +55,15 @@ def test_wvp_play_url_uses_token(tmp_path):
                                                        "hls": "http://h.m3u8"}})[1]
     out = c.play_url("DEV1", "CH1")
     assert out["rtsp"] == "rtsp://zlm/x" and "play/start/DEV1/CH1" in calls[0]
+
+
+def test_wvp_reads_all_pages_and_preserves_equator_coordinates():
+    from urllib.parse import urlsplit, parse_qs
+    c = WvpClient("http://wvp", "admin", "pw"); c._token = "local-test"
+    def get(url):
+        page = int(parse_qs(urlsplit(url).query)["page"][0])
+        return {"code": 0, "data": {"total": 2, "list": [
+            {"deviceId": str(page), "latitude": "0", "longitude": "121"}]}}
+    c._get = get
+    rows = c.devices()
+    assert len(rows) == 2 and rows[0]["lat"] == 0 and rows[0]["lng"] == 121

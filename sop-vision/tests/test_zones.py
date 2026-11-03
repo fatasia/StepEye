@@ -37,8 +37,7 @@ def test_manager_reload_rebuilds_runtime(tmp_path):
     m.reload("DEMO-ST01")
     assert m.runtimes["DEMO-ST01"] is not old
     old.stop()
-    m.runtimes["DEMO-ST01"].stop()
-    m.store.close()
+    m.stop()  # reload 启动了采集线程，必须 join 后才能关闭共享数据库
 
 
 def test_zones_endpoint_validates_writes_and_reloads(tmp_path):

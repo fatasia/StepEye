@@ -35,8 +35,10 @@ export function stationStatus(id) {
 }
 
 function ingestState(id, data) {
+  const previous = store.states.get(id);
   store.states.set(id, data);
-  store.seen.set(id, Date.now());
+  // WS 保活不等于摄像头出帧；重复推送旧缓存不能把断流工位刷成在线。
+  if (Number.isFinite(data.frame) && data.frame > 0 && data.frame !== previous?.frame) store.seen.set(id, Date.now());
   if (!store.metas.some((m) => m.id === id) && data.meta) store.metas.push(data.meta);
 }
 

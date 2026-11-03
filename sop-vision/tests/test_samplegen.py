@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from visual.regress import RegressStore, boundary_card, manifest_hash
 from visual.samplegen import augment_batch, augment_one, generate_batch, write_manifest
 from visual.server import build_app
+from visual.llm_provider import ProviderConfig
 
 
 def _jpeg(tmp: Path, mean: int = 120, name: str = "ref.jpg") -> Path:
@@ -83,7 +84,7 @@ class _FakeVLM:
 def test_generate_batch_cogview_with_injections(tmp_path):
     ref = _jpeg(tmp_path)
     rows = generate_batch(ref, "NG", "表面出现刮痕", 3, tmp_path / "g", engine="cogview",
-                          vlm=_FakeVLM(), cogview_transport=_FakeCogTransport(),
+                          cfg=ProviderConfig(api_key="local-test-transport"), vlm=_FakeVLM(), cogview_transport=_FakeCogTransport(),
                           cogview_fetcher=lambda url, timeout: _FakeResp(b"fakedata"))
     assert len(rows) == 3 and all(r["engine"] == "cogview" and r["file"] for r in rows)
     assert all((tmp_path / "g" / r["file"]).read_bytes() == b"fakedata" for r in rows)
@@ -97,7 +98,7 @@ def test_generate_batch_cogview_caps_and_records_errors(tmp_path):
     def boom(url, timeout):
         raise RuntimeError("quota")
     rows = generate_batch(ref, "NG", "d", 2, tmp_path / "g3", engine="cogview", seed=1,
-                          vlm=_FakeVLM(), cogview_transport=_FakeCogTransport(), cogview_fetcher=boom)
+                          cfg=ProviderConfig(api_key="local-test-transport"), vlm=_FakeVLM(), cogview_transport=_FakeCogTransport(), cogview_fetcher=boom)
     assert all(r.get("error") for r in rows) and not any(r.get("file") for r in rows)  # 单张失败不断批
 
 

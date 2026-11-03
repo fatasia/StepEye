@@ -1,0 +1,3 @@
+# 可选 WS-Discovery 自动发现。LGPLv3+，不纳入默认平台/EXE依赖。
+# 如启用或随产品分发，单独登记许可、NOTICE与相应分发要求。
+WSDiscovery==2.1.2

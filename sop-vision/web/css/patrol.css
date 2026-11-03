@@ -1,0 +1,26 @@
+/* 巡更：按时间排列的证据行，不把未知观测染成违规。 */
+.page-patrol { display: grid; gap: var(--s-3); align-content: start; }
+.patrol-note { padding: var(--s-3) var(--s-4); font-size: 12px; border-bottom: 1px solid var(--line-subtle); }
+.patrol-row { padding: var(--s-3) var(--s-4); display: grid; gap: var(--s-2); }
+.patrol-row + .patrol-row { border-top: 1px solid var(--line-subtle); }
+.patrol-row-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.patrol-row-head > div { display: flex; gap: var(--s-2); align-items: baseline; flex-wrap: wrap; min-width: 0; }
+.patrol-row-head b { color: var(--text-strong); font-weight: 600; }
+.patrol-row-head .muted, .patrol-reason { font-size: 12px; overflow-wrap: anywhere; }
+.patrol-metrics { display: flex; gap: var(--s-2) var(--s-4); flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+.patrol-metrics a { margin-left: auto; color: var(--accent); }
+.patrol-metrics b { color: var(--text-strong); font-weight: 500; }
+.patrol-editor { padding: var(--s-3) var(--s-4); border-top: 1px solid var(--line-subtle); }
+.patrol-editor summary { cursor: pointer; color: var(--accent); width: fit-content; }
+.patrol-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-3); margin-top: var(--s-3); }
+.patrol-form .field { display: grid; align-items: stretch; gap: var(--s-1); min-width: 0; height: auto; padding: 0; border: 0; background: transparent; }
+.patrol-form .field > span { font-size: 12px; }
+.patrol-form input, .patrol-form select { width: 100%; min-width: 0; height: 34px; padding: 0 var(--s-2); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); background: var(--surface-2); }
+.patrol-form input:focus, .patrol-form select:focus { border-color: var(--accent); }
+.patrol-form button { width: fit-content; align-self: end; }
+.patrol-form-hint { grid-column: 1 / -1; font-size: 12px; }
+@media (max-width: 699px) {
+  .patrol-form { grid-template-columns: minmax(0, 1fr); }
+  .patrol-row-head > div { display: grid; gap: var(--s-1); }
+  .patrol-metrics a { margin-left: 0; }
+}

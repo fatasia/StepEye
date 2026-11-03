@@ -1,7 +1,7 @@
 """YOLO 系 ONNX 检测适配(onnxruntime,零 torch 运行时依赖)。
 
-用途:客户/我们用 YOLO(或 D-FINE/RF-DETR)训练后导出的 .onnx 直接上岗——
-推理侧不碰 Ultralytics AGPL 代码(TRAINING.md 许可台账)。与 MediaPipe .tflite
+用途:读取下述 YOLO 风格输出的 ONNX；D-FINE/RF-DETR 的多输入/输出尚需专用适配。
+使用 onnxruntime 不改变权重本身的许可，详见 TRAINING-READINESS。与 MediaPipe .tflite
 同一 DetectorCfg 接口,按扩展名自动选引擎(见 create_detector)。
 支持布局:Ultralytics 导出 (1, 4+nc, N)——v8/v11 无 objectness;v5 (1, 5+nc, N) 自动识别乘回 obj。
 """

@@ -23,6 +23,10 @@ class ZoneCountTracker:
         self.geoms = geoms
         self.enter_frames, self.exit_frames = enter_frames, exit_frames
         self.source = source
+        self.reset()
+
+    def reset(self) -> None:
+        """恢复后重新去抖，不沿用劣质帧的稳定计数。"""
         self.count: dict[tuple[str, str], int] = {}  # (key, zone) -> 稳定计数
         self._pending: dict[tuple[str, str], int | None] = {}
         self._frames: dict[tuple[str, str], int] = {}

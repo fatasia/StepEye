@@ -43,6 +43,8 @@ class Cycle:
     baseline: set[str] = field(default_factory=set)
     quality_bad_s: float = 0.0
     quality_since: float | None = None
+    quality_bad_seen: bool = False
+    fusion_bad_seen: bool = False
 
 
 @dataclass
@@ -54,6 +56,8 @@ class World:
     person_count: dict[str, int] = field(default_factory=dict)
     quality_bad: bool = False
     quality_reason: str = ""
+    signals: dict[tuple[str, str], Event] = field(default_factory=dict)
+    signal_conflicts: set[str] = field(default_factory=set)
 
 
 Subscriber = Callable[[str, dict[str, Any]], None]
@@ -70,6 +74,11 @@ class Engine:
         self._need_rearm = False
         self._subs: list[Subscriber] = []
         self._by_id = {s.id: s for s in program.steps}
+        self._batching = False
+        signal_conds = [c for step in program.steps for c in step.evidence.conds]
+        if program.cycle:
+            signal_conds += [program.cycle.start, program.cycle.end]
+        self._held_signal_names = {c.signal.name for c in signal_conds if c.signal and c.signal.hold_ms}
 
     def subscribe(self, fn: Subscriber) -> None:
         self._subs.append(fn)
@@ -83,10 +92,72 @@ class Engine:
         return datetime.fromtimestamp(self.epoch_offset + ts, tz=timezone.utc).astimezone().isoformat(timespec="milliseconds")
 
     # ---------------------------------------------------------------- 输入
+    @staticmethod
+    def _valid_signal(ev: Event, ts: float) -> bool:
+        return ev.conf > 0 and ev.data.get("quality", "ok") == "ok" and ev.data.get("valid_until_ts", ts + 1) > ts
+
+    def prepare_signals(self, events: list[Event], ts: float) -> None:
+        """同帧先摄取全部最新信号，再求值，防先true后invalid瞬时过闸。"""
+        states = self.world.signals
+        for key in [k for k, e in states.items() if k[1] not in self._held_signal_names and not self._valid_signal(e, ts)]:
+            del states[key]  # 边沿通知到期后不伪装成待核实的持续设备状态
+        for ev in events:
+            if ev.type != SIGNAL or not ev.name:
+                continue
+            ev.data.setdefault("valid_until_ts", ev.ts + 0.001)  # 无TTL的内部边沿不能变成永久状态
+            key = (ev.source, ev.name)
+            previous = states.get(key)
+            since = ev.ts
+            if self._valid_signal(ev, ts) and previous and self._valid_signal(previous, ts) and previous.value == ev.value:
+                since = previous.data.get("state_since_ts", previous.ts)
+            ev.data["state_since_ts"] = since
+            states[key] = ev
+        self.world.signal_conflicts = set()
+        names = {name for _, name in states}
+        for name in names:
+            values = [ev.value for (_, n), ev in states.items() if n == name and self._valid_signal(ev, ts)]
+            if any(value != values[0] for value in values[1:]):
+                self.world.signal_conflicts.add(name)
+        if self.cycle:
+            for step in self.cycle.steps:
+                if step.status == DONE:
+                    continue
+                for cond in step.spec.evidence.conds:
+                    s = cond.signal
+                    if not s or not s.hold_ms:
+                        continue
+                    values = [e for (source, name), e in states.items() if name == s.name and (s.source is None or source == s.source)]
+                    if any(not self._valid_signal(e, ts) for e in values) or (s.source is None and s.name in self.world.signal_conflicts):
+                        self.cycle.fusion_bad_seen = True
+
+    def process_batch(self, events: list[Event], ts: float) -> None:
+        """一帧观测是一个求值批次；世界状态先更新，边沿随后按序求值。"""
+        self.prepare_signals(events, ts)
+        self._batching = True
+        try:
+            for ev in events:
+                self.process(ev)
+        finally:
+            self._batching = False
+        for ev in events:
+            if ev.type == SIGNAL and ev.name == "sn" and self.cycle and self._valid_signal(ev, ts):
+                self.cycle.sn = str(ev.value)
+            self._advance(max(ev.ts, self.now), ev)
+        self.tick(ts)
+
     def process(self, ev: Event) -> None:
         w = self.world
         ts = max(ev.ts, self.now)
-        if ev.type == HAND_ENTER and ev.zone:
+        if ev.type == SIGNAL and not self._batching:
+            self.prepare_signals([ev], ts)
+        if ev.type == QUALITY:
+            self._on_quality(ev, ts)
+        elif w.quality_bad and ev.type != SIGNAL:
+            # 看不清时丢弃视觉证据；物理信号仍可记录，但不会绕过视觉条件。
+            if not self._batching:
+                self._advance(ts, None)
+            return
+        elif ev.type == HAND_ENTER and ev.zone:
             w.hands[ev.zone] = ev.ts
         elif ev.type == HAND_EXIT and ev.zone:
             w.hands.pop(ev.zone, None)
@@ -109,21 +180,32 @@ class Engine:
             if cur is None or cur[0] != ev.state:
                 w.zone_state[ev.zone] = (ev.state, ev.ts)
                 self._emit("zone_state", zone=ev.zone, state=ev.state, ts=ts)
-        elif ev.type == SIGNAL and ev.name == "sn" and self.cycle:
+        elif ev.type == SIGNAL and ev.name == "sn" and self.cycle and not self._batching and self._valid_signal(ev, ts):
             self.cycle.sn = str(ev.value)
-        elif ev.type == QUALITY:
-            self._on_quality(ev, ts)
-        self._advance(ts, ev)
+        if not self._batching:
+            self._advance(ts, ev)
 
     def tick(self, ts: float) -> None:
+        self.prepare_signals([], ts)
         self._advance(max(ts, self.now), None)
 
     def _on_quality(self, ev: Event, ts: float) -> None:
         w, c = self.world, self.cycle
-        bad = ev.state == "degraded"
+        bad = ev.state != "ok"
+        if bad and c:
+            c.quality_bad_seen = True
         if bad and not w.quality_bad:
+            w.hands.clear()
+            w.zone_state.clear()
+            w.persons.clear()
+            w.person_absent_since.clear()
+            w.person_count.clear()
             if c:
                 c.quality_since = ts
+                for step in c.steps:
+                    if step.status != DONE:
+                        step.latched = {i for i in step.latched if step.spec.evidence.conds[i].kind == "signal"}
+                        step.seq_i = 0
         elif not bad and w.quality_bad and c and c.quality_since is not None:
             c.quality_bad_s += ts - max(c.quality_since, c.start_ts)
             c.quality_since = None
@@ -134,6 +216,8 @@ class Engine:
     # ---------------------------------------------------------------- 条件
     def _cond_true(self, cond: Cond, ts: float, ev: Event | None = None, floor: float = NEG_INF) -> bool:
         w = self.world
+        if w.quality_bad and cond.kind != "signal":
+            return False
         if cond.hand_dwell:
             enter = w.hands.get(cond.hand_dwell.zone)
             return enter is not None and ts - max(enter, floor) >= cond.hand_dwell.min_ms / 1000
@@ -147,7 +231,9 @@ class Engine:
             return since is not None and ts - max(since, floor) >= p.min_ms / 1000
         if cond.person_count:
             p = cond.person_count
-            n = w.person_count.get(p.zone, 0)
+            n = w.person_count.get(p.zone)
+            if n is None:
+                return False  # 未观测人数不是0人
             return n >= p.count if p.op == "ge" else n <= p.count
         if cond.obj_state:
             zs = w.zone_state.get(cond.obj_state.zone)
@@ -157,7 +243,15 @@ class Engine:
             zs = w.zone_state.get(cond.vlm_check.key)
             return zs is not None and zs[0] == "ok"
         s = cond.signal
-        return bool(ev and ev.type == SIGNAL and ev.name == s.name and (s.value is None or ev.value == s.value))
+        if s.hold_ms:
+            values = [e for (source, name), e in w.signals.items()
+                      if name == s.name and (s.source is None or source == s.source)]
+            if not values or (s.source is None and s.name in w.signal_conflicts):
+                return False
+            return all(self._valid_signal(e, ts) and (s.value is None or e.value == s.value) and
+                       ts - max(e.data.get("state_since_ts", e.ts), floor) >= s.hold_ms / 1000 for e in values)
+        return bool(ev and ev.type == SIGNAL and ev.name == s.name and self._valid_signal(ev, ts)
+                    and (s.source is None or ev.source == s.source) and (s.value is None or ev.value == s.value))
 
     def _shadow_satisfied(self, st: StepRt, ts: float) -> bool:
         conds = st.spec.evidence.conds
@@ -170,14 +264,21 @@ class Engine:
         evd = st.spec.evidence
         floor = st.armed_ts if st.armed_ts is not None else NEG_INF
         conds = evd.conds
+        if evd.mode != "seq" and any(c.signal and c.signal.hold_ms for c in conds):
+            current = [self._cond_true(c, ts, ev, floor) for c in conds]
+            return any(current) if evd.mode == "any" else all(current)
         if evd.mode == "seq":
             while st.seq_i < len(conds) and self._cond_true(conds[st.seq_i], ts, ev, floor):
                 st.seq_i += 1
             return st.seq_i == len(conds)
         for i, c in enumerate(conds):
+            if c.signal and c.signal.hold_ms:
+                continue  # 状态融合必须当下同时满足，不能把过期信号永久锁存
             if i not in st.latched and self._cond_true(c, ts, ev, floor):
                 st.latched.add(i)
-        return bool(st.latched) if evd.mode == "any" else len(st.latched) == len(conds)
+        satisfied = [i in st.latched or (bool(c.signal and c.signal.hold_ms) and self._cond_true(c, ts, ev, floor))
+                     for i, c in enumerate(conds)]
+        return any(satisfied) if evd.mode == "any" else all(satisfied)
 
     # ---------------------------------------------------------------- 状态机
     def _advance(self, ts: float, ev: Event | None) -> None:
@@ -185,6 +286,8 @@ class Engine:
         if self.p.cycle is None:  # 纯安全岗:世界状态由 process() 维护,无周期推进
             return
         if self.cycle is None:
+            if self.world.quality_bad and self.p.cycle.start.kind != "signal":
+                return  # 未知不是开始条件为假，不能用失去画面给同一工件重新武装
             start_ok = self._cond_true(self.p.cycle.start, ts, ev)
             if not start_ok:
                 self._need_rearm = False
@@ -217,6 +320,7 @@ class Engine:
         c = Cycle(cid, self.counter, ts, rts)
         if self.world.quality_bad:
             c.quality_since = ts
+            c.quality_bad_seen = True
         for st in rts:
             if self._shadow_satisfied(st, ts):
                 c.baseline.add(st.spec.id)
@@ -278,8 +382,8 @@ class Engine:
         errors = [v for v in c.violations if v["severity"] == "error"]
         result = "PASS"
         if errors:
-            result = "UNCERTAIN" if c.quality_bad_s >= cy.uncertain_quality_s else "FAIL"
-        if reason == "max_cycle":
+            result = "FAIL"
+        if reason == "max_cycle" or c.quality_bad_seen or c.fusion_bad_seen:
             result = "UNCERTAIN"
         steps = [{"id": s.spec.id, "name": s.spec.name, "status": s.status, "optional": s.spec.optional,
                   "early": s.early,
@@ -290,6 +394,8 @@ class Engine:
         out = {"cycle_id": c.id, "station": self.p.station, "result": result, "end_reason": reason, "sn": c.sn,
                "start_wall": self._wall(c.start_ts), "end_wall": self._wall(ts), "duration_s": round(dur, 3),
                "takt_s": cy.takt_s, "quality_degraded_s": round(c.quality_bad_s, 3),
+               "quality_affected": c.quality_bad_seen,
+               "fusion_affected": c.fusion_bad_seen,
                "steps": steps, "violations": c.violations, "rules_hash": self.p.rules_hash}
         self.cycle = None
         self._need_rearm = True
@@ -303,6 +409,11 @@ class Engine:
             "rules_hash": self.p.rules_hash,
             "now": round(self.now, 3),
             "quality": {"degraded": self.world.quality_bad, "reason": self.world.quality_reason},
+            "fusion": {"conflicts": sorted(self.world.signal_conflicts),
+                       "unknown": sorted({name for (_, name), e in self.world.signals.items() if not self._valid_signal(e, self.now)}),
+                       "signals": [{"source": source, "name": name, "expires_in_s": round(max(0, e.data.get("valid_until_ts", e.ts) - self.now), 3),
+                                    "sequence": e.data.get("sequence"), "quality": e.data.get("quality", "ok") if self._valid_signal(e, self.now) else "unknown"}
+                                   for (source, name), e in self.world.signals.items()]},
             "zones": {z: s for z, (s, _) in self.world.zone_state.items()},
             "hands": sorted(self.world.hands),
             "cycle": None if c is None else {

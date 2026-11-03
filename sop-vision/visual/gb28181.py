@@ -12,15 +12,17 @@ compose(见 README 部署章),平台侧只做 HTTP 拉取:
 from __future__ import annotations
 
 import json
+import hashlib
 import urllib.error
 import urllib.request
+from urllib.parse import quote, urlencode
 from typing import Any, Callable
 
 
 class _Http:
     def post(self, url: str, payload: dict, headers: dict | None = None) -> dict:
-        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
-                                     headers={**(headers or {}), "Content-Type": "application/json"})
+        req = urllib.request.Request(url, data=urlencode(payload).encode("utf-8"),
+                                     headers={**(headers or {}), "Content-Type": "application/x-www-form-urlencoded"})
         with urllib.request.urlopen(req, timeout=15) as r:  # noqa: S310 —— url 来自部署配置
             return json.load(r)
 
@@ -44,23 +46,54 @@ class WvpClient:
         return f"{self.base}{path}{sep}access-token={self._token}"
 
     def login(self) -> None:
+        # WVP 官方 UserController 使用 @RequestParam，密码须为32位MD5，不接JSON明文。
         resp = self._post(f"{self.base}/api/user/login",
-                          {"username": self.username, "password": self.password})
-        self._token = resp.get("data", {}).get("accessToken")
+                          {"username": self.username, "password": hashlib.md5(self.password.encode()).hexdigest()})
+        data = resp.get("data", resp)
+        self._token = data.get("accessToken") if isinstance(data, dict) else None
         if not self._token:
             raise RuntimeError("wvp 登录失败:未返回 accessToken")
+
+    @staticmethod
+    def _check_response(resp: dict) -> None:
+        if resp.get("code") not in (None, 0, 200):
+            raise RuntimeError("WVP 返回业务错误，请检查接口版本、会话与权限")
 
     def devices(self) -> list[dict[str, Any]]:
         """设备目录 → 统一形态 [{id, name, lat, lng, source}]。wvp 真机联调待验证。"""
         if not self._token:
             self.login()
-        resp = self._get(self._api("/api/device/query/devices?page=1&count=1000"))
+        all_devices = []
+        for page in range(1, 101):
+            resp = self._get(self._api(f"/api/device/query/devices?page={page}&count=1000"))
+            self._check_response(resp)
+            data = resp.get("data", {})
+            rows = data.get("list") if isinstance(data, dict) else None
+            if not isinstance(rows, list):
+                raise RuntimeError("WVP 设备目录结构不匹配，请核对版本")
+            all_devices.extend(rows)
+            total = data.get("total")
+            if total is not None and len(all_devices) >= int(total):
+                break
+            if not rows:
+                if total is not None and len(all_devices) < int(total):
+                    raise RuntimeError("WVP 分页结果不完整，未同步部分目录")
+                break
+            if total is None and len(rows) < 1000:
+                break
+        else:
+            raise RuntimeError("WVP 设备目录超过 100 页安全上限，请按站点拆分同步")
         out = []
-        for d in resp.get("data", {}).get("list", []):
-            lat = d.get("longitude") if d.get("longitudeTag") == "GPS" else None
-            lng = d.get("latitude") if d.get("longitudeTag") == "GPS" else None
-            # 国标常见字段互换:多数实现 longitude=经度;个别实现字段互换,联调时以真机为准
-            lat, lng = float(d.get("latitude") or 0) or None, float(d.get("longitude") or 0) or None
+        for d in all_devices:
+            if not isinstance(d, dict) or not d.get("deviceId"):
+                raise RuntimeError("WVP 设备目录缺少 deviceId，未同步部分目录")
+            try:
+                lat = float(d["latitude"]) if d.get("latitude") not in (None, "") else None
+                lng = float(d["longitude"]) if d.get("longitude") not in (None, "") else None
+                if (lat == lng == 0) or lat is None or lng is None or not (-90 <= lat <= 90 and -180 <= lng <= 180):
+                    lat, lng = None, None
+            except (ValueError, TypeError):
+                lat, lng = None, None
             out.append({"id": str(d.get("deviceId")), "name": str(d.get("name") or d.get("deviceId")),
                         "lat": lat, "lng": lng, "source": "gb28181"})
         return out
@@ -68,6 +101,7 @@ class WvpClient:
     def play_url(self, device_id: str, channel_id: str) -> dict[str, Any]:
         if not self._token:
             self.login()
-        resp = self._get(self._api(f"/api/play/start/{device_id}/{channel_id}"))
+        resp = self._get(self._api(f"/api/play/start/{quote(device_id, safe='')}/{quote(channel_id, safe='')}"))
+        self._check_response(resp)
         data = resp.get("data", {})
         return {"rtsp": data.get("rtsp"), "flv": data.get("flv"), "hls": data.get("hls")}

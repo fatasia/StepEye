@@ -15,7 +15,7 @@ import numpy as np
 
 from .dsl import Program, StationConfig
 from .engine import Engine
-from .events import OBJ_STATE, Event
+from .events import OBJ_STATE, QUALITY, Event
 from .evidence import CycleStore, EvidenceRecorder
 from .llm_provider import ProviderConfig, VLMProvider
 from .perception.base import Context, build_geoms
@@ -53,6 +53,9 @@ class StationRuntime:
         self.frame_idx = 0
         self.alerts: list[dict[str, Any]] = []
         self.listeners: list[Callable[[str, dict[str, Any]], None]] = []
+        self.frame_observers: list[Callable] = []
+        self.signal_inbox = None
+        self._last_frame_wall: float | None = None
         self._calib_request: list[str] | None = None
         self._lock = threading.Lock()
         self.stop_event = threading.Event()
@@ -64,6 +67,8 @@ class StationRuntime:
         ref_dir = data_dir / "refs" / cfg.station
         self.roi = RoiStatePerceiver(cfg.roi_states, self.geoms, ref_dir)
         self.quality = QualityPerceiver(cfg.quality)
+        self._quality_blocked = False
+        self._vision_generation = 0
         self.source: Any
         self.hands: Any = None
         if src.type == "sim":
@@ -86,8 +91,8 @@ class StationRuntime:
             self.detector = create_detector(cfg.detector, self.geoms, self.base_dir)
         # 常驻安全规则(S16/S17):独立于周期,任何时刻持续监控
         rules = [SafetyRule(id=r.id, kind=r.kind, zone=r.zone, min_s=r.min_s, count_ge=r.count_ge,
-                            severity=r.severity, name=r.name) for r in cfg.safety.rules]
-        self.safety = SafetyMonitor(rules) if rules else None
+                            severity=r.severity, name=r.name, target=r.target) for r in cfg.safety.rules]
+        self.safety = SafetyMonitor(rules) if cfg.safety.enabled and rules else None
         # vlm_check:后台线程判帧,不阻塞视频循环;结果以 OBJ_STATE(伪区域)进引擎
         self._vlm_conds = {}
         for st in self.program.steps:
@@ -96,7 +101,7 @@ class StationRuntime:
                     self._vlm_conds[c.vlm_check.key] = c.vlm_check
         self._vlm_provider: VLMProvider | None = None
         self._vlm_q: queue.Queue = queue.Queue()
-        self._vlm_results: deque[tuple[str, bool]] = deque()
+        self._vlm_results: deque[tuple[int, str, bool]] = deque()
         self._vlm_last: dict[str, float] = {}
         self._vlm_ok: set[str] = set()
         self._vlm_thread: threading.Thread | None = None
@@ -114,6 +119,8 @@ class StationRuntime:
     def _on_engine_event(self, kind: str, p: dict[str, Any]) -> None:
         if kind == "cycle_start":
             self._vlm_ok.clear()  # 新周期重新判定 vlm 条件
+            self._vision_generation += 1
+            self._vlm_results.clear()
         if kind == "violation":
             self.alerts.insert(0, {"station": self.cfg.station, "cycle_id": p["cycle_id"], "at": int(time.time() * 1000),
                                    **{k: p[k] for k in ("kind", "severity", "step", "message")}})
@@ -150,21 +157,23 @@ class StationRuntime:
                 continue
             if item is None:
                 return
-            key, prompt, jpeg = item
+            generation, key, prompt, jpeg = item
+            if generation != self._vision_generation:
+                continue
             b64 = base64.b64encode(jpeg).decode()
             out = self._vlm_provider.inspect([b64], self._vlm_prompt(prompt))
-            self._vlm_results.append((key, bool(out["ok"] and str(out["verdict"]).lower() in ("yes", "true", "pass"))))
+            self._vlm_results.append((generation, key, bool(out["ok"] and str(out["verdict"]).lower() in ("yes", "true", "pass"))))
 
     def _vlm_drain(self, ts: float, frame: np.ndarray) -> None:
         """收判定结果(真→写伪区域状态),并按抽帧间隔把激活步骤的 vlm 条件送判。"""
         while self._vlm_results:
-            key, yes = self._vlm_results.popleft()
-            if yes:
+            generation, key, yes = self._vlm_results.popleft()
+            if generation == self._vision_generation and yes:
                 self._vlm_ok.add(key)
                 self.engine.process(Event(ts, OBJ_STATE, zone=key, state="ok"))
         if self._vlm_provider is None or not self.engine.cycle:
             return
-        active_keys = {c.vlm_check.key for st in self.engine.cycle.steps if st.status == "ACTIVE"
+        active_keys = {c.vlm_check.key for st in self.engine.cycle.steps if st.status == "active"
                        for c in st.spec.evidence.conds if c.kind == "vlm_check"}
         ok, buf = cv2.imencode(".jpg", self.raw, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not ok:
@@ -175,10 +184,50 @@ class StationRuntime:
             if ts - self._vlm_last.get(key, -1e9) < vc.every_s:
                 continue
             self._vlm_last[key] = ts
-            self._vlm_q.put((key, vc.prompt, buf.tobytes()))
+            self._vlm_q.put((self._vision_generation, key, vc.prompt, buf.tobytes()))
+
+    def _reset_visual_observations(self) -> None:
+        """只清观测/去抖缓存，保留模型、标定参考和原始帧。"""
+        for perceiver in (self.hands, self.persons, self.detector, self.roi):
+            if perceiver is None:
+                continue
+            reset = getattr(perceiver, "reset_observations", None)
+            if reset is None:
+                reset = getattr(getattr(perceiver, "tracker", None), "reset", None)
+            if reset is not None:
+                reset()
+        self._vlm_results.clear()
+        self._vlm_ok.clear()
+
+    def _quality_gate(self, ts: float) -> tuple[bool, Event | None]:
+        observation = self.quality.snapshot()
+        blocked = self.cfg.quality.enabled and (self.quality.degraded or observation["observation"] in {"bad", "unknown"})
+        reason = (observation.get("raw_reason") or self.quality.reason or "quality_unknown") if blocked else ""
+        event = None
+        if blocked != self.engine.world.quality_bad or (blocked and reason != self.engine.world.quality_reason):
+            event = Event(ts, QUALITY, state="degraded" if blocked else "ok", value=reason, source="quality_gate",
+                          data={"confirmed": self.quality.degraded, "observation": observation["observation"]})
+            self.engine.process(event)  # 必须先于同帧的任何视觉证据
+        if blocked:
+            if not self._quality_blocked:
+                self._vision_generation += 1  # 丢弃降级前送判但恢复后才返回的旧 VLM 结果
+                self._vlm_last.clear()
+                while True:
+                    try:
+                        self._vlm_q.get_nowait()
+                    except queue.Empty:
+                        break
+            self._reset_visual_observations()
+            if self.safety is not None:
+                self.safety.pause(ts)
+        elif self.safety is not None:
+            self.safety.resume(ts)  # 恢复只解除暂停，不能恢复旧计时/人数
+        self._quality_blocked = blocked
+        return blocked, event
 
     # ------------------------------------------------------------ 主循环
     def process_frame(self, ts: float, frame: np.ndarray) -> list[Event]:
+        external = self.signal_inbox.drain(ts) if self.signal_inbox is not None else []
         self.raw = frame
         self._apply_calibration(frame)
         self.ctx.reset()
@@ -190,30 +239,39 @@ class StationRuntime:
         if self.detector is not None:
             events += self.detector.process(frame, ts, self.ctx)
         events += self.roi.process(frame, ts, self.ctx)
-        events += self.quality.process(frame, ts, self.ctx)
-        for ev in sorted(events, key=lambda e: e.ts):
-            self.engine.process(ev)
-            if self.safety is not None:
-                self.safety.process(ev)
-        self.engine.tick(ts)
-        if self.safety is not None:
-            for alert in self.safety.tick(ts):
+        quality_events = self.quality.process(frame, ts, self.ctx)
+        blocked, gate_event = self._quality_gate(ts)
+        safety_alerts = []
+        frame_events = ([] if blocked else sorted(events, key=lambda e: e.ts)) + external
+        self.engine.process_batch(frame_events, ts)
+        if not blocked:
+            for ev in sorted(events, key=lambda e: e.ts):
+                if self.safety is not None:
+                    safety_alerts += self.safety.process(ev)
+        if self.safety is not None and not blocked:
+            safety_alerts += self.safety.tick(ts)
+            for alert in safety_alerts:
                 self.alerts.insert(0, {"station": self.cfg.station, "cycle_id": None,
                                        "at": int(time.time() * 1000), **alert})
                 del self.alerts[50:]
                 for fn in self.listeners:
                     fn("safety", alert)
-        self._vlm_drain(ts, frame)
+        if not blocked:
+            self._vlm_drain(ts, frame)
         self.annotated = self._draw(frame, hud=True)
         self.stream = self._draw(frame, hud=False)
         self.recorder.flush()
         self.frame_idx += 1
+        for observer in self.frame_observers:
+            observer(self)
         if time.monotonic() - self._state_wall > 0.25:  # 状态快照在本线程生成，API 线程只读缓存，避免读写竞争
             self._state_wall = time.monotonic()
             self.state_cache = self.state()
-        return events
+        return ([] if blocked else events) + external + quality_events + ([gate_event] if gate_event else [])
 
     def run(self, max_frames: int | None = None) -> None:
+        if self.signal_inbox is not None:
+            self.signal_inbox.bind_consumer()
         pace = self.cfg.source.type == "sim" and self.cfg.source.realtime
         t0 = time.monotonic()
         while not self.stop_event.is_set():
@@ -221,6 +279,19 @@ class StationRuntime:
             if item is None:
                 break
             ts, frame = item
+            now = time.monotonic()
+            gap = self.cfg.source.type in ("rtsp", "camera") and self._last_frame_wall is not None and now - self._last_frame_wall > max(1.0, 3 / max(self.cfg.source.fps, 1))
+            if gap or frame.shape[1] < 16:
+                self.engine.process(Event(ts, "quality", state="unknown", value="stream_gap", source="source"))
+                self._vision_generation += 1
+                self._vlm_last.clear()
+                if self.cfg.quality.enabled:
+                    self.quality.invalidate("stream_gap", ts)
+                self._reset_visual_observations()
+                if self.safety is not None:
+                    self.safety.pause(ts)
+                self._quality_blocked = True
+            self._last_frame_wall = now
             if frame.shape[1] != self.w or frame.shape[0] != self.h:
                 if frame.shape[1] < 16:  # 断流占位帧
                     continue
@@ -229,7 +300,7 @@ class StationRuntime:
             if pace:
                 delay = t0 + ts - time.monotonic()
                 if delay > 0:
-                    time.sleep(delay)
+                    self.stop_event.wait(delay)
             if max_frames and self.frame_idx >= max_frames:
                 break
         self.source.close()
@@ -249,11 +320,14 @@ class StationRuntime:
     def meta(self) -> dict[str, Any]:
         c = self.cfg
         return {"id": c.station, "name": c.name or c.station, "line": c.line, "source": c.source.type,
-                "takt_s": c.cycle.takt_s, "rules_hash": self.program.rules_hash,
+                "takt_s": c.cycle.takt_s if c.cycle else None, "rules_hash": self.program.rules_hash,
                 "width": self.w, "height": self.h}
 
     def state(self) -> dict[str, Any]:
         snap = self.engine.snapshot()
+        snap["quality"] = {**self.quality.snapshot(), "confirmed_degraded": self.quality.degraded,
+                           "confirmed_reason": self.quality.reason, "degraded": self.engine.world.quality_bad,
+                           "reason": self.engine.world.quality_reason}
         snap["roi"] = self.roi.states()
         snap["alerts"] = self.alerts[:20]
         now = time.monotonic()

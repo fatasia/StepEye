@@ -1,0 +1,2 @@
+-r requirements.txt
+onvif-zeep-async==4.3.0  # 已核对传输层固定IP与禁重定向包装；升级须重新核查

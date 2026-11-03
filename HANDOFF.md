@@ -1,7 +1,7 @@
 # 交接清单(2026-11-03)——新会话接手必读
 
-> 本项目从 Copilot 断点抢救至今:**30 个提交,130/130 测试,公开仓库 https://github.com/fatasia/StepEye**。
-> 新会话开始时:先读本文件 + `docs/ROADMAP-v2.md`(终版清算)+ `git log --oneline`(30 条即全部历史)。
+> 本轮继续完成原生媒体、空间态势、巡更、质量门禁与设备信号融合。最终验证结果见下方；公开仓库 https://github.com/fatasia/StepEye 。
+> 新会话开始时:先读本文件 + `docs/ROADMAP-v2.md`(终版清算)+ `git log --oneline`（以实际提交历史为准）。
 
 ## 一、项目是什么
 
@@ -22,7 +22,7 @@
 | **协议接入** | `visual/onvif.py` `gb28181.py` `geo.py` | ONVIF 发现/读坐标;GB28181=wvp-pro REST 客户端(**不自研 SIP**);GIS 同步 |
 | **平面图** | `visual/plans.py` | 图片底图+打点(CAD 用户自导图片) |
 | **评测/训练** | `visual/regress.py` `datasets.py` `shadow.py` | 回归跑分+边界卡;X-AnyLabeling/YOLO 导入;影子库+真值 |
-| **服务** | `visual/server.py` | 130 端点;**铁律:pydantic body 类只允许模块级**(守卫测试 test_server_hygiene 已建) |
+| **服务** | `visual/server.py` | REST/WS 服务;**铁律:pydantic body 类只允许模块级**(守卫测试 test_server_hygiene 已建) |
 | 前端 | `web/js/pages/` 9 页 | 总览/实时/追溯/配置(区域拖框)/拍照即检/告警中心/样本库/时间轴/厂区图 |
 | 工具 | `tools/` | eval_gloves/probe_first_article/make_sim_refs/make_eval_set/cam_uploader/probe_vlm/shoot/interact |
 | 部署 | `deploy/` | build_windows.bat+entry.py(exe **已构建验证**);monibuca/config.yml |
@@ -41,20 +41,35 @@
 - VLM API:智谱 coding 端点 glm-5.3-flash(原生多模态);本地 Qwen3-VL-2B 三行 .env 可切(未实测)
 - 训练环境:本机 4060 只够 2B QLoRA;检测器微调建议租 4090(¥2/时)
 
-## 五、剩余任务(新会话按此开工,全部有验收标准在 ROADMAP-v2 追加批次)
+## 五、当前任务状态（2026-11-03 本轮更新）
 
-| # | 任务 | 量 | 备注 |
-|---|---|---|---|
-| T21 | **Monibuca 集成**:下载 v6(Rust,<20MB 单二进制,永久免费)→ config 模板已备(`deploy/monibuca/config.yml`,注意 GB28181 字段名以 v6 仓为准)→ 实时页接 WebRTC 预览(WHEP) | 2 | 插件生态直接用 |
-| T22 | **GIS 厂区图前端收尾**:`sitemap.js` 已写(平面图打点/伪 3D/告警闪红),**未接路由**(main.js 未注册 sitemap)且未视觉验收;css 已加 | 0.5 | 需 Playwright 交互验收 |
-| T23 | **影子真值标注 UI**:alerts 页已加面板(上轮未验证渲染),或独立页;report 闭环端点已备 | 0.5 | |
-| T24 | ONVIF/GB28181 真机联调 | 2 | 需现场相机/wvp 实例 |
-| T25 | 烟火/PPE 自训上岗 | 5 | 需标注数据+云 GPU |
-| T26 | 录像回放调阅 UI(R3) | 3 | Monibuca record 插件 |
-| T27 | 巡更到位 UI | 2 | |
-| T5/T6 尾 | 登录后前端全量交互回归(认证模式) | 0.5 | |
+本表取代早期“剩余任务”清单。YOLO 与已有权重按用户要求保持不换；不引入 Docker 运行依赖。
 
-**环境注意**:本机 conda 的 torch 曾被 ultralytics 安装搞坏(shm.dll),已用 `pip install --force-reinstall --no-deps torch==2.12.0+cu130` 恢复;**cv2 与 torch 同进程仍有 DLL 冲突**(DINO 特征路径隔离为 `extract_features_dino`,网格特征兜底不受影响)。爬坑记录详见各测试文件 docstring 与 commit message。
+| # | 实际进展 | 还差什么 |
+|---|---|---|
+| T21 Monibuca | 同源 WHEP、回退/重试/释放/租约；原生 v5.1.6 实际 640×480 播放；Win/Linux v6 安装器与模板 | 官方 v6 Windows 包 404、beta 403；v6 实包/配置/ICE 与 Linux 联调未完成 |
+| T22 厂区图 | 已完成空间态势、真实点位立体示意、风险图层、详情/实况联动、二维编辑；最终1920截图验收 | 真实厂区底图/绑定数据由现场提供；不冒称BIM模型 |
+| T23 影子 UI | 证据详情、PASS/NG、筛选、报告、只读权限；历史FAIL→NG，UNCERTAIN单列 | 真实人工真值持续积累 |
+| T24 相机协议 | ONVIF Simulator v0.4.0 SOAP+RTSP实际640×480帧；地址固定/禁重定向；WVP登录/分页/坐标契约修正 | 多播发现本机0设备；ONVIF真机、WVP/SIP注册点播仍未验收 |
+| T25 自训上岗 | training_preflight工具及资源审计完成；本机无合格框标注集 | 数据、实际训练、专用导出适配、独立检测器评测、现场影子；未训练/未租GPU |
+| T26 录像调阅 | 按工位/时间索引本机共享目录、HTML5播放、Range拖动；H.264测试片段实测 | 真实v6录制生产端、跨机目录/保存策略/负载联调 |
+| T27 巡更到位 | 持久计划+真实人员观测hook+跨午夜报表；未观测=未知；四状态与只读交互已验收 | 现场人员感知标定、真实计划与长期记录 |
+| T5/T6尾 | 11页认证路由冒烟、新增功能交互/写权限通过，页面异常0 | 本轮不重复旧页面多尺寸矩阵 |
+| T28 自动标注 | MaskFlow源码/许可/流程已审查，方案已写 | 持久批量预标注、框编辑、人工确认、版本导出待实施 |
+| T29 MCP | 双向接入/权限/人工确认设计已写 | MCP服务及外部MCP客户端待实施 |
+| T30 多源融合 | 有界入箱、TTL/序号/审计、批次求值、source限定、非锁存实时all、冲突/未知诊断已接 | PLC/扫码/扭矩驱动、单位/量程与SN关联、现场故障回放与影子 |
+| T31 光照治理 | 固定参考、局部饱和/漂移、即时门禁+恢复滞回、安全重新观察、旧VLM失效、断流恢复清旧证据 | 昼夜独立回放集、曝光锁定读回、真实相机/现场影子 |
+
+### 验证与入口
+
+- 最终后端结果：310 项后端检查已通过、2 项缺手部模型跳过（隔离全量306通过/2跳过；修复本机.env依赖的2项定点通过；新增断流2项及受影响14项定点通过），JS出帧新鲜度1项/全部JS语法/Python编译通过；JS语法、编译与前端出帧新鲜度测试纳入统一检查。
+- 最终UI仅1920×1080主桌面：`.v0/output/playwright/twin/sitemap_1920.png`、`trace-report/trace_1920.png`、`final-desktop/`；11页认证冒烟与录像播放记录见 `final-desktop/report.json`。
+- `docs/MONIBUCA.md`：原生部署、版本差异、录像目录；`docs/FUSION-LIGHTING.md`：设备信号/光照接线。
+- `docs/AUTO-LABEL-MCP-PLAN.md`：MaskFlow审查与T28/T29；`docs/TRAINING-READINESS.md`：数据/训练实际缺口。
+- `docs/INDUSTRIAL-ACCEPTANCE.md`：工程、独立回放、现场影子分开验收。当前只有本机工程/模拟器证据，不签署“工业级已验收”。
+- Linux/Windows CI已配置，目标Linux机器和现场运行结果需实际确认；Web界面共用，不依赖本机EXE。
+
+**环境注意**:本机 conda 的 torch 曾被 ultralytics 安装搞坏(shm.dll),已用 `pip install --force-reinstall --no-deps torch==2.12.0+cu130` 恢复;**cv2 与 torch 同进程仍有 DLL 冲突**(DINO 特征路径隔离为 `extract_features_dino`,网格特征兜底不受影响)。爬坑记录详见各测试文件 docstring 与 commit message。本轮另发现Conda缺失 libiomp5md.dll，按已安装intel-openmp包缓存的paths.json核对SHA256后补回缺失运行库；未替换torch或删除.back。
 
 ## 六、纪律(不可协商,全 session 实践过)
 

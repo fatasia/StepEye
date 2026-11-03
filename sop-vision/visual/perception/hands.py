@@ -18,6 +18,11 @@ class HandZoneTracker:
         self.geoms = geoms
         self.enter_frames, self.exit_frames = enter_frames, exit_frames
         self.source = source
+        self.reset()
+
+    def reset(self) -> None:
+        """失去可信画面后清空动作时钟，恢复必须重新连续观察。"""
+        geoms = self.geoms
         self.inside = {z: False for z in geoms}
         self._in = {z: 0 for z in geoms}
         self._out = {z: 0 for z in geoms}

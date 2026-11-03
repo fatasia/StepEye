@@ -118,7 +118,7 @@ def test_auth_matrix_on_api(auth_app):
     assert client.get("/api/users").status_code == 403             # viewer 不可管用户
     assert client.post("/api/stations/DEMO-ST01/signal", json={"name": "sn", "value": "A"}).status_code == 403
     _login(client, "op1")
-    assert client.post("/api/stations/DEMO-ST01/signal", json={"name": "sn", "value": "A"}).status_code == 200
+    assert client.post("/api/stations/DEMO-ST01/signal", json={"name": "sn", "value": "A"}).status_code == 202
     assert client.post("/api/users", json={"username": "n1", "password": "password123"}).status_code == 403
     _login(client, "admin1")
     assert client.post("/api/users", json={"username": "n1", "password": "password123"}).status_code == 200

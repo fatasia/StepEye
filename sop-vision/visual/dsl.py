@@ -30,6 +30,8 @@ class ObjState(BaseModel):
 class SignalCond(BaseModel):
     name: str
     value: Any = None
+    source: str | None = None
+    hold_ms: int = Field(default=0, ge=0, le=600000)
 
 
 class PersonPresent(BaseModel):
@@ -190,7 +192,7 @@ class PersonsCfg(BaseModel):
 
 
 class DetectorCfg(BaseModel):
-    """通用目标检测:.onnx(YOLO/D-FINE/RF-DETR 导出,onnxruntime)或 .tflite(MediaPipe)。
+    """目标检测:.onnx(当前仅 YOLO 风格布局,onnxruntime)或 .tflite(MediaPipe)。
 
     按扩展名自动选引擎;classes=要盯的类别,class_names=模型类别表(ONNX 必填,缺省 COCO80)。
     """
@@ -237,12 +239,29 @@ class QualityCfg(BaseModel):
     brightness: tuple[float, float] | None = None
     max_shift_px: float | None = None
     lighting_drift: float | None = 0.3  # 背景亮度相对漂移阈值:超过判"光照突变"并降级;持续后自适应
-    every_n: int = 5
+    every_n: int = Field(default=5, ge=1)
+    bad_confirm: int = Field(default=3, ge=1)
+    good_confirm: int = Field(default=5, ge=1)
+    recovery_ratio: float = Field(default=0.8, gt=0, le=1)
+    min_background_fraction: float = Field(default=0.05, ge=0, le=1)
+    min_background_pixels: int = Field(default=64, ge=1)
+    background_texture_min: float = Field(default=1.0, ge=0)
+    max_dark_fraction: float | None = Field(default=0.35, ge=0, le=1)
+    max_bright_fraction: float | None = Field(default=0.25, ge=0, le=1)
+    dark_pixel: int = Field(default=8, ge=0, le=255)
+    bright_pixel: int = Field(default=247, ge=0, le=255)
+    tile_grid: int = Field(default=4, ge=1, le=16)
+    max_tile_dark_fraction: float | None = Field(default=0.8, ge=0, le=1)
+    max_tile_bright_fraction: float | None = Field(default=0.8, ge=0, le=1)
+    tile_lighting_drift: float | None = Field(default=0.45, ge=0)
+    max_drifted_tile_fraction: float = Field(default=0.15, ge=0, le=1)
 
 
 class SourceCfg(BaseModel):
     type: Literal["sim", "file", "rtsp", "camera"] = "sim"
     uri: str | int | None = None
+    preview_stream: str | None = Field(default=None, max_length=160,
+                                       pattern=r"^[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*$")
     fps: float = 25.0
     realtime: bool = True
     loop: bool = False
@@ -257,6 +276,7 @@ class StationConfig(BaseModel):
     name: str = ""
     line: str = ""
     source: SourceCfg = SourceCfg()
+    signal_sources: list[str] = Field(default_factory=list, max_length=32)
     zones: list[Zone]
     hands: HandsCfg = HandsCfg()
     persons: PersonsCfg = PersonsCfg()

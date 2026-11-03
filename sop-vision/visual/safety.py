@@ -46,11 +46,32 @@ class SafetyMonitor:
     _hold_since: dict[str, float] = field(default_factory=dict)  # rule_id -> 条件开始持续的时刻
     _fired: set[str] = field(default_factory=set)
     now: float = 0.0
+    paused: bool = False
+
+    def _clear_observations(self) -> None:
+        self._absent_since.clear()
+        self._count.clear()
+        self._fall_since.clear()
+        self._obj.clear()
+        self._hold_since.clear()
+        self._fired.clear()
+
+    def pause(self, ts: float) -> None:
+        """坏画质期间所有视觉安全条件未知，清空计时与旧证据。"""
+        self.now = max(self.now, ts)
+        self.paused = True
+        self._clear_observations()
+
+    def resume(self, ts: float) -> None:
+        self.now = max(self.now, ts)
+        if self.paused:
+            self._clear_observations()
+            self.paused = False
 
     def process(self, ev: Event) -> list[dict[str, Any]]:
         """喂感知事件;返回本次新触发的告警。"""
         self.now = max(ev.ts, self.now)
-        if ev.zone is None:
+        if self.paused or ev.zone is None:
             return []
         z = ev.zone
         if ev.type == PERSON_ENTER:
@@ -86,6 +107,8 @@ class SafetyMonitor:
     def tick(self, ts: float) -> list[dict[str, Any]]:
         """周期调用(无事件也要走时钟);状态解除的规则重新武装。"""
         self.now = max(ts, self.now)
+        if self.paused:
+            return []
         alerts: list[dict[str, Any]] = []
         for r in self.rules:
             ok = self._satisfied(r, ts)

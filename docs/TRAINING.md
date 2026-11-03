@@ -27,26 +27,27 @@ datasets/ppe_v1/
 - **必须含多光照子集**(昼/夜/开灯/关灯各 ≥15%,光照治理红线)
 - 样本不够先用 `python -m visual gen-samples --engine augment` 扩充(增强样本占比 ≤30%)
 
-## 三、微调与导出(在 ≥24GB GPU 上执行;4060 8GB 只够 QLoRA 2B 级 VLM,检测器微调建议租 4090)
+## 三、微调与导出（接口示例，尚未完成实际训练）
+
+先运行 [训练准备检查](TRAINING-READINESS.md)。本机 8GB 显存是否能训练所选小模型取决于分辨率、batch 和具体实现，不按显存大小直接判定；本轮未租用 GPU。
+RF-DETR 使用其支持的 COCO 目录，不可直接把上节 YOLO 目录传入。选定具体型号后核查许可，不将整个 RF-DETR 家族视作同一许可。
 
 ```bash
-# RF-DETR 微调(Apache-2.0,微调 API 最简)
+# RF-DETR Nano 接口示例；先准备 COCO 数据与独立验证集
 pip install rfdetr
 python - <<'EOF'
 from rfdetr import RFDETRNano
 m = RFDETRNano()
-m.train(dataset_dir="datasets/ppe_v1", epochs=50, batch_size=4, grad_accum_steps=4)
+m.train(dataset_dir="datasets/ppe_coco_v1", epochs=50, batch_size=4, grad_accum_steps=4)
 m.export()
 EOF
-# D-FINE 同理(官方仓库 config 驱动);两者任选,许可均 Apache-2.0
+# D-FINE 使用其官方配置与导出契约，具体实现按所选版本核查
 ```
 
-导出 ONNX 后二选一接入:
-1. **B0 检测器适配器**(规划中):ONNX→`visual/perception` 通用推理,输出类别×bbox 进既有 `OBJECT_*` 事件链;
-2. **MediaPipe ObjectDetector 格式**:模型转 .tflite 放 `models/`,`DetectorCfg.model` 指向、`classes` 对齐标签——**零代码改动**。
+当前 ONNX 适配器仅支持 YOLO v8/v5 类布局。D-FINE/RF-DETR 必须补齐专用预处理、多输入/多输出解码并用真实导出回归，不能仅改文件名。MediaPipe 也要求兼容的 ObjectDetector 模型与元数据，不保证任意 ONNX 自动转换可用。
 
 ## 四、上岗闸门(不可跳过)
 
-1. 固定回归集跑分:`python -m visual regress <manifest> --data <dir>` —— 一致率不低于现役引擎;
+1. 固定独立检测器评测集跑框级召回/mAP及场景漏检/误报；现有 `visual regress` 主要用于 VLM 图片判定，不代替检测器评测;
 2. 影子模式 ≥2 周:`serve --shadow` → `python -m visual shadow-report` —— 漏检/误杀双指标达标;
 3. 许可台账登记(数据集 + 基座模型,ADR-03)。

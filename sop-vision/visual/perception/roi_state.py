@@ -45,6 +45,11 @@ class RoiStateTracker:
     def calibrated(self) -> bool:
         return self.ref is not None
 
+    def reset_observations(self) -> None:
+        """保留标定参考，只清除由画面推断出的状态及连续确认缓存。"""
+        self.state, self._cand, self._cand_n = None, None, 0
+        self.score, self._cand_ts = 0.0, 0.0
+
     def _crop(self, gray: np.ndarray, pad: int = 0) -> np.ndarray:
         x0, y0, x1, y1 = self.geom.bbox
         h, w = gray.shape[:2]
@@ -105,6 +110,10 @@ class RoiStatePerceiver:
             c.zone: RoiStateTracker(c, geoms[c.zone], None if ref_dir is None else ref_dir / f"{c.zone}.png")
             for c in cfgs
         }
+
+    def reset_observations(self) -> None:
+        for tracker in self.trackers.values():
+            tracker.reset_observations()
 
     def calibrate(self, frame: np.ndarray, zones: list[str] | None = None) -> list[str]:
         done = []

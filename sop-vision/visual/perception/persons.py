@@ -43,9 +43,15 @@ class PersonZoneTracker:
         self.geoms = geoms
         self.enter_frames, self.exit_frames = enter_frames, exit_frames
         self.source = source
+        self.reset()
+
+    def reset(self) -> None:
+        """清空可信人数；0也要由连续新帧确认，不能由初值推断无人。"""
+        geoms = self.geoms
         self.count = {z: 0 for z in geoms}  # 稳定计数
         self._pending: dict[str, int | None] = {z: None for z in geoms}
         self._frames = {z: 0 for z in geoms}
+        self._observed: set[str] = set()
 
     def update(self, boxes: list[tuple[float, float, float, float]], ts: float) -> list[Event]:
         events: list[Event] = []
@@ -59,9 +65,10 @@ class PersonZoneTracker:
             else:
                 self._pending[zid], self._frames[zid] = n, 1
             need = self.enter_frames if n > self.count[zid] else self.exit_frames
-            if self._frames[zid] >= need and n != self.count[zid]:
+            if self._frames[zid] >= need and (n != self.count[zid] or zid not in self._observed):
                 prev = self.count[zid]
                 self.count[zid] = n
+                self._observed.add(zid)
                 if prev == 0 and n > 0:
                     events.append(Event(ts, PERSON_ENTER, zone=zid, source=self.source))
                 elif prev > 0 and n == 0:
@@ -95,6 +102,10 @@ class MediaPipePosePersons:
         self.tracker = PersonZoneTracker(geoms, cfg.enter_frames, cfg.exit_frames)
         self.fall_enabled = cfg.fall_enabled
         self._fall_state: dict[str, tuple[bool, int, bool]] = {}  # zone -> (候选值, 稳定帧数, 当前状态)
+
+    def reset_observations(self) -> None:
+        self.tracker.reset()
+        self._fall_state.clear()
 
     def _fall_events(self, poses_norm: list[list], ts: float) -> list[Event]:
         """区域级跌倒去抖:任一倒地姿态者落在区稳定 N 帧 → fall=1;全区恢复稳定 N 帧 → fall=0。"""
