@@ -65,6 +65,24 @@
 .nav a.on { background: var(--accent-soft); color: var(--text-strong); }
 .nav a.on::before { content: ""; position: absolute; left: -8px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--accent); }
 .nav a.on .ico { color: var(--accent); }
+/* 二级导航:组头折叠,子项缩进;当前页所在组自动展开 */
+.nav-group { display: flex; flex-direction: column; }
+.nav-head {
+  display: flex; align-items: center; gap: var(--s-3);
+  height: 38px; padding: 0 var(--s-3);
+  background: none; border: none; cursor: pointer; text-align: left;
+  color: var(--text-muted); border-radius: var(--r-ctl);
+  transition: background var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
+}
+.nav-head:hover { background: var(--surface-3); color: var(--text-strong); }
+.nav-head.has-active { color: var(--text-strong); }
+.nav-head .chev { margin-left: auto; display: inline-flex; transition: transform var(--dur-micro) var(--ease-out); }
+.nav-group.open .nav-head .chev { transform: rotate(90deg); }
+.nav-items { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--dur-panel) var(--ease-out); }
+.nav-group.open .nav-items { grid-template-rows: 1fr; }
+.nav-items > div { overflow: hidden; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+.nav-items a { height: 34px; padding-left: 42px; }
+.nav > a:last-child { margin-top: auto; }
 .nav-scrim { display: none; }
 
 .main { overflow: auto; padding: var(--s-4); min-width: 0; }
@@ -76,6 +94,9 @@
   :root { --nav-w: 56px; }
   .nav a span { display: none; }
   .nav a { justify-content: center; padding: 0; }
+  .nav-head span, .nav-head .chev { display: none; }
+  .nav-head { justify-content: center; padding: 0; }
+  .nav-items a { padding-left: 0; }
   .brand-sub { display: none; }
   .brand { width: auto; }
   .brand-name { display: none; }
@@ -91,6 +112,10 @@
   }
   .nav a span { display: inline; }
   .nav a { justify-content: flex-start; padding: 0 var(--s-3); }
+  .nav-head span { display: inline; }
+  .nav-head .chev { display: inline-flex; }
+  .nav-head { justify-content: flex-start; padding: 0 var(--s-3); }
+  .nav-items a { padding-left: 42px; }
   .app.nav-open .nav { transform: none; }
   .app.nav-open .nav-scrim { display: block; position: fixed; inset: var(--topbar-h) 0 0 0; z-index: calc(var(--z-drawer) - 1); background: var(--scrim); }
   .clock { display: none; }

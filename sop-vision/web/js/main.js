@@ -24,7 +24,15 @@ import * as settings from "./pages/settings.js";
 
 const ROUTES = { mechanism, documents, overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings, labeling, models, settings };
 const TITLES = { mechanism: "机理实验室", documents: "知识与文档", overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库", timeline: "时间轴标注", sitemap: "厂区图", patrol: "巡更到位", recordings: "录像回放", labeling: "标注工作台", models: "视觉应用", settings: "设置" };
-const NAV = [["overview", "总览", "overview"], ["live", "实时监控", "live"], ["trace", "追溯", "trace"], ["inspection", "拍照即检", "camera"], ["alerts", "告警中心", "inbox"], ["samples", "样本库", "copy"], ["models", "视觉应用", "config"], ["timeline", "时间轴标注", "clock"], ["sitemap", "厂区图", "overview"], ["patrol", "巡更到位", "clock"], ["recordings", "录像回放", "live"], ["config", "SOP 配置", "config"], ["documents", "知识与文档", "copy"], ["mechanism", "机理实验室", "config"], ["settings", "设置", "config"]];
+const ROUTE_ICONS = { overview: "overview", live: "live", trace: "trace", inspection: "camera", alerts: "inbox", samples: "copy", models: "config", timeline: "clock", sitemap: "overview", patrol: "clock", recordings: "live", config: "config", documents: "copy", mechanism: "config", settings: "config" };
+// 二级导航:组头只负责折叠,子项才是页面;labeling 归入样本库所在组
+const NAV_GROUPS = [
+  ["ops", "运行监控", "overview", ["overview", "live", "alerts", "trace"]],
+  ["video", "视频巡防", "live", ["recordings", "sitemap", "patrol"]],
+  ["quality", "质量视觉", "camera", ["inspection", "models", "mechanism"]],
+  ["data", "数据知识", "copy", ["samples", "timeline", "documents", "config"]],
+];
+const NAV_BOTTOM = ["settings"];
 const ACCENTS = [["#3ec6c1", "青"], ["#65aee8", "蓝"], ["#59c58d", "绿"], ["#d8ac52", "琥珀"], ["#b08cf0", "紫"]];
 const CONN = { open: ["实时连接", "success"], retry: ["连接中断，重连中…", "warning"], connecting: ["正在连接…", "info"] };
 
@@ -51,9 +59,30 @@ function applyTheme() {
 
 window.addEventListener("visual:preferences", applyTheme);
 
+/* ---------- 二级导航分组状态 ---------- */
+const openGroups = new Set(JSON.parse(pref.get("nav-groups") || "[]").filter((g) => NAV_GROUPS.some(([id]) => id === g)));
+function paintGroups() {
+  NAV_GROUPS.forEach(([id]) => {
+    const el = document.querySelector(`[data-group="${id}"]`);
+    if (!el) return;
+    el.classList.toggle("open", openGroups.has(id));
+    el.querySelector(".nav-head").setAttribute("aria-expanded", String(openGroups.has(id)));
+  });
+}
+function setGroup(id, open) {
+  open ? openGroups.add(id) : openGroups.delete(id);
+  pref.set("nav-groups", JSON.stringify([...openGroups]));
+  paintGroups();
+}
+
 function buildShell() {
   $("#brand").innerHTML = `${LOGO}<span class="brand-name">视觉实验室</span><span class="brand-sub">SOP 合规</span>`;
-  $("#nav").innerHTML = NAV.map(([k, t, ic]) => `<a href="#/${k}" data-nav="${k}">${icon(ic, 18)}<span>${t}</span></a>`).join("");
+  const navLink = (k) => `<a href="#/${k}" data-nav="${k}">${icon(ROUTE_ICONS[k], 18)}<span>${TITLES[k]}</span></a>`;
+  $("#nav").innerHTML =
+    NAV_GROUPS.map(([id, title, ic, items]) =>
+      `<div class="nav-group" data-group="${id}"><button class="nav-head" type="button" data-group-toggle="${id}" aria-expanded="false">${icon(ic, 18)}<span>${title}</span><span class="chev">${icon("chevron", 14)}</span></button><div class="nav-items"><div>${items.map(navLink).join("")}</div></div></div>`).join("") +
+    NAV_BOTTOM.map(navLink).join("");
+  paintGroups();
   $("#accent-menu").innerHTML = `<div class="menu-title">主题色</div><div class="swatches">${ACCENTS.map(([c, n]) => `<button class="swatch" style="--c:${c}" data-accent="${c}" title="${n}" aria-label="主题色 ${n}"></button>`).join("")}</div>`;
   $("#accent-btn").innerHTML = icon("palette", 16);
   $("#nav-toggle").innerHTML = icon("menu", 18);
@@ -86,7 +115,16 @@ function buildShell() {
   const closeNav = () => { app.classList.remove("nav-open"); offNav(); };
   $("#nav-toggle").onclick = () => { app.classList.add("nav-open"); offNav = onEsc(closeNav); };
   $("#nav-scrim").onclick = closeNav;
-  $("#nav").onclick = closeNav;
+  // 组头折叠导航,链接跳转并收起移动端抽屉
+  $("#nav").addEventListener("click", (e) => {
+    const head = e.target.closest("[data-group-toggle]");
+    if (head) {
+      const id = head.dataset.groupToggle;
+      setGroup(id, !openGroups.has(id));
+      return;
+    }
+    if (e.target.closest("a")) closeNav();
+  });
 }
 
 function paintConn() {
@@ -112,6 +150,12 @@ function route() {
     a.classList.toggle("on", on);
     on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current");
   });
+  // 当前页面所在组自动展开,组头随之点亮
+  const active = name === "labeling" ? "samples" : name;
+  const group = NAV_GROUPS.find(([, , , items]) => items.includes(active));
+  if (group && !openGroups.has(group[0])) setGroup(group[0], true);
+  document.querySelectorAll(".nav-head").forEach((head) =>
+    head.classList.toggle("has-active", !!group && head.dataset.groupToggle === group[0]));
   const page = document.createElement("div");
   page.className = `page page-${name}`;
   view.replaceChildren(page); // 每次换新容器，旧页面的事件监听随之释放
