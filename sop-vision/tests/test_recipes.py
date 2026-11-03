@@ -100,6 +100,12 @@ def test_http(service):
     assert client.post("/api/stations/a/recipe", json={"version_id": recipe["latest_version"]["id"]}).status_code == 200
     assert client.get("/api/stations/a/recipe").json()["active"]
     assert client.get("/api/recipes/missing/versions").status_code == 404
+    changed = yaml.safe_load(svc.manager.paths["a"].read_text())
+    changed["quality"] = {"enabled": True, "blur_min": 42}
+    svc.manager.paths["a"].write_text(yaml.safe_dump(changed))
+    snapshot = client.post(f"/api/recipes/{recipe['id']}/versions", json={"snapshot_current": True})
+    assert snapshot.status_code == 201
+    assert snapshot.json()["fields"]["quality"]["blur_min"] == 42
 
 
 def test_persistence(service, tmp_path):

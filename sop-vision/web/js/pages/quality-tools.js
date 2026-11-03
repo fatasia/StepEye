@@ -1,3 +1,5 @@
+import { openRecipeManagement } from "./recipe-management.js";
+import { openCalibrationEditor } from "./calibration-editor.js";
 import { openBatteryInspection } from "./battery-inspection.js";
 import { openPinInspection } from "./pin-inspection.js";
 import { $, esc, fmtTime } from "../util.js";
@@ -41,7 +43,7 @@ export function openQualityTools({ canWrite }) {
   let closed = false, last = null, selectedCalibration = null;
   const drawer = openDrawer({ title: "评测、质量与标定", subtitle: "导入数据 → 分析 → 导出报告",
     html: `<style>.quality-tools [data-qt-pins][hidden]{display:none!important}.quality-tools label{display:block;margin:16px 0 8px}.quality-tools select,.quality-tools input{max-width:100%;padding:9px;background:transparent;color:inherit;border:1px solid #364348;border-radius:5px}.quality-tools .qt-actions{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}.quality-tools .qt-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px}.quality-tools .qt-metrics div{padding:15px;border:1px solid #364348;border-radius:6px}.quality-tools strong{display:block;font-size:24px;margin-top:8px}.quality-tools figure{margin:22px 0}.quality-tools pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}.quality-tools p{line-height:1.7}.quality-tools .qt-record{display:block;width:100%;text-align:left;margin:8px 0}.quality-tools .qt-error{color:#ff9890}</style>
-      <div class="quality-tools"><button class="btn" data-qt-battery>电芯六面检</button><button class="btn" data-qt-pins ${canWrite ? "" : "hidden"}>连接器针脚检查</button><button class="btn" data-qt-equipment>设备质检结果与复判</button><label>分析任务<select data-qt-kind>${Object.entries(types).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
+      <div class="quality-tools"><button class="btn" data-qt-recipe>产品配方</button><button class="btn" data-qt-calibration-editor>画面标定</button><button class="btn" data-qt-battery>电芯六面检</button><button class="btn" data-qt-pins ${canWrite ? "" : "hidden"}>连接器针脚检查</button><button class="btn" data-qt-equipment>设备质检结果与复判</button><label>分析任务<select data-qt-kind>${Object.entries(types).map(([k,v])=>`<option value="${k}">${v}</option>`).join("")}</select></label>
       <p data-qt-hint></p><div data-qt-write ${canWrite ? "" : "hidden"}><label>数据文件<input data-qt-file type="file" accept=".csv,.json" /></label>
       <details data-qt-options><summary>规格限（可选）</summary><label>下限 <input data-qt-lsl type="number" step="any" /></label><label>上限 <input data-qt-usl type="number" step="any" /></label></details>
       <div class="qt-actions"><button class="btn btn-primary" data-qt-run>导入并分析</button></div></div>
@@ -63,6 +65,8 @@ export function openQualityTools({ canWrite }) {
     if (canWrite) { drawer.close(); openPinInspection(); }
   };
   $("[data-qt-battery]",body).onclick = () => { drawer.close(); openBatteryInspection({ canWrite }); };
+  $("[data-qt-recipe]",body).onclick = () => { drawer.close(); openRecipeManagement({ canWrite }); };
+  $("[data-qt-calibration-editor]",body).onclick = () => { drawer.close(); openCalibrationEditor({ canWrite }); };
   const showError = e => { if (!closed) error.textContent = e?.message || ""; };
   function render(report) {
     last = report; selectedCalibration = report.matrix ? report : null;
