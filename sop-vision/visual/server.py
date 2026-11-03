@@ -114,10 +114,14 @@ class StationManager:
         self.calibrations = CalibrationStore(data_dir / "calibrations.db")
         from .quality_routes import QualityReports
         self.quality_reports = QualityReports(data_dir / "quality_reports.db")
+        from .holdout_routes import HoldoutEvaluations
+        self.holdout_evaluations = HoldoutEvaluations(data_dir / "holdout_evaluations.db")
         from .recipes import RecipeStore, RecipeService
         self.recipe_store = RecipeStore(data_dir / "recipes.db")
         self.recipes = RecipeService(self.recipe_store, self)
         self.label_engines = LabelEngines()
+        from .holdout_routes import HoldoutRunner
+        self.holdout_runner = HoldoutRunner(self.labels, self.label_engines, self.holdout_evaluations)
         # 只登记已验证布局/来源的现有权重；不启用被淘汰的烟火模型。
         self.label_engines.register("community-helmet", ROOT / "models/community/helmet.onnx",
                                     ["With Helmet", "Without Helmet"], "安全帽 ONNX · 现有评估权重")
@@ -296,6 +300,7 @@ class StationManager:
         self.labels.close()
         self.calibrations.close()
         self.quality_reports.close()
+        self.holdout_evaluations.close()
         self.recipe_store.close()
         for rt in self.runtimes.values():
             rt.stop()
@@ -490,6 +495,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .pin_inspection_routes import router as pin_inspection_router
     app.include_router(pin_inspection_router())
     app.include_router(evaluation_router())
+    from .holdout_routes import router as holdout_router
+    app.include_router(holdout_router(manager.holdout_runner))
     from .quality_routes import router as quality_router
     app.include_router(quality_router(manager.quality_reports))
     from .recipe_routes import router as recipe_router
