@@ -157,3 +157,14 @@ python tools/cam_uploader.py --server http://127.0.0.1:8000 --watch D:\camdrop
 - **飞书推送**:环境变量 `FEISHU_WEBHOOK_URL` 配群机器人 webhook,告警创建即推、回写标记防重。
 - **影子模式纪律**:真值标注完成前不向客户报任何准确率数字(README 已知限制 #1 的制度化解法)。
 - **微调管线**:见 docs/TRAINING.md(样本闭环→YOLO 格式数据集→D-FINE/RF-DETR→回归闸门→上岗)。
+
+## 流媒体接入(选型:Monibuca 优先)
+
+| 形态 | 何时用 |
+|---|---|
+| 直连 RTSP(现状) | 单工位/试点,CvSource 直接拉流分析 |
+| **Monibuca**(推荐) | 多路预览(WebRTC ~0.5s)+ 录像(R3)+ ONVIF 发现取流 + GB28181——一个 Go 二进制全包,与 visual-server.exe 并排部署 |
+| ZLMediaKit + wvp-pro | 国标生产重栈兜底(设备目录经纬度经 `geo.sync_from_device_list` 进 GIS) |
+
+ONVIF/GB28181 的发现与坐标读取已平台化:`/api/cameras/onvif/*`、`/api/cameras/gb28181/sync`。
+Monibuca 插件许可(MIT/商业混合)启用前核实现仓;ONVIF 真机联调待验证(已标注)。

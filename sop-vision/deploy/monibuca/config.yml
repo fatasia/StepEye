@@ -1,0 +1,29 @@
+# Monibuca 流媒体配置模板(与 visual-server.exe 并排部署)
+# 覆盖:RTSP 拉流转发 / WebRTC 低延迟预览 / MP4 录像(R3)/ ONVIF 发现 / GB28181 信令
+# 启用顺序建议:先 rtsp+webrtc+record(试点),onvif 多路时开,gb28181 国标客户时开
+
+rtsp:
+  listenaddr: ":554"        # StepEye source 拉流: rtsp://127.0.0.1:554/xxx
+
+webrtc:
+  listenaddr: ":8443"       # 浏览器预览(0.5s 延迟)
+
+hls:
+  listenaddr: ":8080"
+
+record:
+  path: ./records           # R3 录像留证(保存策略/签名属阶段 6)
+  duration: 1h              # 按小时切片
+
+onvif:                      # 多路时启用:自动发现局域网相机并取流
+  discoverinterval: 30
+
+gb28181:                    # 国标客户启用(信令+媒体一体)
+  enable: false
+  serial: 34020000002000000001
+  realm: UE0100000000
+  listenaddr: ":5060"
+
+# 摄像头拉流示例(等价于 StepEye 里配 source):
+# streams:
+#   东门: rtsp://user:pass@192.168.1.64:554/Streaming/Channels/101

@@ -151,3 +151,15 @@
 .login-field input { flex: 1; background: transparent; border: none; color: var(--text-strong); outline: none; }
 .login-panel .btn-primary { width: 100%; margin-top: var(--s-2); }
 .d-head textarea, #a-comment { width: 100%; margin-top: var(--s-2); background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); color: var(--text-strong); padding: var(--s-2); font-size: 13px; resize: vertical; }
+
+
+/* ---------- 厂区图 ---------- */
+.plan-wrap { display: grid; grid-template-columns: 1fr 240px; gap: var(--s-3); }
+.plan-canvas { transition: transform .3s, perspective .3s; }
+.plan-canvas.mode3d { perspective: 900px; }
+.plan-canvas.mode3d > div, .plan-canvas.mode3d svg { transform: rotateX(38deg) scale(.92); transform-origin: center 70%; }
+.plan-canvas svg { cursor: crosshair; touch-action: none; }
+.plan-canvas .pt circle { cursor: pointer; }
+.plan-canvas .pt text { fill: var(--text); font-size: 12px; }
+.plan-canvas .pt.sel circle { stroke: var(--danger); stroke-width: 3; }
+.plan-side b { display: block; margin-bottom: var(--s-2); }

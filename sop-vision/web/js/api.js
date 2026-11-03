@@ -99,6 +99,12 @@ export const api = {
   timelineFrame: (id, name) => `/api/timelines/${encodeURIComponent(id)}/frames/${encodeURIComponent(name)}`,
   timelineVideo: (id) => `/api/timelines/${encodeURIComponent(id)}/video`,
   shadowSamples: (unlabeled = true) => request(`/api/shadow/samples?unlabeled=${unlabeled ? 1 : 0}`),
+  plansList: () => request("/api/plans"),
+  sitePoint: (planId, name, kind, x, y) =>
+    request(`/api/plans/${encodeURIComponent(planId)}/points`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, kind, x, y }) }),
+  sitePointDelete: (ptid) => request(`/api/plans/${encodeURIComponent(ptid)}`, { method: "DELETE" }),
   shadowTruth: (id, truth) =>
     request(`/api/shadow/${encodeURIComponent(id)}/truth`, { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ truth }) }),
