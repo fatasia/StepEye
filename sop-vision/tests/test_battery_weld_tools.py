@@ -75,3 +75,28 @@ except RuntimeError:pass
 assert closed==[True]
 '''.replace('SCRIPT',str(root/'sop-vision/tools/battery_weld_train.py')).replace('OUT',str(tmp_path/'run'))
     subprocess.run([str(interpreter),'-c',code],check=True,timeout=30,capture_output=True)
+
+def test_explicit_initial_state_and_test_only_exclusion(tmp_path):
+    import subprocess,pytest
+    root=Path(__file__).resolve().parents[2];python=root/'.v0/train-venv/Scripts/python.exe'
+    if not python.exists():pytest.skip('optional isolated torch environment absent')
+    code='''
+import importlib.util,types,json,hashlib,torch
+from pathlib import Path
+spec=importlib.util.spec_from_file_location('train',r"SCRIPT")
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+p=Path(r"TEMP")
+rows=[{'member':f'{s}/{i}.png','split':s,'label':'KO' if i%2 else 'OK'} for s in ('train','val','test') for i in range(8)]
+exclude=p/'prior.json';exclude.write_text(json.dumps({'train':rows[:2],'test':[r for r in rows if r['split']=='test'][:2]}))
+a=types.SimpleNamespace(exclude_test_members=str(exclude),max_train=8,max_eval=6)
+selected,prov=m.select_members(rows,a)
+assert len(selected['train'])==8 and len(selected['val'])==6 and len(selected['test'])==6
+assert all(r['member'] not in ('test/0.png','test/1.png') for r in selected['test'])
+assert prov['excluded_test_count']==2 and prov['exclude_test_sha256']==hashlib.sha256(exclude.read_bytes()).hexdigest()
+state=p/'state.pt';torch.save(m.WeldCNN().state_dict(),state)
+info=m.load_initial(m.WeldCNN(),state);assert info['sha256']==hashlib.sha256(state.read_bytes()).hexdigest()
+torch.save({'wrong':torch.zeros(1)},state)
+try:m.load_initial(m.WeldCNN(),state);raise AssertionError('architecture mismatch accepted')
+except RuntimeError:pass
+'''.replace('SCRIPT',str(root/'sop-vision/tools/battery_weld_train.py')).replace('TEMP',str(tmp_path))
+    subprocess.run([str(python),'-c',code],check=True,timeout=30,capture_output=True)

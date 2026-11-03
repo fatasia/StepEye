@@ -77,6 +77,46 @@
         "Image-level OK/KO research prediction, not defect localization or release verdict.",
         "No independent target-line acceptance; source training metrics are recorded separately."
       ]
+    },
+    {
+      "id": "public-battery-weld-cnn-v2",
+      "name": "EV焊缝 OK/KO · 全量训练候选 v2",
+      "task": "classify",
+      "runtime": "onnx",
+      "model_path": "models/public/battery-weld-cnn-v2.onnx",
+      "bytes": 317603,
+      "sha256": "f8fdccba12bbfbecdec19a227002d1642fe5539f4730468bca6823760984d081",
+      "classes": [
+        "OK",
+        "KO"
+      ],
+      "preprocessing": "gray224",
+      "input": [
+        1,
+        1,
+        224,
+        224
+      ],
+      "output": [
+        1,
+        2
+      ],
+      "output_semantics": "logits_then_softmax",
+      "usage": "evaluation_only",
+      "production_ready": false,
+      "license_status": "project-authored random-init CNN; data_CC-BY-4.0; code/weights release terms not separately declared",
+      "source": {
+        "kind": "project-authored CNN enhanced from local v1; no external pretrained weights",
+        "dataset_license": "CC-BY-4.0",
+        "training_artifact": ".v0\\battery-inspection\\train-full-v2\\battery-weld-cnn.onnx",
+        "train_images": 43169,
+        "test_images": 5000,
+        "initial_state_sha256": "4a7996d9fa483374860d0eb36bdcf4492955e445cb65a9d0b89d656777c71691"
+      },
+      "limitations": [
+        "Image-level classification only, not sealing-pin localization or six-face acceptance.",
+        "Same-test comparison: fewer false rejects, four more false accepts; neither version release-approved."
+      ]
     }
   ]
 }
