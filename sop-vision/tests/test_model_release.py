@@ -57,6 +57,10 @@ def api(tmp_path):
     for role in ("admin", "operator", "viewer"):
         auth.set_user(role, "test-password", role)
     app = build_app([], tmp_path / "data", auth=auth)
+    # candidate 创建会快照引擎的模型文件路径:登记一个哑文件即可
+    dummy = tmp_path / "fixture.onnx"
+    dummy.write_bytes(b"dummy")
+    app.state.manager.label_engines.register("fixture-eval", dummy, ["part", "other"], "发布夹具")
     releases = ModelReleases(tmp_path / "data" / "model_releases.db")
     api_router = model_release_router(releases, app.state.manager.holdout_evaluations)
     app.include_router(api_router)
@@ -66,8 +70,15 @@ def api(tmp_path):
     added = len(api_router.routes)
     new_routes = routes[len(routes) - added:]
     del routes[len(routes) - added:]
-    mount_index = next(i for i, r in enumerate(routes)
-                       if isinstance(r, Mount) and r.name == "web")
+    # 不同 starlette 版本对 mount 的表示不同(0.50 起 path 为空串):按 catch-all
+    # path_format + 名称 + 承载应用 duck-typing 找
+    def is_root_static(r):
+        if getattr(r, "path_format", None) == "/{path}" and hasattr(r, "app"):
+            return True
+        return isinstance(r, Mount) and (r.path == "/" or r.name == "web")
+
+    mount_index = next((i for i, r in enumerate(routes) if is_root_static(r)), None)
+    assert mount_index is not None, "未找到静态挂载,路由无法生效"
     routes[mount_index:mount_index] = new_routes
     with TestClient(app) as client:
         yield client, app.state.manager, releases
@@ -175,3 +186,88 @@ def test_ledger_is_immutable(api):
         releases._db.execute("UPDATE model_releases SET body='x' WHERE release_id=?", (first["id"],))
     with pytest.raises(sqlite3.DatabaseError, match="immutable"):
         releases._db.execute("DELETE FROM model_releases WHERE release_id=?", (first["id"],))
+
+
+def test_activation_applies_to_runtime_sha_mismatch_skips(tmp_path):
+    """生效路径:激活后工位重载即覆盖检测器;引擎 SHA 漂移时跳过覆盖并保持 YAML 原样。"""
+    import yaml
+    from pathlib import Path
+    import numpy as np
+    import onnx
+    from visual.label_jobs import fingerprint
+
+    def variant_graph(folder, tag):
+        """带差异字节的常量 e2e 检测图;tag 写进模型属性使 SHA 可区分。"""
+        folder.mkdir(parents=True, exist_ok=True)
+        pred = np.zeros((1, 300, 6), np.float32)
+        pred[0, 0] = [160, 160, 240, 240, .9, 0]
+        pred[0, 1] = [300, 300, 400, 400, .8, 1]
+        node = onnx.helper.make_node('Constant', [], ['output'], value=onnx.numpy_helper.from_array(pred))
+        g = onnx.helper.make_graph([node], 'fixture-' + tag,
+                                   [onnx.helper.make_tensor_value_info('images', onnx.TensorProto.FLOAT, [1, 3, 640, 640])],
+                                   [onnx.helper.make_tensor_value_info('output', onnx.TensorProto.FLOAT, list(pred.shape))])
+        m = onnx.helper.make_model(g, opset_imports=[onnx.helper.make_opsetid('', 13)])
+        m.ir_version = 8
+        onnx.helper.set_model_props(m, {'names': "{0: 'part', 1: 'other'}", 'end2end': 'true',
+                                        'task': 'detect', 'variant': tag})
+        p = folder / 'fixture.onnx'
+        onnx.save(m, p)
+        return p
+
+    auth = AuthStore(tmp_path / "auth.db")
+    for role in ("admin", "operator"):
+        auth.set_user(role, "test-password", role)
+    station = tmp_path / "station.yaml"
+    station.write_text(yaml.safe_dump({
+        "station": "ST-R", "name": "发布生效工位",
+        "source": {"type": "sim", "width": 640, "height": 480},
+        "hands": {"enabled": False},
+        "zones": [{"id": "post", "polygon": [[0, 0], [1, 0], [1, 1], [0, 1]]}],
+        "safety": {"enabled": True, "rules": [{"id": "idle", "kind": "person_absent", "zone": "post"}]},
+    }), encoding="utf-8")
+    app = build_app([station], tmp_path / "data", auth=auth)
+    manager = app.state.manager
+    first_model = variant_graph(tmp_path / "m1", "r1")
+    second_model = variant_graph(tmp_path / "m2", "r2")
+    releases = manager.model_releases
+    try:
+        with TestClient(app) as client:
+            login(client, "admin")
+
+            def full_cycle(model, conf):
+                # 新版本模型文件上线 → 引擎登记指向新文件(对应真实发布流程)
+                manager.label_engines.register("fixture-eval", model, ["part", "other"], "发布夹具")
+                record = holdout_report(manager, model_sha256=fingerprint(model),
+                                        engine_id="fixture-eval", adapter="yolo_e2e")
+                created = client.post("/api/model-releases",
+                                      json=candidate_body(record, model_sha256=fingerprint(model)))
+                assert created.status_code == 201, created.text
+                rid = created.json()["id"]
+                assert client.post(f"/api/model-releases/{rid}/approve").status_code == 200
+                activated = client.post(f"/api/model-releases/{rid}/activate", json={"scene": "ST-R"})
+                assert activated.status_code == 200, activated.text
+                return activated.json()
+
+            first = full_cycle(first_model, .25)
+            assert first["applied_to_runtime"] is True and first["pending_reload"] is False
+            detector = manager.runtimes["ST-R"].cfg.detector
+            assert detector.enabled and detector.adapter == "yolo_e2e"
+            assert Path(detector.model) == Path(first_model)
+            assert detector.class_names == ["part", "other"]
+
+            second = full_cycle(second_model, .3)
+            assert second["applied_to_runtime"] is True
+            assert Path(manager.runtimes["ST-R"].cfg.detector.model) == Path(second_model)
+
+            rolled = client.post(f"/api/model-releases/{second['id']}/rollback")
+            assert rolled.status_code == 200 and rolled.json()["applied_to_runtime"] is True
+            assert Path(manager.runtimes["ST-R"].cfg.detector.model) == Path(first_model)
+
+            # 引擎文件漂移(账本记录的模型文件被替换):重载跳过覆盖,YAML 原样生效
+            first_model.write_bytes(first_model.read_bytes()[:-1] + b"\x00")
+            manager.reload("ST-R")
+            skipped = manager.runtimes["ST-R"].cfg.detector
+            assert not skipped.enabled and skipped.adapter == "yolo_raw"
+    finally:
+        releases.close()
+        auth.close()
