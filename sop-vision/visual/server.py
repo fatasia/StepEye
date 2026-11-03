@@ -549,6 +549,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(stock_recon_router(manager.stock_recon))
     from .model_release_routes import router as model_release_router
     app.include_router(model_release_router(manager.model_releases, manager.holdout_evaluations, manager))
+    from .project_docs import router as project_docs_router
+    app.include_router(project_docs_router())
     from .quality_routes import router as quality_router
     app.include_router(quality_router(manager.quality_reports))
     from .recipe_routes import router as recipe_router

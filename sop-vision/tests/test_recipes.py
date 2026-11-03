@@ -127,7 +127,9 @@ def test_manager_reload_refuses_active_cycle_or_live_old_thread(service, active)
     old.stop = lambda: stopped.append(True)
     old.engine.cycle = object() if active else None
     manager = SimpleNamespace(runtimes={"a": old}, paths=svc.manager.paths,
-                              _threads={"a": SimpleNamespace(join=lambda timeout: None, is_alive=lambda: True)})
+                              _threads={"a": SimpleNamespace(join=lambda timeout: None, is_alive=lambda: True)},
+                              _apply_active_release=lambda cfg: cfg,
+                              hub=SimpleNamespace(publish=lambda *a, **k: None))
     with pytest.raises(HTTPException) as caught:
         StationManager.reload(manager, "a")
     assert caught.value.status_code == 409

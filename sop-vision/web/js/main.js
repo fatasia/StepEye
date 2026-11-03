@@ -1,6 +1,7 @@
 import * as mechanism from "./pages/mechanism.js";
 import { mountAssistant } from "./global-assistant.js";
 import * as documents from "./pages/documents.js";
+import * as docscenter from "./pages/docs-center.js";
 import { icon, LOGO } from "./icons.js";
 import { api, ApiError } from "./api.js";
 import { bootstrap, connect, store, subscribe } from "./store.js";
@@ -22,15 +23,15 @@ import * as labeling from "./pages/labeling.js";
 import * as models from "./pages/models.js";
 import * as settings from "./pages/settings.js";
 
-const ROUTES = { mechanism, documents, overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings, labeling, models, settings };
-const TITLES = { mechanism: "机理实验室", documents: "知识与文档", overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库", timeline: "时间轴标注", sitemap: "厂区图", patrol: "巡更到位", recordings: "录像回放", labeling: "标注工作台", models: "视觉应用", settings: "设置" };
+const ROUTES = { mechanism, documents, docscenter, overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings, labeling, models, settings };
+const TITLES = { mechanism: "机理实验室", documents: "知识与文档", overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库", timeline: "时间轴标注", sitemap: "厂区图", patrol: "巡更到位", recordings: "录像回放", labeling: "标注工作台", models: "视觉应用", settings: "设置", docscenter: "文档中心" };
 const ROUTE_ICONS = { overview: "overview", live: "live", trace: "trace", inspection: "camera", alerts: "inbox", samples: "copy", models: "config", timeline: "clock", sitemap: "overview", patrol: "clock", recordings: "live", config: "config", documents: "copy", mechanism: "config", settings: "config" };
 // 二级导航:组头只负责折叠,子项才是页面;labeling 归入样本库所在组
 const NAV_GROUPS = [
   ["ops", "运行监控", "overview", ["overview", "live", "alerts", "trace"]],
   ["video", "视频巡防", "live", ["recordings", "sitemap", "patrol"]],
   ["quality", "质量视觉", "camera", ["inspection", "models", "mechanism"]],
-  ["data", "数据知识", "copy", ["samples", "timeline", "documents", "config"]],
+  ["data", "数据知识", "copy", ["samples", "timeline", "documents", "config", "docscenter"]],
 ];
 const NAV_BOTTOM = ["settings"];
 const ACCENTS = [["#3ec6c1", "青"], ["#65aee8", "蓝"], ["#59c58d", "绿"], ["#d8ac52", "琥珀"], ["#b08cf0", "紫"]];
