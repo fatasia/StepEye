@@ -1,7 +1,6 @@
 """Bounded, resumable original-host range download for OPENZDM 14025630."""
 from pathlib import Path
 import concurrent.futures,hashlib,json,time,subprocess,re,os
-import requests
 SIZE=1153183844
 MD5='f187dac063cf656bb627327fa9771d16'
 URL='https://zenodo.org/api/records/14025630/files/Weld%20Aesthetical%20Defects.zip/content'
@@ -38,6 +37,13 @@ def curl_range(start,end,target,deadline):
 
 
 def download(root,seconds=480,transport="requests"):
+    # curl is a standalone transport; importing this tool must not require requests.
+    request_errors=()
+    if transport=="requests":
+        import requests
+        request_errors=(requests.RequestException,)
+    elif transport!="curl":
+        raise ValueError('unknown download transport')
     root=Path(root);root.mkdir(parents=True,exist_ok=True);parts=root/'full-parts';parts.mkdir(exist_ok=True)
     prefix=root/'ev-weld-v1.zip.part';prefix_size=prefix.stat().st_size if prefix.exists() else 0
     plan=root/'download-plan.json'
@@ -68,7 +74,7 @@ def download(root,seconds=480,transport="requests"):
                 if total!=end-start+1:raise ValueError('short range')
                 temp.replace(target)
             return True
-        except (requests.RequestException,TimeoutError,ValueError,OSError,subprocess.TimeoutExpired) as exc:
+        except (TimeoutError,ValueError,OSError,subprocess.TimeoutExpired)+request_errors as exc:
             errors.append({'range':job,'error':type(exc).__name__});return False
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         for ok in pool.map(fetch,jobs):

@@ -126,3 +126,23 @@ def test_manager_reload_refuses_active_cycle_or_live_old_thread(service, active)
         StationManager.reload(manager, "a")
     assert caught.value.status_code == 409
     assert bool(stopped) is not active
+
+
+def test_snapshot_current_captures_changes_without_mutating_versions(service):
+    svc, calls = service
+    recipe = create(svc)
+    path = svc.manager.paths["a"]
+    raw = yaml.safe_load(path.read_text())
+    raw["quality"] = {"enabled": True, "blur_min": 31}
+    path.write_text(yaml.safe_dump(raw))
+    original = path.read_bytes()
+    legacy = svc.add_version(recipe["id"], VersionBody(), "operator")
+    assert not legacy["fields"]["quality"]["enabled"]
+    snapshot = svc.add_version(recipe["id"], VersionBody(snapshot_current=True), "operator")
+    assert snapshot["fields"]["quality"]["blur_min"] == 31
+    assert snapshot["fields"]["quality"]["enabled"]
+    assert "source" not in snapshot["fields"] and "detector" not in snapshot["fields"]
+    assert svc.store.version(recipe["latest_version"]["id"]) == recipe["latest_version"]
+    assert path.read_bytes() == original and not calls
+    with pytest.raises(ValueError, match="模型路径"):
+        svc.add_version(recipe["id"], VersionBody(snapshot_current=True, patch={"detector": {}}), "operator")

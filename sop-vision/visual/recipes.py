@@ -29,6 +29,7 @@ class RecipeBody(BaseModel):
 class VersionBody(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, protected_namespaces=())
     patch: dict = Field(default_factory=dict)
+    snapshot_current: bool = False
 
 
 class SwitchBody(BaseModel):
@@ -163,7 +164,8 @@ class RecipeService:
 
     def add_version(self, rid, body: VersionBody, actor):
         recipe = self.store.get(rid)
-        prior = self.store.versions(rid)[0]["fields"]
+        # Explicit snapshots capture current business rules; legacy patches extend the last version.
+        prior = None if body.snapshot_current else self.store.versions(rid)[0]["fields"]
         fields = self._fields(recipe["station_id"], body.patch, prior)
         return self.store.save(recipe, fields, actor)
 

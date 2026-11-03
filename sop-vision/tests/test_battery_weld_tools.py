@@ -100,3 +100,20 @@ try:m.load_initial(m.WeldCNN(),state);raise AssertionError('architecture mismatc
 except RuntimeError:pass
 '''.replace('SCRIPT',str(root/'sop-vision/tools/battery_weld_train.py')).replace('TEMP',str(tmp_path))
     subprocess.run([str(python),'-c',code],check=True,timeout=30,capture_output=True)
+
+
+def test_curl_transport_does_not_require_requests(tmp_path):
+    import subprocess,sys
+    script=Path(__file__).parents[1]/'tools'/'battery_weld_download.py'
+    code="""
+import importlib.util,sys
+from pathlib import Path
+sys.modules['requests']=None
+spec=importlib.util.spec_from_file_location('download',sys.argv[1])
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+m.SIZE=3;m.MD5=m.hashlib.md5(b'abc').hexdigest()
+m.curl_range=lambda start,end,target,deadline:target.write_bytes(b'abc')
+m.download(Path(sys.argv[2]),seconds=30,transport='curl')
+assert (Path(sys.argv[2])/'ev-weld-v1.zip').read_bytes()==b'abc'
+"""
+    subprocess.run([sys.executable,'-c',code,str(script),str(tmp_path)],check=True,capture_output=True,timeout=10)
