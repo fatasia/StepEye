@@ -73,10 +73,11 @@ class _FakeCogTransport:
 
 
 class _FakeVLM:
-    def inspect(self, images, prompt):
-        assert len(images) == 1
-        return {"ok": True, "verdict": None, "confidence": None,
-                "raw": '"金属件特写,出现刮痕"'}
+    def image_message(self, images, prompt):
+        return [{"role": "user", "content": prompt}]
+
+    def chat(self, messages):
+        return '"金属件特写,出现刮痕"'  # 写提示词走自然语言 chat
 
 
 def test_generate_batch_cogview_with_injections(tmp_path):

@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import random
+import os
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +25,7 @@ import numpy as np
 from .llm_provider import ProviderConfig, VLMProvider
 
 # 生成式引擎的诚实上限:一次批量别超过这个数(每张 5~15s,且保真度有限)
-COGVIEW_MAX_BATCH = 8
+COGVIEW_MAX_BATCH = 8  # 生成式单批上限:保真度有限
 
 
 def augment_one(img: np.ndarray, rng: random.Random) -> tuple[np.ndarray, dict[str, Any]]:
@@ -96,16 +97,51 @@ VARIATION_HINTS = ["画面视角略微不同", "光照偏暗一些", "光照偏�
                    "背景细节不同", "色调略有偏差", "轻微运动模糊感"]
 
 
-def cogview_generate(cfg: ProviderConfig, prompt: str, size: str = "1024x1024",
+def _images_generate(cfg: ProviderConfig, model: str, prompt: str, size: str,
                      transport=None, fetcher=None) -> bytes:
-    """调 CogView 图片生成,返回 jpg 字节;失败抛异常由调用方记为失败行。"""
+    """OpenAI 兼容 images/generations 生成(CogView / lk888 tt-image-2.5 等网关通用)。"""
     post = transport.post if transport is not None else _default_post
     fetch = fetcher or (lambda url, timeout: urllib.request.urlopen(url, timeout=timeout))
-    resp = post(cfg.base_url.rstrip("/").replace("/chat/completions", "") + "/images/generations",
+    base = cfg.base_url.rstrip("/")
+    if "/chat/completions" in base:  # chat 端点(如智谱 paas/v4):去掉尾段换 images
+        base = base[: base.rfind("/chat/completions")]
+    resp = post(base + "/images/generations",
                 {"Authorization": f"Bearer {cfg.api_key}"},
-                {"model": "cogview-3-flash", "prompt": prompt, "size": size})
-    url = resp["data"][0]["url"]
-    with fetch(url, 120) as r:  # url 来自配置的官方端点返回体
+                {"model": model, "prompt": prompt, "size": size})
+    d0 = resp["data"][0]
+    if d0.get("b64_json"):
+        import base64
+        return base64.b64decode(d0["b64_json"])
+    with fetch(d0["url"], 120) as r:  # url 来自配置的官方端点返回体
+        return r.read()
+
+
+def cogview_generate(cfg: ProviderConfig, prompt: str, size: str = "1024x1024",
+                     transport=None, fetcher=None) -> bytes:
+    """CogView-3-Flash 生成(智谱官方端点)。"""
+    return _images_generate(cfg, "cogview-3-flash", prompt, size, transport, fetcher)
+
+
+def lk888_generate(cfg: ProviderConfig, prompt: str, size: str = "1024x1024",
+                   transport=None, fetcher=None) -> bytes:
+    """lk888 网关 tt-image-2.5 生成:凭据取 GEN_API_KEY/GEN_BASE/GEN_MODEL(.env 可配)。"""
+    from .llm_provider import load_env_file, _default_env_path
+    file_vals = load_env_file(_default_env_path())
+    cfg2 = ProviderConfig(
+        base_url=(os.environ.get("GEN_BASE") or file_vals.get("GEN_BASE") or "https://api.lk888.ai").rstrip("/"),
+        api_key=os.environ.get("GEN_API_KEY") or file_vals.get("GEN_API_KEY") or cfg.api_key,
+        model=os.environ.get("GEN_MODEL") or file_vals.get("GEN_MODEL") or "tt-image-2.5")
+    path = "/v1/images/generations"  # OpenAI 兼容网关固定路径
+    post = transport.post if transport is not None else _default_post
+    fetch = fetcher or (lambda url, timeout: urllib.request.urlopen(url, timeout=timeout))
+    resp = post(cfg2.base_url + path,
+                {"Authorization": f"Bearer {cfg2.api_key}"},
+                {"model": cfg2.model, "prompt": prompt, "size": size})
+    d0 = resp["data"][0]
+    if d0.get("b64_json"):
+        import base64
+        return base64.b64decode(d0["b64_json"])
+    with fetch(d0["url"], 120) as r:
         return r.read()
 
 
@@ -123,8 +159,8 @@ def generate_batch(ref_path: Path, label: str, description: str, n: int, out_dir
     """统一入口;augment 离线,cogview 走「VLM 读图→写提示词→生成」。返回 manifest 行(含失败行)。"""
     if engine == "augment":
         return augment_batch(ref_path, label, n, out_dir, seed)
-    if engine != "cogview":
-        raise ValueError(f"未知引擎: {engine}")
+    if engine not in ("cogview", "lk888"):
+        raise ValueError(f"未知生成引擎: {engine}(可选 cogview / lk888)")
     if n > COGVIEW_MAX_BATCH:
         raise ValueError(f"生成式一次最多 {COGVIEW_MAX_BATCH} 张(保真度有限,别当验收样本)")
     cfg = cfg or ProviderConfig.from_env()
@@ -132,17 +168,17 @@ def generate_batch(ref_path: Path, label: str, description: str, n: int, out_dir
         raise RuntimeError("缺少 ZHIPU_API_KEY")
     vlm = vlm or VLMProvider(cfg)
     ref_b64 = base64.b64encode(ref_path.read_bytes()).decode()
-    base_prompt_out = vlm.inspect([ref_b64], GEN_PROMPT.replace("{description}", description))
-    if not base_prompt_out["ok"]:
-        raise RuntimeError(f"VLM 生成提示词失败: {base_prompt_out['reason']}")
-    base_prompt = str(base_prompt_out.get("raw") or "").strip().strip('"')
+    # 写提示词这步是自然语言,不需要 JSON——直接 chat 取全文
+    base_prompt = vlm.chat(vlm.image_message([ref_b64],
+                           GEN_PROMPT.replace("{description}", description))).strip().strip('"')
     out_dir.mkdir(parents=True, exist_ok=True)
     rng = random.Random(seed)
     stem, rows = ref_path.stem, []
     for i in range(n):
         prompt = f"{base_prompt},{VARIATION_HINTS[i % len(VARIATION_HINTS)]}"
         try:
-            data = cogview_generate(cfg, prompt, transport=cogview_transport, fetcher=cogview_fetcher)
+            gen = cogview_generate if engine == "cogview" else lk888_generate
+            data = gen(cfg, prompt, transport=cogview_transport, fetcher=cogview_fetcher)
             name = f"{stem}_{label}_gen{i:03d}.jpg"
             (out_dir / name).write_bytes(data)
             rows.append({"file": name, "label": label, "engine": "cogview", "source": ref_path.name,

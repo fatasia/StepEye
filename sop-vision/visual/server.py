@@ -7,6 +7,9 @@ import os
 import re
 import threading
 import time
+
+import cv2
+import numpy as np
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
@@ -75,6 +78,8 @@ class StationManager:
         self.alerts = alert_store or AlertStore(data_dir / "alerts.db")
         self.feishu_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
         self.shadow_store: ShadowStore | None = None
+        from .geo import GeoStore
+        self.geo = GeoStore(data_dir / "geo.db")
         self.evidence_root = data_dir / "evidence"
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
@@ -247,10 +252,36 @@ class SourceBody(BaseModel):
     uri: str = ""
 
 
+class GeoBody(BaseModel):
+        id: str
+        name: str
+        kind: str = "station"
+        lat: float
+        lng: float
+
+
 class IntervalsBody(BaseModel):
     intervals: list[dict[str, Any]]
     extract: bool = True
     per_interval: int = 2
+
+
+class PlanPointBody(BaseModel):
+    name: str
+    kind: str = "camera"
+    x: float
+    y: float
+
+
+class OnvifDiscoverBody(BaseModel):
+    timeout_s: float = 3.0
+
+
+class OnvifAdoptBody(BaseModel):
+    host: str
+    port: int = 80
+    user: str
+    password: str
 
 
 class TruthBody(BaseModel):
@@ -686,6 +717,166 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         store.close()
         return {"ok": True, "station": sid, "yaml": str(dest)}
 
+    # ---- GIS 定位 ----
+    @app.get("/api/geo")
+    def geo_list(kind: str | None = None) -> list[dict[str, Any]]:
+        return manager.geo.list(kind)
+
+    @app.get("/api/geo/map")
+    def geo_map() -> dict[str, Any]:
+        """地图页一次拿全:点位 + 各点实时状态与最近告警数(前端打点着色)。"""
+        points = manager.geo.list()
+        out = []
+        for p in points:
+            rt = manager.runtimes.get(p["id"])
+            out.append({**p, "status": "online" if rt is not None else "unknown",
+                        "pending_alerts": len([a for a in manager.alerts.list(limit=200)
+                                               if a["station"] == p["id"] and a["status"] == "pending"])})
+        return {"points": out, "center": None}
+
+
+    @app.post("/api/geo")
+    def geo_upsert(body: GeoBody) -> dict[str, Any]:
+        try:
+            return manager.geo.upsert(body.id, body.name, body.kind, body.lat, body.lng)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.delete("/api/geo/{pid}")
+    def geo_delete(pid: str) -> dict[str, Any]:
+        if not manager.geo.delete(pid):
+            raise HTTPException(404, f"点位不存在:{pid}")
+        return {"ok": True}
+
+    # ---- 相机接入:ONVIF / GB28181 ----
+    @app.get("/api/cameras/onvif/status")
+    def onvif_status() -> dict[str, Any]:
+        import importlib.util
+        return {"wsdiscovery": importlib.util.find_spec("wsdiscovery") is not None,
+                "onvif_zeep_async": importlib.util.find_spec("onvif") is not None}
+
+    @app.post("/api/cameras/onvif/discover")
+    def onvif_discover(body: OnvifDiscoverBody) -> dict[str, Any]:
+        from .onvif import wsdiscovery_probe
+        try:
+            return {"ok": True, "devices": wsdiscovery_probe(body.timeout_s)}
+        except RuntimeError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.post("/api/cameras/onvif/adopt")
+    def onvif_adopt(body: OnvifAdoptBody) -> dict[str, Any]:
+        """读相机 RTSP 主码流地址与 GeoLocation(若有);返回信息供向导/工位 source 使用。"""
+        from .onvif import device_rtsp_and_geo
+        try:
+            return {"ok": True, **device_rtsp_and_geo(body.host, body.port, body.user, body.password)}
+        except RuntimeError as e:
+            raise HTTPException(400, str(e)) from e
+
+    @app.get("/api/cameras/gb28181/status")
+    def gb28181_status() -> dict[str, Any]:
+        return {"configured": bool(os.environ.get("GB28181_WVP_URL")), "hint": "配置 GB28181_WVP_URL/USER/PASS 后启用;部署侧为 wvp-pro + ZLMediaKit"}
+
+    @app.post("/api/cameras/gb28181/sync")
+    def gb28181_sync() -> dict[str, Any]:
+        """从 wvp-pro 拉设备目录(含国标必选经纬度)→ GIS 点位库。"""
+        if not os.environ.get("GB28181_WVP_URL"):
+            raise HTTPException(400, "未配置 GB28181_WVP_URL(部署 wvp-pro + ZLMediaKit 后填写)")
+        from .gb28181 import WvpClient
+        from .geo import sync_from_device_list
+        c = WvpClient(os.environ["GB28181_WVP_URL"], os.environ.get("GB28181_USER", "admin"),
+                      os.environ.get("GB28181_PASS", ""))
+        devs = c.devices()
+        synced = sync_from_device_list(devs, manager.geo)
+        return {"ok": True, "devices": len(devs), "synced": len(synced)}
+
+    # ---- 厂区平面图(轻量 GIS) ----
+    @app.post("/api/plans", status_code=201)
+    async def plans_create(name: str = Form(...), image: UploadFile = File(...)) -> dict[str, Any]:
+        from .plans import ALLOWED_IMG, PlanStore
+        ext = Path(image.filename or "").suffix.lower()
+        if ext not in ALLOWED_IMG:
+            raise HTTPException(400, f"仅支持图片 {'/'.join(sorted(ALLOWED_IMG))}(CAD 请先导出图片)")
+        data = await image.read()
+        if len(data) > 20 * 1024 * 1024:
+            raise HTTPException(400, "图片超过 20MB")
+        pdir = manager.data_dir / "plans"
+        pdir.mkdir(parents=True, exist_ok=True)
+        safe = f"{int(time.time() * 1000)}{ext}"
+        (pdir / safe).write_bytes(data)
+        store = PlanStore(manager.data_dir / "plans.db")
+        rec = store.create(name, safe)
+        store.close()
+        return rec
+
+    @app.get("/api/plans")
+    def plans_list() -> list[dict[str, Any]]:
+        from .plans import PlanStore
+        store = PlanStore(manager.data_dir / "plans.db")
+        rows = store.list()
+        store.close()
+        return rows
+
+    @app.get("/api/plans/{pid}")
+    def plans_get(pid: str) -> dict[str, Any]:
+        from .plans import PlanStore
+        store = PlanStore(manager.data_dir / "plans.db")
+        rec = store.get(pid)
+        pts = store.points(pid)
+        store.close()
+        if rec is None:
+            raise HTTPException(404, f"平面图不存在:{pid}")
+        return {**rec, "points": pts}
+
+    @app.get("/api/plans/{pid}/image")
+    def plans_image(pid: str) -> FileResponse:
+        from .plans import PlanStore
+        store = PlanStore(manager.data_dir / "plans.db")
+        rec = store.get(pid)
+        store.close()
+        if rec is None:
+            raise HTTPException(404, "平面图不存在")
+        path = (manager.data_dir / "plans" / rec["image"]).resolve()
+        root = (manager.data_dir / "plans").resolve()
+        if root not in path.parents or not path.is_file():
+            raise HTTPException(404, "底图不存在")
+        media = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+        return FileResponse(path, media_type=media)
+
+    @app.delete("/api/plans/{pid}")
+    def plans_delete(pid: str) -> dict[str, Any]:
+        from .plans import PlanStore
+        store = PlanStore(manager.data_dir / "plans.db")
+        ok = store.delete(pid)
+        store.close()
+        if not ok:
+            raise HTTPException(404, f"平面图不存在:{pid}")
+        return {"ok": True}
+
+    @app.post("/api/plans/{pid}/points", status_code=201)
+    def plans_add_point(pid: str, body: PlanPointBody) -> dict[str, Any]:
+        from .plans import PlanStore
+        store = PlanStore(manager.data_dir / "plans.db")
+        if store.get(pid) is None:
+            store.close()
+            raise HTTPException(404, f"平面图不存在:{pid}")
+        try:
+            rec = store.add_point(pid, body.name, body.kind, body.x, body.y)
+        except ValueError as e:
+            store.close()
+            raise HTTPException(400, str(e)) from e
+        store.close()
+        return rec
+
+    @app.delete("/api/plans/{pid}/points/{ptid}")
+    def plans_del_point(pid: str, ptid: str) -> dict[str, Any]:
+        from .plans import PlanStore
+        store = PlanStore(manager.data_dir / "plans.db")
+        ok = store.delete_point(ptid)
+        store.close()
+        if not ok:
+            raise HTTPException(404, "点位不存在")
+        return {"ok": True}
+
     # ---- 视频时间轴标注(V11) ----
     @app.post("/api/timelines", status_code=201)
     async def timeline_create(name: str = Form(...), video: UploadFile = File(...)) -> dict[str, Any]:
@@ -796,6 +987,50 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         if root not in path.parents or not path.is_file():
             raise HTTPException(404, "抽帧不存在")
         return FileResponse(path, media_type="image/jpeg")
+
+    # ---- 免训练外观检测(AnomalyDINO 式) ----
+    @app.post("/api/anomaly/{scene}/register", status_code=201)
+    async def anomaly_register(scene: str, files: list[UploadFile] = File(...),
+                               threshold: float = Form(0.12)) -> dict[str, Any]:
+        """登记 OK 图:上传 1-8 张好品图建立外观记忆库(免训练免标注坏品)。"""
+        from .anomaly import AnomalyEngine
+        if not 1 <= len(files) <= 8:
+            raise HTTPException(400, "OK 图 1~8 张")
+        if not 0.02 <= threshold <= 1.0:
+            raise HTTPException(400, "threshold 需在 0.02~1.0")
+        d = manager.data_dir / "anomaly" / scene
+        eng = AnomalyEngine.load(d) if (d / "engine.json").is_file() else AnomalyEngine(threshold)
+        added = 0
+        for f in files:
+            data = await f.read()
+            arr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+            if arr is None:
+                raise HTTPException(400, f"{f.filename} 不是可解码图片")
+            eng.add_ok(arr)
+            added += 1
+        eng.save(d)
+        return {"ok": True, "scene": scene, "total_refs": eng.n_refs, "added": added}
+
+    @app.post("/api/anomaly/{scene}/inspect", status_code=201)
+    async def anomaly_inspect(scene: str, image: UploadFile = File(...)) -> dict[str, Any]:
+        """判定一张图;结果同步进影子库(供真值标注与漏检/误杀统计)。"""
+        from .anomaly import AnomalyEngine
+        d = manager.data_dir / "anomaly" / scene
+        if not (d / "engine.json").is_file():
+            raise HTTPException(409, "该场景尚未登记 OK 图,无法判定")
+        eng = AnomalyEngine.load(d)
+        data = await image.read()
+        arr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        if arr is None:
+            raise HTTPException(400, "图片不可解码")
+        out = eng.inspect(arr)
+        rec, _ = manager.alerts.create(scene, "anomaly", out["verdict"] or "UNCERTAIN",
+                                       "warn", f"外观异常分 {out['score']}(阈值 {out['threshold']})",
+                                       ref_id=f"{int(time.time() * 1000)}")
+        if manager.shadow_store is not None:
+            manager.shadow_store.add("anomaly", scene, str(rec["id"]), out["verdict"], out["score"],
+                                     {"score": out["score"], "max_patch": out["max_patch"]})
+        return {"ok": True, "scene": scene, "alert_id": rec["id"], **out}
 
     # ---- 模板库 / 外部信号 ----
     @app.get("/api/templates")
