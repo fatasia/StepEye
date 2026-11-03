@@ -6,6 +6,7 @@ import { $, esc, setHTML } from "../util.js";
 /** 样本库:上传参考图 → 选引擎批量生成 → 标注继承;manifest 画廊 + 诚实提示。 */
 export function render(root) {
   root.innerHTML = `
+    <section class="panel" style="margin-bottom:var(--s-3)"><header class="panel-head"><div class="head-left"><h2>图片标注工作台</h2><span class="muted">导入图片 → 先试两张 → 人工确认 → 导出可训练数据</span></div><a class="btn btn-primary" href="#/labeling">打开标注工作台</a></header></section>
     <section class="panel">
       <header class="panel-head"><div class="head-left"><h2>样本生成</h2><span class="muted">参考图 + 描述 → 批量带标注样本;标注继承自所选标签</span></div></header>
       <div class="panel-body insp-upload">

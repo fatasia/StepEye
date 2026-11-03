@@ -138,18 +138,29 @@ class InspectionService:
         self.refs_root = refs_root or images_root.parent
         self.provider = provider
         self.publish = publish or (lambda msg: None)
-        self._q: queue.Queue[dict[str, Any] | None] = queue.Queue()
+        self._q: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._guard = threading.Lock()
+        self._started = False
+        self._stopped = False
         self._thread: threading.Thread | None = None
 
     # ---- 生命周期 ----
     def start(self) -> None:
-        self._thread = threading.Thread(target=self._worker, name="inspection", daemon=True)
-        self._thread.start()
+        with self._guard:
+            self._started = True
+            self._wake()
+
+    def _wake(self) -> None:
+        if self._started and not self._stopped and self._thread is None and not self._q.empty():
+            self._thread = threading.Thread(target=self._worker, name="inspection", daemon=True)
+            self._thread.start()
 
     def stop(self) -> None:
-        self._q.put(None)
-        if self._thread is not None:
-            self._thread.join(timeout=3)
+        with self._guard:
+            self._stopped = True
+            thread = self._thread
+        if thread is not None:
+            thread.join(timeout=3)
 
     # ---- 提交 ----
     def submit(self, scenario_id: str, images: list[bytes]) -> dict[str, Any]:
@@ -176,15 +187,22 @@ class InspectionService:
             cv2.imwrite(str(task_dir / name), arr, [cv2.IMWRITE_JPEG_QUALITY, 90])
             rec["images"].append(name)
         self.store.save(rec)
-        self._q.put({"id": rec["id"], "scenario": sc})
+        with self._guard:
+            if self._stopped:
+                raise ValueError("拍照即检正在停止")
+            self._q.put({"id": rec["id"], "scenario": sc})
+            self._wake()
         return rec
 
     # ---- 判定 ----
     def _worker(self) -> None:
         while True:
-            job = self._q.get()
-            if job is None:
-                return
+            with self._guard:
+                try:
+                    job = self._q.get_nowait()
+                except queue.Empty:
+                    self._thread = None
+                    return
             rec = self.store.get(job["id"])
             if rec is None:  # 库记录被清掉:任务作废,不入死循环
                 continue

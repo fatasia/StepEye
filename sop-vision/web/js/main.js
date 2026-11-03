@@ -15,9 +15,10 @@ import * as samples from "./pages/samples.js";
 import * as login from "./pages/login.js";
 import * as patrol from "./pages/patrol.js";
 import * as recordings from "./pages/recordings.js";
+import * as labeling from "./pages/labeling.js";
 
-const ROUTES = { overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings };
-const TITLES = { overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库", timeline: "时间轴标注", sitemap: "厂区图", patrol: "巡更到位", recordings: "录像回放" };
+const ROUTES = { overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings, labeling };
+const TITLES = { overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库", timeline: "时间轴标注", sitemap: "厂区图", patrol: "巡更到位", recordings: "录像回放", labeling: "标注工作台" };
 const NAV = [["overview", "总览", "overview"], ["live", "实时监控", "live"], ["trace", "追溯", "trace"], ["inspection", "拍照即检", "camera"], ["alerts", "告警中心", "inbox"], ["samples", "样本库", "copy"], ["timeline", "时间轴标注", "clock"], ["sitemap", "厂区图", "overview"], ["patrol", "巡更到位", "clock"], ["recordings", "录像回放", "live"], ["config", "SOP 配置", "config"]];
 const ACCENTS = [["#3ec6c1", "青"], ["#65aee8", "蓝"], ["#59c58d", "绿"], ["#d8ac52", "琥珀"], ["#b08cf0", "紫"]];
 const CONN = { open: ["实时连接", "success"], retry: ["连接中断，重连中…", "warning"], connecting: ["正在连接…", "info"] };
@@ -100,7 +101,7 @@ function route() {
   $("#page-title").textContent = TITLES[name];
   document.title = `${TITLES[name]} · 视觉实验室`;
   document.querySelectorAll("[data-nav]").forEach((a) => {
-    const on = a.dataset.nav === name;
+    const on = a.dataset.nav === name || (name === "labeling" && a.dataset.nav === "samples");
     a.classList.toggle("on", on);
     on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current");
   });

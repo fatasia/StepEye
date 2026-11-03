@@ -39,7 +39,7 @@ def test_postprocess_v5_layout_multiplies_objectness():
     pred[:4, 0] = (320, 320, 50, 50)
     pred[4, 0] = 0.8   # obj
     pred[5, 0] = 0.5   # person 分数 → 最终 0.4
-    out = postprocess(pred, 0.3, ["person", "dog"], (100, 100), 1.0, (0, 0))
+    out = postprocess(pred, 0.3, ["person", "dog"], (640, 640), 1.0, (0, 0))
     assert len(out) == 1 and out[0][0] == "person"  # obj=0.8×0.5=0.4 ≥0.3
 
 

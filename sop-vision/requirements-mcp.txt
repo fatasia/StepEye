@@ -1,0 +1,4 @@
+# Optional MCP proxy: use a separate virtualenv, not the vision runtime environment.
+# Official supported v1 maintenance line; v2 uses a different protocol/API.
+mcp==1.30.0
+httpx>=0.27.1,<1

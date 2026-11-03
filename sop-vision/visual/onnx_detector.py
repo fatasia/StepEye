@@ -44,9 +44,21 @@ def letterbox(frame: np.ndarray, size: int = INPUT_SIZE) -> tuple[np.ndarray, fl
     return canvas, r, (dx, dy)
 
 
-def postprocess(pred: np.ndarray, conf_th: float, class_names: list[str],
-                frame_shape: tuple[int, int], r: float, pad: tuple[int, int]) -> list[tuple[str, tuple[float, float, float, float]]]:
-    """(4+nc, N) 预测 → 过滤后的 [(类别名, xyxy), ...],坐标映射回原图。纯函数,离线可测。"""
+def postprocess_detections(pred: np.ndarray, conf_th: float, class_names: list[str],
+                           frame_shape: tuple[int, int], r: float, pad: tuple[int, int]) -> list[tuple[str, tuple, float]]:
+    """YOLO 原始输出 → 类别、原图 xyxy、置信度。按类 NMS，不支持端到端 NMS/DETR 输出。"""
+    if pred.ndim == 3 and pred.shape[0] == 1:
+        pred = pred[0]
+    if pred.ndim != 2 or not class_names:
+        raise ValueError("需要单图 YOLO 原始输出和完整类别表")
+    layouts = (4 + len(class_names), 5 + len(class_names))
+    if pred.shape[0] not in layouts and pred.shape[1] in layouts:
+        pred = pred.T
+    if pred.shape[0] not in layouts:
+        raise ValueError("ONNX 输出与类别表不匹配，仅支持 YOLO v5/v8 原始布局")
+    pred = pred[:, np.isfinite(pred).all(axis=0)]
+    if pred.shape[1] == 0:
+        return []
     nc = pred.shape[0] - 4
     if nc == len(class_names) + 1:  # v5 布局:第 5 行是 objectness,分数=obj×cls(非原地,避免形状广播错)
         pred = np.concatenate([pred[:4], pred[5:] * pred[4:5]], axis=0)
@@ -54,23 +66,38 @@ def postprocess(pred: np.ndarray, conf_th: float, class_names: list[str],
     scores = pred[4:4 + nc]  # (nc, N)
     ids = scores.argmax(axis=0)
     confs = scores.max(axis=0)
-    keep = confs >= conf_th
+    keep = (confs >= conf_th) & (confs <= 1) & (pred[2] > 0) & (pred[3] > 0)
     if not keep.any():
         return []
     boxes = pred[:4, keep].T  # (M, 4) cx,cy,w,h 网络输入坐标
     confs, ids = confs[keep], ids[keep]
     xy = boxes[:, :2] - boxes[:, 2:] / 2  # 左上
     xyxy = np.concatenate([xy, xy + boxes[:, 2:]], axis=1)
-    idx = cv2.dnn.NMSBoxes(xyxy.tolist(), confs.tolist(), conf_th, NMS_IOU)
-    out: list[tuple[str, tuple[float, float, float, float]]] = []
+    # OpenCV 接口接收 xywh，不能传 xyxy；不同类别不互相抑制。
+    xywh = np.concatenate([xy, boxes[:, 2:]], axis=1)
+    idx = []
+    for cls in np.unique(ids):
+        members = np.flatnonzero(ids == cls)
+        selected = cv2.dnn.NMSBoxes(xywh[members].tolist(), confs[members].tolist(), conf_th, NMS_IOU)
+        idx.extend(members[np.asarray(selected, dtype=int).reshape(-1)].tolist())
+    idx.sort(key=lambda i: -float(confs[i]))
+    out = []
     for i in np.array(idx).reshape(-1):
         name = class_names[int(ids[i])] if int(ids[i]) < len(class_names) else str(int(ids[i]))
         x0, y0, x1, y1 = xyxy[i]
         ox, oy = pad
         box = ((x0 - ox) / r, (y0 - oy) / r, (x1 - ox) / r, (y1 - oy) / r)
-        out.append((name, (max(0.0, box[0]), max(0.0, box[1]),
-                           min(float(frame_shape[1]), box[2]), min(float(frame_shape[0]), box[3]))))
+        clipped = (max(0.0, box[0]), max(0.0, box[1]),
+                   min(float(frame_shape[1]), box[2]), min(float(frame_shape[0]), box[3]))
+        if clipped[0] < clipped[2] and clipped[1] < clipped[3]:
+            out.append((name, clipped, float(confs[i])))
     return out
+
+
+def postprocess(pred: np.ndarray, conf_th: float, class_names: list[str],
+                frame_shape: tuple[int, int], r: float, pad: tuple[int, int]) -> list[tuple[str, tuple]]:
+    """兼容实时跟踪器的无置信度接口。"""
+    return [(name, box) for name, box, _ in postprocess_detections(pred, conf_th, class_names, frame_shape, r, pad)]
 
 
 class OnnxObjectDetector:

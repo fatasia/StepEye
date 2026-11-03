@@ -66,3 +66,14 @@ def test_timeline_end_to_end(client):
     # 抽帧可回读
     img_url = body["frames_url_prefix"] + "/" + rows[0]["file"]
     assert client.get(img_url).status_code == 200
+
+def test_registered_media_import_does_not_inherit_machine_truth(client):
+    root = client.app.state.manager.data_dir
+    pid = client.post("/api/label-projects", json={"name":"evidence", "classes":["part"]}).json()["id"]
+    sample = root / "samplegen/batch"; sample.mkdir(parents=True, exist_ok=True)
+    assert cv2.imwrite(str(sample / "generated.jpg"), np.zeros((20, 20, 3), np.uint8))
+    route = f"/api/label-projects/{pid}/import-evidence"
+    row = client.post(route, json={"kind":"sample","name":"generated.jpg"}).json()
+    assert row["synthetic"] and row["state"] == "unlabeled" and not row["targets"]
+    assert client.post(route, json={"kind":"sample","name":"../generated.jpg"}).status_code == 400
+    assert client.post(route, json={"kind":"timeline","source_id":"missing","name":"x.jpg"}).status_code == 404

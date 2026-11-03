@@ -27,6 +27,9 @@ from .evidence import CycleStore
 from .events import SIGNAL, Event
 from .inspection import InspectionService, InspectionStore, load_scenarios
 from .llm_provider import ProviderConfig, VLMProvider
+from .labels import LabelError, LabelStore
+from .label_jobs import LabelEngines, LabelJobs
+from .label_routes import check_mcp_read, router as label_router
 from .media import MediaBridge, MediaError
 from .patrol import LOCAL_TZ, PatrolPlan, PatrolStore
 from .recordings import RecordingIndex, parse_time
@@ -88,6 +91,12 @@ class StationManager:
         self.patrol = PatrolStore(data_dir / "patrol.db")
         self.signal_store = SignalAuditStore(data_dir / "signals.db")
         self.signal_store.recover_abandoned()
+        self.labels = LabelStore(data_dir / "labeling")
+        self.label_engines = LabelEngines()
+        # 只登记已验证布局/来源的现有权重；不启用被淘汰的烟火模型。
+        self.label_engines.register("community-helmet", ROOT / "models/community/helmet.onnx",
+                                    ["With Helmet", "Without Helmet"], "安全帽 ONNX · 现有评估权重")
+        self.label_jobs = LabelJobs(data_dir / "labeling/jobs.db", self.labels, self.label_engines)
         self.evidence_root = data_dir / "evidence"
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
@@ -120,6 +129,13 @@ class StationManager:
                 start_shadow_recorder(rt, self.shadow_store)
             self.runtimes[cfg.station] = rt
             self.paths[cfg.station] = p
+            self._register_label_engine(cfg)
+
+    def _register_label_engine(self, cfg: StationConfig) -> None:
+        if cfg.detector.enabled and Path(cfg.detector.model).suffix.lower() == ".onnx":
+            from .onnx_detector import COCO80
+            self.label_engines.register(f"station-{cfg.station}", ROOT / cfg.detector.model,
+                list(cfg.detector.class_names) or list(COCO80), f"{cfg.station} · 工位 ONNX")
 
     def _forwarder(self, sid: str):
         def fwd(kind: str, payload: dict[str, Any]) -> None:
@@ -176,6 +192,7 @@ class StationManager:
             start_shadow_recorder(rt, self.shadow_store)
         self.runtimes[cfg.station] = rt
         self.paths[cfg.station] = path
+        self._register_label_engine(cfg)
         t = threading.Thread(target=rt.run, name=f"station-{cfg.station}", daemon=True)
         t.start()
         self.threads.append(t)
@@ -184,6 +201,7 @@ class StationManager:
         return cfg.station
 
     def start(self) -> None:
+        self.label_jobs.start()
         if self.inspection is not None:
             self.inspection.start()
         for sid, rt in self.runtimes.items():
@@ -217,6 +235,8 @@ class StationManager:
         self.hub.publish({"type": "event", "station": sid, "kind": "reloaded", "data": {"ok": True}})
 
     def stop(self) -> None:
+        self.label_jobs.close()
+        self.labels.close()
         for rt in self.runtimes.values():
             rt.stop()
         for t in self.threads:
@@ -280,9 +300,9 @@ class GeoBody(BaseModel):
 
 
 class IntervalsBody(BaseModel):
-    intervals: list[dict[str, Any]]
+    intervals: list[dict[str, Any]] = Field(max_length=256)
     extract: bool = True
-    per_interval: int = 2
+    per_interval: int = Field(default=2, ge=1, le=8)
 
 
 class PlanPointBody(BaseModel):
@@ -314,6 +334,19 @@ class CompileBody(BaseModel):
 
 class StepsBody(BaseModel):
     steps: list[dict[str, Any]]
+
+
+class LabelEvidenceBody(BaseModel):
+    kind: str = Field(pattern=r"^(timeline|sample)$")
+    source_id: str = Field(default="", max_length=100)
+    name: str = Field(min_length=1, max_length=200)
+
+
+class MCPTokenBody(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    scopes: list[str] = Field(default_factory=lambda: ["read"], max_length=3)
+    project_ids: list[str] = Field(default_factory=list, max_length=100)
+    expires_in_s: float = Field(default=3600, ge=60, le=30 * 86400, allow_inf_nan=False)
 
 
 def _feishu_send(url: str, text: str) -> bool:
@@ -382,13 +415,21 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .llm_provider import _default_env_path, load_env_file
     record_dir = os.getenv("MONIBUCA_RECORD_DIR", load_env_file(_default_env_path()).get("MONIBUCA_RECORD_DIR", ""))
     app.state.recordings = RecordingIndex(Path(record_dir)) if record_dir else None
+    app.include_router(label_router(manager.labels, manager.label_jobs, manager.label_engines))
+
+    @app.exception_handler(LabelError)
+    async def label_error(request: Request, e: LabelError):
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": str(e)}, status_code=e.status)
 
     def current_user(request: Request) -> dict | None:
         """从 Cookie 或 Bearer 取会话;auth 未启用时返回伪 admin(本机工具模式)。"""
+        h = request.headers.get("Authorization", "")
+        if h.startswith("Bearer se_mcp_"):
+            return auth.verify_mcp_token(h[7:]) if auth is not None else None
         if auth is None:
             return {"username": "local", "role": "admin"}
         token = request.cookies.get("vsession") or ""
-        h = request.headers.get("Authorization", "")
         if h.startswith("Bearer "):
             token = h[7:]
         return auth.verify_session(token)
@@ -396,19 +437,74 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     @app.middleware("http")
     async def auth_guard(request: Request, call_next):
         path = request.url.path
+        user = current_user(request)
+        request.state.user = user
+        if request.headers.get("Authorization", "").startswith("Bearer se_mcp_"):
+            from fastapi.responses import JSONResponse
+            if user is None:
+                return JSONResponse({"detail": "MCP令牌无效、已撤销或过期"}, status_code=401)
+            try:
+                check_mcp_read(request, user, manager.labels, manager.label_jobs)
+            except (HTTPException, LabelError) as e:
+                auth.audit_mcp(user["mcp_token_id"], request.method + " " + path, e.status_code if isinstance(e, HTTPException) else e.status)
+                return JSONResponse({"detail": e.detail if isinstance(e, HTTPException) else str(e)},
+                                    status_code=e.status_code if isinstance(e, HTTPException) else e.status)
+            response = await call_next(request)
+            auth.audit_mcp(user["mcp_token_id"], request.method + " " + path, response.status_code)
+            return response
         if auth is not None and path.startswith("/api") \
                 and path != "/api/health" and not path.startswith("/api/auth/"):
             try:
                 preview_read = (request.method == "POST" and re.fullmatch(r"/api/stations/[^/]+/preview", path)) or \
                     (request.method == "DELETE" and re.fullmatch(r"/api/stations/[^/]+/preview/[\w-]+", path)) or \
                     (request.method == "POST" and re.fullmatch(r"/api/stations/[^/]+/preview/[\w-]+/lease", path))
-                need = "admin" if path.startswith("/api/users") else \
+                need = "admin" if path.startswith(("/api/users", "/api/mcp/tokens", "/api/mcp/audit")) else \
                     ("viewer" if request.method == "GET" or preview_read else "operator")
                 AuthStore.check(current_user(request), need)
             except AuthError as e:
                 from fastapi.responses import JSONResponse
                 return JSONResponse({"detail": str(e)}, status_code=e.status)
         return await call_next(request)
+
+    @app.get("/api/mcp/scenes")
+    def mcp_scenes(request: Request) -> list[dict]:
+        allowed = (request.state.user or {}).get("project_ids", [])
+        scenes = {manager.labels.get_project(pid)["scene_id"] for pid in allowed} if allowed else None
+        # 不返回提示词、工位YAML、相机URI、远程服务或凭据。
+        rows = [{"id": sid, "name": rt.cfg.name or sid, "kind": "station"}
+                for sid, rt in manager.runtimes.items()]
+        if manager.inspection is not None:
+            rows += [{"id": s.id, "name": s.name, "kind": "inspection"} for s in manager.inspection.scenarios.values()]
+        return [r for r in rows if scenes is None or r["id"] in scenes]
+
+    def _mcp_auth() -> AuthStore:
+        if auth is None:
+            raise HTTPException(409, "先启用 --auth，再创建MCP专用令牌")
+        return auth
+
+    @app.post("/api/mcp/tokens", status_code=201)
+    def mcp_token_add(body: MCPTokenBody, request: Request) -> dict:
+        for pid in body.project_ids:
+            manager.labels.get_project(pid)
+        try:
+            return _mcp_auth().issue_mcp_token(request.state.user["username"], body.name, body.scopes,
+                                              body.project_ids, body.expires_in_s)
+        except (AuthError, ValueError) as e:
+            raise HTTPException(e.status if isinstance(e, AuthError) else 400, str(e)) from None
+
+    @app.get("/api/mcp/tokens")
+    def mcp_tokens() -> list[dict]:
+        return _mcp_auth().list_mcp_tokens()
+
+    @app.delete("/api/mcp/tokens/{tid}")
+    def mcp_token_revoke(tid: str) -> dict:
+        if not _mcp_auth().revoke_mcp_token(tid):
+            raise HTTPException(404, "令牌不存在")
+        return {"ok": True}
+
+    @app.get("/api/mcp/audit")
+    def mcp_audit(limit: int = Query(100, ge=1, le=500)) -> list[dict]:
+        return _mcp_auth().mcp_audit(limit)
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:
@@ -1088,6 +1184,37 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         store.close()
         return {**rec, "check": check, "extracted": extracted,
                 "frames_url_prefix": f"/api/timelines/{tid}/frames"}
+
+    @app.post("/api/label-projects/{pid}/import-evidence", status_code=201)
+    def label_import_evidence(pid: str, body: LabelEvidenceBody) -> dict:
+        """仅导入登记的内部图像。来源步骤/整图标签不转换为目标框真值。"""
+        from .labels import MAX_IMAGE_BYTES
+        manager.labels.get_project(pid)
+        if not SAFE_NAME.fullmatch(body.name) or Path(body.name).suffix.lower() not in (".jpg", ".jpeg", ".png"):
+            raise HTTPException(400, "需要内部资源的图像名称")
+        if body.kind == "timeline":
+            from .timeline import TimelineStore
+            table = TimelineStore(manager.data_dir / "timelines.db")
+            try:
+                record = table.get(body.source_id)
+            finally:
+                table.close()
+            if not record:
+                raise HTTPException(404, "时间轴项目不存在")
+            base = manager.data_dir / "timelines"
+            folder = base / record["id"] / "frames"
+            group = "timeline:" + record["video"]
+        else:
+            base = manager.data_dir / "samplegen"
+            folder = base / "batch"
+            group = "samplegen-batch"
+        path = (folder / body.name).resolve()
+        if not path.is_relative_to(base.resolve()) or path.parent != folder.resolve() or not path.is_file():
+            raise HTTPException(404, "图像不存在")
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_IMAGE_BYTES + 1)
+        return manager.labels.add_asset(pid, raw, body.name, {"source_kind": body.kind, "source_ref": body.name,
+            "source_id": body.source_id, "synthetic": body.kind == "sample", "group_id": group})
 
     @app.get("/api/timelines/{tid}/video")
     def timeline_video(tid: str) -> FileResponse:

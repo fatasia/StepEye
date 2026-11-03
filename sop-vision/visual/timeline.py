@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import sqlite3
 import threading
 import time
@@ -105,7 +107,7 @@ def extract_interval_frames(video: Path, intervals: list[dict[str, Any]], out_di
             ok, frame = cap.read()
             if not ok:
                 continue
-            name = f"tl_{step}_{int(t0 * 10):05d}_{j}.jpg"
+            name = f"tl_{hashlib.sha256(step.encode()).hexdigest()[:12]}_{int(t0 * 1000):08d}_{j}.jpg"
             cv2.imwrite(str(out_dir / name), frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
             rows.append({"file": name, "label": step, "engine": "timeline",
                          "source": video.name, "params": {"interval": [round(t0, 2), round(t1, 2)], "t": round(t, 2)}})
@@ -116,7 +118,17 @@ def extract_interval_frames(video: Path, intervals: list[dict[str, Any]], out_di
 def check_intervals(intervals: list[dict[str, Any]], duration_s: float) -> dict[str, Any]:
     """区间自洽校验:重叠/越界/空步;返回问题清单(空=通过)。"""
     problems: list[str] = []
-    sorted_iv = sorted(intervals, key=lambda x: float(x.get("start", 0)))
+    if not math.isfinite(duration_s) or duration_s <= 0:
+        return {"ok": False, "problems": ["无法确定视频时长"]}
+    for iv in intervals:
+        if not isinstance(iv.get("step"), str) or not iv["step"].strip() or len(iv["step"]) > 100:
+            return {"ok": False, "problems": ["区间需要有效步骤名"]}
+        try:
+            if not all(math.isfinite(float(iv[k])) for k in ("start", "end")):
+                raise ValueError
+        except (KeyError, ValueError, TypeError, OverflowError):
+            return {"ok": False, "problems": ["区间起止时间必须是有限数字"]}
+    sorted_iv = sorted(intervals, key=lambda x: float(x["start"]))
     for iv in sorted_iv:
         s, e = float(iv.get("start", 0)), float(iv.get("end", 0))
         if e <= s:
