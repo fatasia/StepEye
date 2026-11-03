@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-03",
+  "task": "classify",
+  "production_defaults_changed": false,
+  "models": [
+    {
+      "id": "public-wetfloor-convnext-q8",
+      "name": "地面湿润 / dry-wet 二分类（评估）",
+      "task": "classify",
+      "runtime": "onnx",
+      "model_path": "models/public/wetfloor-convnext-q8.onnx",
+      "bytes": 33821316,
+      "sha256": "87caee35e68b0de6846ff169978321e4e8aeb6f715d700962d1f998534e315a0",
+      "classes": [
+        "dry",
+        "wet"
+      ],
+      "preprocessing": "imagenet_center224",
+      "input": [
+        1,
+        3,
+        224,
+        224
+      ],
+      "output": [
+        1,
+        2
+      ],
+      "output_semantics": "logits_then_softmax",
+      "usage": "evaluation_only",
+      "production_ready": false,
+      "license_status": "weights_CC-BY-4.0_publisher; base_Apache-2.0; data_chain_pending",
+      "source": {
+        "repo": "builtbyd3v/spot-wetfloor-convnext-tiny",
+        "revision": "942bd9c786bcb4b0e3b1521c6763a88a66134e6e",
+        "url": "https://huggingface.co/builtbyd3v/spot-wetfloor-convnext-tiny/resolve/942bd9c786bcb4b0e3b1521c6763a88a66134e6e/onnx/model_quantized.onnx"
+      },
+      "limitations": [
+        "Image-level advisory classification, no location/segmentation/ESD or safe-floor verdict.",
+        "Outdoor training domain; existing slippy-floor image returns dry; no industrial accuracy acceptance."
+      ]
+    },
+    {
+      "id": "public-battery-weld-cnn-v1",
+      "name": "电池焊缝 / OK-KO 二分类（评估）",
+      "task": "classify",
+      "runtime": "onnx",
+      "model_path": "models/public/battery-weld-cnn-v1.onnx",
+      "bytes": 317603,
+      "sha256": "b2fc4b04f7fc3c0868c71267770c7db7168e4af0e4580a15984b29b6d622cca0",
+      "classes": [
+        "OK",
+        "KO"
+      ],
+      "preprocessing": "gray224",
+      "input": [
+        1,
+        1,
+        224,
+        224
+      ],
+      "output": [
+        1,
+        2
+      ],
+      "output_semantics": "logits_then_softmax",
+      "usage": "evaluation_only",
+      "production_ready": false,
+      "license_status": "project-authored random-init CNN; data_CC-BY-4.0; code/weights release terms not separately declared",
+      "source": {
+        "kind": "project-authored random initialization; no external pretrained YOLO weights",
+        "training_artifact": ".v0/battery-inspection/train-v1/battery-weld-cnn.onnx",
+        "dataset_license": "CC-BY-4.0"
+      },
+      "limitations": [
+        "Image-level OK/KO research prediction, not defect localization or release verdict.",
+        "No independent target-line acceptance; source training metrics are recorded separately."
+      ]
+    }
+  ]
+}

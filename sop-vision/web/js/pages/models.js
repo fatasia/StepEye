@@ -12,12 +12,12 @@ async function request(url, options = {}) {
 
 export function render(root) {
   root.innerHTML = `<div class="models-workspace">
-    <header class="models-head"><div><span class="models-kicker">视觉应用 / 从现有模型开始</span><h2>试效果、建项目，在一个入口开始。</h2><p>选择模型 → 试一张 → 建立标注项目 → 补充场景样本。模型与类别自动带入。</p></div><div><button class="btn" data-quality-tools>评测与质量工具</button> <button class="btn" data-model-refresh>${icon("refresh", 14)}刷新模型</button></div></header>
+    <header class="models-head"><div><span class="models-kicker">视觉应用 / 从现有模型开始</span><h2>试效果、建项目，在一个入口开始。</h2><p>选择模型 → 试一张 → 核对结果。检测模型可继续建立标注项目，分类模型显示类别概率。</p></div><div><button class="btn" data-quality-tools>评测与质量工具</button> <button class="btn" data-model-refresh>${icon("refresh", 14)}刷新模型</button></div></header>
     <div class="models-layout"><aside class="models-list" aria-label="从现有模型开始" data-model-list><p>正在读取模型…</p></aside>
       <section class="models-detail"><header data-model-heading></header>
         <div class="models-alert" role="alert" data-model-error hidden></div>
         <div class="models-actions" data-model-actions hidden><label class="btn" data-model-file-label>${icon("camera", 14)}选择图片<input data-model-file type="file" accept="image/png,image/jpeg,image/webp" hidden></label><button class="btn btn-primary" data-model-trial disabled>试一张</button><span data-model-file-name>图片仅用于本次试跑，不存入项目</span></div>
-        <div class="models-preview" data-model-preview><div class="models-empty" data-model-empty>${icon("camera", 40)}<h3>用一张真实图片看看效果</h3><p>显示模型实际返回的检测框；没有目标时明确显示未检出。</p></div><div class="models-image" data-model-image hidden><img alt="试跑图片" data-model-img><svg data-model-overlay role="img" aria-label="检测结果"></svg></div></div>
+        <div class="models-preview" data-model-preview><div class="models-empty" data-model-empty>${icon("camera", 40)}<h3>用一张真实图片看看效果</h3><p>检测模型显示目标框，分类模型显示整图类别概率。</p></div><div class="models-image" data-model-image hidden><img alt="试跑图片" data-model-img><svg data-model-overlay role="img" aria-label="检测结果"></svg></div></div>
         <div class="models-result" data-model-result aria-live="polite">还没有试跑结果</div>
         <section class="models-next" data-model-next hidden><div><h3>开始你的标注项目</h3><p>模型与类别自动带入。导入图片或已有 YOLO ZIP，复核后导出确认版。</p></div><button class="btn btn-primary" data-model-project>用于新项目标注</button><div class="models-existing" data-model-existing hidden><label>我的样本项目 · 补充数据<select data-model-existing-select aria-label="已有同类别项目"></select></label><button class="btn" data-model-open-project>打开项目</button><p>补充样本不会自动训练或替换当前模型。</p></div></section>
         <details class="models-metadata"><summary>模型信息与试跑边界</summary><div data-model-metadata></div><p>单图试跑不代表准确率或持续实时吞吐。试跑使用 CPU，任务结束即释放进程。生产效果需用目标场景独立数据评测。</p></details>
@@ -44,11 +44,11 @@ export function render(root) {
   function actions() {
     const allowed = !!selected?.available && canWrite;
     $("[data-model-actions]", root).hidden = !canWrite;
-    $("[data-model-next]", root).hidden = !canWrite;
+    $("[data-model-next]", root).hidden = !canWrite || selected?.task === "classify";
     picker.disabled = !allowed || busy;
     $("[data-model-file-label]", root).classList.toggle("disabled", picker.disabled);
     $("[data-model-trial]", root).disabled = !allowed || busy || !file;
-    $("[data-model-project]", root).disabled = !selected || !canWrite || busy;
+    $("[data-model-project]", root).disabled = !selected || selected.task === "classify" || !canWrite || busy;
     $("[data-model-refresh]", root).disabled = busy;
     root.querySelectorAll("[data-model-id]").forEach((el) => (el.disabled = busy));
   }
@@ -70,7 +70,7 @@ export function render(root) {
       el.setAttribute("aria-pressed", String(on));
     });
     $("[data-model-heading]", root).innerHTML =
-      `<div class="models-detail-title"><h3>${esc(selected.name)}</h3><span class="models-status ${selected.available ? "available" : "unavailable"}">${selected.available ? "可试跑" : "不可用"}</span></div><p>${selected.available ? (selected.usage === "evaluation_only" ? "仅供评估 · 许可待审核，尚未通过生产验收。" : "已登记的本机检测模型，场景效果待独立验证。") : esc(selected.reason || "模型尚未准备好")}</p><div class="models-classes">${selected.classes.map((c) => `<span>${esc(c)}</span>`).join("")}</div>`;
+      `<div class="models-detail-title"><h3>${esc(selected.name)}</h3><span class="models-status ${selected.available ? "available" : "unavailable"}">${selected.available ? "可试跑" : "不可用"}</span></div><p>${selected.available ? (selected.usage === "evaluation_only" ? "仅供评估 · 许可待审核，尚未通过生产验收。" : "已登记的本机视觉模型，场景效果待独立验证。") : esc(selected.reason || "模型尚未准备好")}</p><div class="models-classes">${selected.classes.map((c) => `<span>${esc(c)}</span>`).join("")}</div>`;
     $("[data-model-metadata]", root).innerHTML =
       `<dl><dt>模型 ID</dt><dd>${esc(selected.id)}</dd><dt>任务 / 运行时</dt><dd>${esc(selected.task || "detect")} / ${esc(selected.runtime || "onnx")}</dd><dt>使用范围</dt><dd>${selected.usage === "evaluation_only" ? "仅供评估，商用许可待审核" : "按已登记模型许可使用"}</dd><dt>许可记录</dt><dd>${esc(selected.license_status || "未登记")}</dd><dt>生产评测</dt><dd>尚未验收</dd><dt>类别数</dt><dd>${selected.classes.length}</dd></dl>`;
     const compatible = projects.filter(
@@ -102,7 +102,7 @@ export function render(root) {
         ? models
             .map(
               (m) =>
-                `<button data-model-id="${esc(m.id)}" aria-pressed="false"><span class="models-kicker">${m.available ? "本机已登记" : "待准备"}</span><b>${esc(m.name)}</b><span class="models-list-meta">${m.classes.length} 个类别 · ${esc(m.runtime || "ONNX")}</span><span class="models-status ${m.available ? "available" : "unavailable"}">${m.available ? "可试跑" : "不可用"}</span></button>`,
+                `<button data-model-id="${esc(m.id)}" aria-pressed="false"><span class="models-kicker">${m.available ? "本机已登记" : "待准备"}</span><b>${esc(m.name)}</b><span class="models-list-meta">${m.task === "classify" ? "整图分类" : "目标检测"} · ${m.classes.length} 个类别 · ${esc(m.runtime || "ONNX")}</span><span class="models-status ${m.available ? "available" : "unavailable"}">${m.available ? "可试跑" : "不可用"}</span></button>`,
             )
             .join("")
         : '<div class="models-no-model"><h3>还没有可选模型</h3><p>管理员登记本机模型后会出现在这里。没有模型也可以先手工标注。</p><a class="btn" href="#/labeling">打开标注工作台</a></div>';
@@ -165,6 +165,15 @@ export function render(root) {
       });
       if (dead) return;
       const svg = $("[data-model-overlay]", root);
+      if (result.task === "classify") {
+        // Classification has no boxes and cannot create a detection-label project.
+        svg.innerHTML = "";
+        $("[data-model-result]", root).innerHTML =
+          `<b>分类预测：${esc(result.predicted_label)} · ${(Number(result.confidence) * 100).toFixed(1)}%</b><span>本次端到端耗时 ${Number(result.elapsed_ms).toFixed(0)} ms</span>
+          <div style="width:100%;display:grid;gap:8px" data-class-probabilities>${result.probabilities.map(p => `<div style="display:grid;grid-template-columns:minmax(80px,1fr) 2fr 65px;gap:12px;align-items:center"><span>${esc(p.label)}</span><progress value="${Math.max(0, Math.min(1, Number(p.score)))}" max="1" style="width:100%;accent-color:var(--accent)"></progress><span>${(Number(p.score) * 100).toFixed(1)}%</span></div>`).join("")}</div>
+          <small>概率是模型输出；预测 OK 不代表已验收或产品合格，请结合适用场景复核。</small>`;
+        return;
+      }
       svg.setAttribute("viewBox", `0 0 ${result.width} ${result.height}`);
       const scale = Math.max(12, result.width / 55);
       svg.innerHTML = result.targets
@@ -191,7 +200,7 @@ export function render(root) {
     }
   };
   $("[data-model-project]", root).onclick = async () => {
-    if (!selected || busy || !canWrite) return;
+    if (!selected || selected.task === "classify" || busy || !canWrite) return;
     busy = true;
     actions();
     showError("");
@@ -212,7 +221,7 @@ export function render(root) {
   };
   $("[data-model-open-project]", root).onclick = () => {
     const id = $("[data-model-existing-select]", root).value;
-    if (id)
+    if (id && selected?.task !== "classify")
       location.hash = `#/labeling?project=${encodeURIComponent(id)}&engine=${encodeURIComponent(selected.id)}`;
   };
   $("[data-quality-tools]", root).onclick = () => openQualityTools({ canWrite });

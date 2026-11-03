@@ -206,6 +206,7 @@ class DetectorCfg(BaseModel):
     model: str = "models/efficientdet_lite0.tflite"
     classes: list[str] = ["person"]  # 要盯的类别(须与模型标签一致)
     class_names: list[str] = []  # ONNX 模型的完整类别表(顺序=id);缺省按 COCO80
+    adapter: Literal["yolo_raw", "yolo_e2e"] = "yolo_raw"  # ONNX布局显式选择；分类器不在此入口
     max_results: int = 5
     min_conf: float = 0.5
     enter_frames: int = 2

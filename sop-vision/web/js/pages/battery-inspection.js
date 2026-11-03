@@ -95,6 +95,10 @@ export function openBatteryInspection({canWrite}) {
       const data=new FormData();data.append('file',form.elements.file.files[0]);
       const result=await request(`/api/models/${encodeURIComponent(model.id)}/trial`,{method:'POST',body:data});if(closed)return;
       const context=canvas.getContext('2d');context.drawImage(image,0,0);context.strokeStyle='#ffbc63';context.lineWidth=Math.max(2,canvas.width/300);
+      if(result.task==='classify'){
+        find('[data-bi-trial-result]').textContent=`分类预测：${result.predicted_label} · ${(Number(result.confidence)*100).toFixed(1)}%\n${result.probabilities.map(p=>`${p.label} ${(Number(p.score)*100).toFixed(1)}%`).join(' / ')}\n本次耗时 ${Number(result.elapsed_ms).toFixed(0)} ms。预测 OK 不代表已验收或产品合格；试跑结果未保存为设备原判。`;
+        return;
+      }
       for(const target of result.targets){const [x0,y0,x1,y1]=target.xyxy_norm;context.strokeRect(x0*canvas.width,y0*canvas.height,(x1-x0)*canvas.width,(y1-y0)*canvas.height);}
       find('[data-bi-trial-result]').textContent=`试跑检出 ${result.targets.length} 个目标 · ${Number(result.elapsed_ms).toFixed(0)} ms\n${result.targets.map(t=>`${result.classes[t.label_id]||t.label_id} ${(t.confidence*100).toFixed(1)}%`).join('、')||'没有检出目标，不等于合格。'}\n试跑结果未保存为设备原判。`;
     }catch(e){if(!closed){find('[data-bi-trial-result]').textContent='未检测：试跑未完成。';error(e.message);}}
@@ -115,7 +119,7 @@ export function openBatteryInspection({canWrite}) {
   };
   if(canWrite)request('/api/models').then(data=>{
     if(closed)return;models=data;
-    find('[data-bi-model]').innerHTML='<option value="">选择适用于当前表面的模型</option>'+data.map(m=>`<option value="${esc(m.id)}" ${m.available?'':'disabled'}>${esc(m.name)}${m.available?'':' · 不可用'}</option>`).join('');
+    find('[data-bi-model]').innerHTML='<option value="">选择适用于当前表面的模型</option>'+data.map(m=>`<option value="${esc(m.id)}" ${m.available?'':'disabled'}>${esc(m.name)} · ${m.task==='classify'?'分类':'检测'}${m.available?'':' · 不可用'}</option>`).join('');
   }).catch(e=>{if(!closed){find('[data-bi-model]').innerHTML='<option value="">模型列表不可用</option>';error(e.message);}});
   return drawer;
 }

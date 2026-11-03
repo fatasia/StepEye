@@ -121,20 +121,35 @@ class ModelTrials:
             self._slot.release()
 
 
-def router(labels: LabelStore, engines: LabelEngines) -> APIRouter:
+def router(labels: LabelStore, engines: LabelEngines, classifiers=None) -> APIRouter:
     api = APIRouter()
     trials = ModelTrials(engines)
+    classification = None
+    if classifiers is not None:
+        from .classification import ClassifierTrials
+        classification = ClassifierTrials(classifiers, slot=trials._slot)
+
+    def classifier(engine_id):
+        found = classification is not None and any(m['id']==engine_id for m in classification.catalog())
+        if found and any(m['id']==engine_id for m in trials.catalog()):
+            raise LabelError('分类与检测模型ID冲突，请管理员修正登记',409)
+        return found
 
     @api.get('/api/models')
     def catalog() -> list[dict]:
-        return trials.catalog()
+        detectors=trials.catalog(); classified=classification.catalog() if classification else []
+        if {m['id'] for m in detectors} & {m['id'] for m in classified}:
+            raise LabelError('分类与检测模型ID冲突，请管理员修正登记',409)
+        return detectors + classified
 
     @api.post('/api/models/{engine_id}/trial')
     def trial(engine_id: str, file: UploadFile = File(...), threshold: float = Form(.4)) -> dict:
+        if classifier(engine_id):return classification.trial(engine_id,file.file)
         return trials.trial(engine_id, file.file, threshold)
 
     @api.post('/api/models/{engine_id}/project', status_code=201)
     def project(engine_id: str, body: ModelProjectBody) -> dict:
+        if classifier(engine_id):raise LabelError('分类模型不支持框标注项目或检测训练',409)
         model = trials.registered(engine_id)
         return labels.create_project(body.name.strip() or model['name'][:100], model['classes'])
 

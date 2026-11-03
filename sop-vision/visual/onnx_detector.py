@@ -114,7 +114,7 @@ def postprocess(pred: np.ndarray, conf_th: float, class_names: list[str],
 
 class OnnxObjectDetector:
     def __init__(self, cfg: DetectorCfg, geoms: dict[str, ZoneGeom], base_dir: Path | None = None):
-        from .detector_registry import YoloOnnxBackend
+        from .detector_registry import create_backend
 
         model = Path(cfg.model)
         if not model.is_absolute() and base_dir is not None:
@@ -122,7 +122,19 @@ class OnnxObjectDetector:
         if not model.exists():
             raise FileNotFoundError(f"ONNX 检测模型不存在: {model}")
         self.class_names = list(cfg.class_names) or list(COCO80)
-        self.backend = YoloOnnxBackend(model, self.class_names, cfg.min_conf, cfg.max_results)
+        self.backend = create_backend(model, self.class_names, cfg.min_conf, cfg.max_results,
+                                      adapter=cfg.adapter)
+        try:
+            metadata = self.backend.session.get_modelmeta().custom_metadata_map
+            output = self.backend.session.get_outputs()[0]
+            raw_2d = (cfg.adapter == "yolo_raw" and len(output.shape) == 2
+                      and any(axis in (4+len(self.class_names), 5+len(self.class_names))
+                              for axis in output.shape))
+            if metadata.get("task", "detect") != "detect" or not (len(output.shape) == 3 or raw_2d):
+                raise ValueError("实时目标检测仅接受检测模型；分类器/分割/姿态模型需独立入口")
+        except Exception:
+            self.backend.close()
+            raise
         self.input_size = self.backend.input_size
         from .tracking import ClassAwareIoUTracker
         self.mot = ClassAwareIoUTracker(max_tracks=cfg.max_results)
@@ -169,5 +181,7 @@ def create_detector(cfg: DetectorCfg, geoms: dict[str, ZoneGeom], base_dir: Path
         return OnnxObjectDetector(cfg, geoms, base_dir)
     if suffix not in {".tflite", ".task"}:
         raise ValueError("不支持的检测模型格式")
+    if cfg.adapter != "yolo_raw":
+        raise ValueError("yolo_e2e适配器仅用于ONNX模型")
     from .perception.objects import MediaPipeObjectDetector
     return MediaPipeObjectDetector(cfg, geoms, base_dir)

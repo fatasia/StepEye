@@ -20,10 +20,12 @@
         "filename": "Weld Aesthetical Defects.zip",
         "bytes": 1153183844,
         "published_md5": "f187dac063cf656bb627327fa9771d16",
-        "fully_downloaded": false,
-        "md5_verified": false
+        "fully_downloaded": true,
+        "md5_verified": true,
+        "sha256": "4d05b87dfb66c515f261186f17f409978b2660add911424c5ec5c7f52274e52a",
+        "path": ".v0\\battery-inspection\\ev-weld-v1.zip"
       },
-      "retrieval": "HTTP206 byte ranges: central directory and six members only",
+      "retrieval": "Full official archive via verified HTTP206 ranges; published MD5 matches",
       "zip_central_sha256": "cffc643f575b7d8515eba06655def2f30e825e58cb256b3daba0e6002bd69596",
       "counts": {
         "train/KO": 8253,
@@ -119,14 +121,112 @@
           "split": "val"
         }
       ],
-      "verified": "six PNG files decoded and member CRC32 checked",
+      "verified": "61670 member CRC32 and image decode checks; full SHA256 indexing",
       "limitations": [
         "Not sealing-nail weld dataset",
         "No defect bounding boxes",
         "No cell SN / face grouping / pack BOM",
         "All six sampled PNGs have variable dimensions unlike stated fixed 409x40; check class-shape confounding before training",
         "Asset-group independence of supplied split unverified"
-      ]
+      ],
+      "full_audit_report": ".v0\\battery-inspection\\audit\\audit.json",
+      "cross_split_exact_duplicate_groups": 0,
+      "full_size_statistics": {
+        "train/KO": {
+          "width": {
+            "min": 82,
+            "median": 404.0,
+            "max": 585
+          },
+          "height": {
+            "min": 26,
+            "median": 36.0,
+            "max": 67
+          }
+        },
+        "train/OK": {
+          "width": {
+            "min": 48,
+            "median": 319.0,
+            "max": 651
+          },
+          "height": {
+            "min": 25,
+            "median": 37.0,
+            "max": 69
+          }
+        },
+        "val/KO": {
+          "width": {
+            "min": 82,
+            "median": 404.0,
+            "max": 550
+          },
+          "height": {
+            "min": 27,
+            "median": 36.0,
+            "max": 63
+          }
+        },
+        "val/OK": {
+          "width": {
+            "min": 58,
+            "median": 319.0,
+            "max": 646
+          },
+          "height": {
+            "min": 25,
+            "median": 37.0,
+            "max": 67
+          }
+        },
+        "test/KO": {
+          "width": {
+            "min": 80,
+            "median": 404.0,
+            "max": 427
+          },
+          "height": {
+            "min": 27,
+            "median": 36.0,
+            "max": 64
+          }
+        },
+        "test/OK": {
+          "width": {
+            "min": 52,
+            "median": 319.0,
+            "max": 640
+          },
+          "height": {
+            "min": 22,
+            "median": 38.0,
+            "max": 70
+          }
+        }
+      },
+      "width_only_holdout": {
+        "val": {
+          "n": 9250,
+          "accuracy": 0.7550270270270271,
+          "recall_by_label": {
+            "OK": 0.7198609997326918,
+            "KO": 0.9038461538461539
+          },
+          "balanced_accuracy": 0.8118535767894228,
+          "majority_baseline_accuracy": 0.8088648648648649
+        },
+        "test": {
+          "n": 9251,
+          "accuracy": 0.7540806399308183,
+          "recall_by_label": {
+            "OK": 0.7177225340817963,
+            "KO": 0.9078575466365179
+          },
+          "balanced_accuracy": 0.812790040359157,
+          "majority_baseline_accuracy": 0.8087774294670846
+        }
+      }
     },
     {
       "id": "DAEF-BSD",
@@ -170,5 +270,113 @@
   "production_scope": {
     "six_face": "requires cell SN + explicit front/back/left/right/top/bottom assignment, completeness, duplicate/mismatch rejection; not provided by these assets",
     "battery_pack": "EV weld appearance is one inspection step; not pack completeness/electrical/thermal certification"
-  }
+  },
+  "full_download_attempt": {
+    "status": "complete_md5_verified",
+    "verified_length_bytes_saved": 1153183844,
+    "expected_total_bytes": 1153183844,
+    "completed_ranges": 270,
+    "total_ranges": 270,
+    "report": ".v0/battery-inspection/download-status.json",
+    "resume_plan": ".v0/battery-inspection/download-plan.json",
+    "full_md5_verified": true,
+    "training_started": true,
+    "processes_running": false,
+    "transport": "curl HTTP1.1 TLS1.2 certificate verification enabled",
+    "budget_seconds": 1200,
+    "training_completed": true
+  },
+  "trained_models": [
+    {
+      "id": "ev-battery-weld-cnn-pilot-v1",
+      "task": "image_classification",
+      "artifact": {
+        "path": ".v0\\battery-inspection\\train-v1\\battery-weld-cnn.onnx",
+        "bytes": 317603,
+        "sha256": "b2fc4b04f7fc3c0868c71267770c7db7168e4af0e4580a15984b29b6d622cca0"
+      },
+      "classes": [
+        "OK",
+        "KO"
+      ],
+      "input": {
+        "name": "images",
+        "dtype": "float32",
+        "shape": [
+          1,
+          1,
+          224,
+          224
+        ]
+      },
+      "output": {
+        "name": "logits",
+        "shape": [
+          1,
+          2
+        ],
+        "activation": "softmax once in caller"
+      },
+      "preprocess": "PIL L, bilinear direct resize224x224, float32/255; no padding/shape metadata",
+      "training": {
+        "initialization": "random; no external model",
+        "seed": 42,
+        "epochs": 3,
+        "selected_epoch": 1,
+        "selection": "validation balanced accuracy",
+        "train": 6000,
+        "val": 2000,
+        "test": 2000,
+        "elapsed_s": 35.700143399997614,
+        "device": "CUDA RTX4060 Laptop",
+        "report": ".v0\\battery-inspection\\train-v1\\report.json",
+        "selected_members": ".v0\\battery-inspection\\train-v1\\selected-members.json"
+      },
+      "evaluation": {
+        "n": 2000,
+        "confusion_matrix_OK_KO": [
+          [
+            1215,
+            403
+          ],
+          [
+            36,
+            346
+          ]
+        ],
+        "accuracy": 0.7805,
+        "KO_recall": 0.9057591623036649,
+        "KO_precision": 0.46194926568758343,
+        "false_accept_KO_rate": 0.09424083769633508
+      },
+      "actual_onnx_probe": {
+        "member": "test/OK/image_287.png",
+        "true_label": "OK",
+        "predicted_label": "OK",
+        "probabilities": [
+          [
+            0.9004992246627808,
+            0.09950070828199387
+          ]
+        ],
+        "cpu_first_infer_ms": 1.5623999934177846,
+        "torch_onnx_max_abs": 2.980232238769531e-07,
+        "image_path": ".v0\\battery-inspection\\train-v1\\probe.png",
+        "image_sha256": "b5ccf5974a5b143a29e5fe0953083d676899b2537fdc2d887b176aa44dc8528c"
+      },
+      "license": {
+        "data": "CC-BY-4.0 OPENZDM",
+        "weights": "locally trained project artifact; release license not assigned",
+        "upstream_model": "none (random initialization)",
+        "code_dependencies": "PyTorch BSD-style; NumPy BSD; ONNXRuntime MIT; project trainer newly authored"
+      },
+      "limitations": [
+        "pilot official split, exact hashes deduplicated; physical workpiece grouping unknown; resize does not prove removal of acquisition shortcuts",
+        "pilot false acceptance of KO 9.42%; not production qualified",
+        "not sealing-nail-specific, no boxes, no six-face/SN capability"
+      ],
+      "production_approved": false,
+      "automatic_registration": false
+    }
+  ]
 }

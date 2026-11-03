@@ -121,6 +121,9 @@ class StationManager:
                                     ["With Helmet", "Without Helmet"], "安全帽 ONNX · 现有评估权重")
         from .public_models import register_public_models
         register_public_models(self.label_engines, ROOT)
+        from .classification import ClassifierRegistry, register_public_classifiers
+        self.classifiers = ClassifierRegistry()
+        register_public_classifiers(self.classifiers, ROOT)
         self.label_jobs = LabelJobs(data_dir / "labeling/jobs.db", self.labels, self.label_engines)
         from .training_jobs import TrainingJobs
         self.training = TrainingJobs.from_env(data_dir / "training", self.labels, self.label_engines)
@@ -473,7 +476,7 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .audit import router as audit_router
     app.include_router(audit_router(manager.audit))
     from .model_routes import router as model_router
-    app.include_router(model_router(manager.labels, manager.label_engines))
+    app.include_router(model_router(manager.labels, manager.label_engines, manager.classifiers))
     from .training_routes import router as training_router
     app.include_router(training_router(manager.training))
     from .calibration_routes import router as calibration_router
