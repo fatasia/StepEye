@@ -76,10 +76,31 @@ export function render(root) {
       <label class="field"><span>来源</span><select id="al-src"><option value="">全部</option>${Object.entries(SOURCE).map(([v, t]) => `<option value="${v}">${t}</option>`).join("")}</select></label>
       <button class="btn" id="al-refresh">${icon("refresh", 14)}刷新</button>
     </div>
-    <section class="panel table-panel"><div class="table-wrap" id="al-tbl"><div class="skeleton-rows"></div></div><footer class="table-foot muted num" id="al-foot"></footer></section>`;
-  const tbl = $("#al-tbl", root), foot = $("#al-foot", root);
+    <section class="panel table-panel"><div class="table-wrap" id="al-tbl"><div class="skeleton-rows"></div></div><footer class="table-foot muted num" id="al-foot"></footer></section>
+    <section class="panel table-panel"><header class="panel-head"><div class="head-left"><h2>影子真值标注</h2><span class="muted">给影子样本标 PASS/NG——准确率验收与漏检/误杀统计的地限</span></div></header>
+      <div class="table-wrap" id="sh-tbl"><div class="skeleton-rows"></div></div></section>`;
+  const tbl = $("#al-tbl", root), foot = $("#al-foot", root), shtbl = $("#sh-tbl", root);
   let me = { username: "" };
   let timer = null;
+  const loadShadow = async () => {
+    try {
+      const rows = await api.shadowSamples(1);
+      if (!rows.length) { setHTML(shtbl, '<div class="inline-empty muted" style="padding:var(--s-3)">没有待标注的影子样本(开启 serve --shadow 后自动产生)</div>'); return; }
+      setHTML(shtbl, `<table class="table"><thead><tr><th>时间</th><th>类型</th><th>系统判定</th><th>置信度</th><th class="right">标注</th></tr></thead><tbody>${
+        rows.map((r) => `<tr><td class="num">${fmtTime(r.created)}</td><td>${esc(r.kind)}</td>
+          <td>${esc(r.system_verdict)}</td><td class="num">${r.confidence ?? "—"}</td>
+          <td class="right"><button class="btn btn-sm" data-truth="${r.id}:PASS">PASS</button>
+          <button class="btn btn-sm" data-truth="${r.id}:NG">NG</button></td></tr>`).join("")}</tbody></table>`);
+    } catch { shtbl.innerHTML = '<div class="inline-empty muted">影子功能未启用(serve --shadow)</div>'; }
+  };
+  shtbl.addEventListener("click", async (e) => {
+    const b = e.target.closest("[data-truth]");
+    if (!b) return;
+    const [id, truth] = b.dataset.truth.split(":");
+    await api.shadowTruth(+id, truth);
+    toast(`已标注 ${truth}`, "success");
+    loadShadow();
+  });
   load = async () => {
     try {
       me = await api.me();
@@ -106,5 +127,6 @@ export function render(root) {
   tbl.addEventListener("click", (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) openAlert(+tr.dataset.id, me); });
   tbl.addEventListener("keydown", (e) => { if (e.key === "Enter") { const tr = e.target.closest("tr[data-id]"); if (tr) openAlert(+tr.dataset.id, me); } });
   load();
+  loadShadow();
   return () => { if (timer) clearInterval(timer); };
 }
