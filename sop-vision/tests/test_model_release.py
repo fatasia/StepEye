@@ -9,7 +9,6 @@ import uuid
 
 from fastapi.testclient import TestClient
 import pytest
-from starlette.routing import Mount
 
 from visual.auth import AuthStore
 from visual.model_release import ModelReleases
@@ -62,23 +61,14 @@ def api(tmp_path):
     dummy.write_bytes(b"dummy")
     app.state.manager.label_engines.register("fixture-eval", dummy, ["part", "other"], "发布夹具")
     releases = ModelReleases(tmp_path / "data" / "model_releases.db")
-    api_router = model_release_router(releases, app.state.manager.holdout_evaluations)
-    app.include_router(api_router)
-    # build_app 以 StaticFiles("/") 收尾;后注册的路由会被静态挂载兜底吞掉(404/405),
-    # 必须插到 mount 之前——与 server.py 正式接线(include_router 位于 mount 之前)一致。
+    # build_app 的最后一个动作就是 StaticFiles("/") 挂载:按位置取,不做任何类型/名称假设
     routes = app.router.routes
-    added = len(api_router.routes)
-    new_routes = routes[len(routes) - added:]
-    del routes[len(routes) - added:]
-    # 不同 starlette 版本对 mount 的表示不同(0.50 起 path 为空串):按 catch-all
-    # path_format + 名称 + 承载应用 duck-typing 找
-    def is_root_static(r):
-        if getattr(r, "path_format", None) == "/{path}" and hasattr(r, "app"):
-            return True
-        return isinstance(r, Mount) and (r.path == "/" or r.name == "web")
-
-    mount_index = next((i for i, r in enumerate(routes) if is_root_static(r)), None)
-    assert mount_index is not None, "未找到静态挂载,路由无法生效"
+    mount_index = len(routes) - 1
+    assert hasattr(routes[-1], "app"), "静态挂载缺失,路由无法生效"
+    api_router = model_release_router(releases, app.state.manager.holdout_evaluations)
+    app.include_router(api_router)  # 追加到挂载之后,挪到挂载之前才能被路由到
+    new_routes = routes[mount_index + 1:]
+    del routes[mount_index + 1:]
     routes[mount_index:mount_index] = new_routes
     with TestClient(app) as client:
         yield client, app.state.manager, releases
