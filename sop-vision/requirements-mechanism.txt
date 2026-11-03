@@ -1,2 +1,3 @@
-# Optional bearing envelope evidence; no model download or background worker.
+# Optional mechanism evidence; no model download or background worker.
 scipy>=1.11
+onnxruntime==1.27.0

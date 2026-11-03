@@ -1,3 +1,5 @@
+> **最新交接（2026-11-03，本轮结束后停止）：先读 [本轮交接](docs/HANDOFF-2026-11-03.md)。下文早期状态是历史记录，勿据此重复下载/训练。**
+
 # 交接清单(2026-11-03)——新会话接手必读
 
 > 本轮继续完成原生媒体、空间态势、巡更、质量门禁与设备信号融合。最终验证结果见下方；公开仓库 https://github.com/fatasia/StepEye 。
@@ -181,3 +183,5 @@ YOLO ZIP 导入已接Web：名称映射、逐项问题、草稿复核、合成�
 807f7b2的Windows/Linux主测试及MCP整轮CI通过（41638773647）。新增固定SHA模型→确认标注版本val自动评测CLI，报告逐图FP/FN且不发布；新增weihu轴承包络谱按需分析与机理UI，复用原报告SQLite。主线整合相关58项通过，真实Web波形→报告/导出/viewer403通过，细节见docs/DETECTION-VALIDATION.md及WEIHU-REUSE.md。
 
 通用图片生成绑定已接设置与样本库，复用原生成流程；只支持inline b64文生图，真实本机协议服务UI通过。原图按SHA持久保存，稳定source/group、候选标签待复核；响应/图片限额、单并发与超时定点通过，无云请求或.env修改。
+
+本轮收尾：阀门固定ONNX双证据影子、同步声明校验与真实Web导入/报告已接；按需隔离推理、无常驻worker。完整1142 passed/2 skipped，最后机理/结构83项及JS检查通过；CI be11d81的Windows/Linux主测试和MCP四项均success（41644377134）。本轮新提交CI以GitHub最终状态为准。用户要求到此停止，续接详见docs/HANDOFF-2026-11-03.md。

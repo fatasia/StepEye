@@ -89,6 +89,8 @@ class StationManager:
         self.documents = DocumentStore(data_dir / "documents")
         from .mechanism_routes import MechanismReports
         self.mechanism = MechanismReports(data_dir / "mechanism.sqlite")
+        from .mechanism_valve import ValveShadow
+        self.valve_shadow = ValveShadow(ROOT)
         from .equipment_results import EquipmentResults
         self.equipment_results = EquipmentResults(data_dir / "equipment-results")
         from .action_references import ActionReferenceStore
@@ -285,6 +287,7 @@ class StationManager:
     def stop(self) -> None:
         self.notifications.close()
         self.documents.close()
+        self.valve_shadow.close()
         self.mechanism.close()
         self.equipment_results.close()
         self.action_references.close()
@@ -504,6 +507,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(mechanism_router(manager.mechanism))
     from .mechanism_rotating_routes import rotating_router
     app.include_router(rotating_router(manager.mechanism))
+    from .mechanism_valve_routes import valve_router
+    app.include_router(valve_router(manager.mechanism, manager.valve_shadow))
     from .action_reference_routes import router as action_reference_router
     app.include_router(action_reference_router(manager.action_references, manager))
     app.include_router(assistant_router(Assistant(manager.ai_services, manager.documents)))

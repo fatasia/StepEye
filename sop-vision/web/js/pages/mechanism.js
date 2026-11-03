@@ -1,7 +1,8 @@
+import { openValveAnalysis, valveReport } from "./mechanism-valve.js";
 import { openRotatingAnalysis, rotatingReport } from "./mechanism-rotating.js";
 import { esc, fmtTime } from '../util.js';
 
-const states = { unknown:'参考不足', within_reference:'未见持续超限', review:'偏离参考 · 待复核', evidence_only:'频谱证据' };
+const states = { unknown:'参考不足', within_reference:'未见持续超限', review:'偏离参考 · 待复核', evidence_only:'频谱证据', shadow_evidence:'影子证据', unsupported:'证据不足' };
 const features = { std:'标准差', mean:'均值', diff_rms:'差分均方根', p95_dev:'95% 偏离' };
 const number = value => value == null ? '—' : Number(value).toLocaleString('zh-CN',{maximumFractionDigits:3});
 
@@ -37,7 +38,7 @@ export function render(root) {
     const css=document.createElement('link');css.rel='stylesheet';css.href='/css/mechanism.css';css.dataset.mechanismCss='';document.head.append(css);
   }
   root.innerHTML=`<div class="mechanism-page"><header class="ml-head"><div><span class="ml-kicker">设备信号 / 周期分析</span><h2>机理实验室</h2><p>查看周期偏离、短期趋势与轴承振动证据。</p></div><span class="ml-chip">按需计算 · 不常驻模型</span></header>
-    <p data-ml-message role="status"></p><div class="ml-layout"><aside><section class="ml-import" data-ml-upload hidden><button class="btn" type="button" data-ml-rotating>轴承振动分析</button><h3>导入周期数据</h3>
+    <p data-ml-message role="status"></p><div class="ml-layout"><aside><section class="ml-import" data-ml-upload hidden><button class="btn" type="button" data-ml-rotating>轴承振动分析</button><button class="btn" type="button" data-ml-valve>阀门双证据分析</button><h3>导入周期数据</h3>
     <form data-ml-form><label>CSV 文件<input name="file" type="file" accept=".csv,text/csv" required></label><p class="ml-help">UTF-8 表头 cycle,value。周期连续、等长且按顺序排列；至少 24 周期，每周期 4 点，最多 2 MB。</p>
     <label>报告名称<input name="title" maxlength="200" placeholder="默认使用文件名"></label><label>采样值单位<input name="unit" maxlength="40" placeholder="例如 A、°C、mm/s"></label>
     <details><summary>高级参数</summary><label>参考期比例<input name="reference_fraction" type="number" min="0.01" max="0.5" step="0.01" value="0.2" required></label><label>偏离阈值<input name="threshold" type="number" min="0.01" max="100" step="any" value="6" required></label><label>连续超限周期<input name="hold" type="number" min="1" max="100" step="1" value="3" required></label><label>外推周期<input name="horizon" type="number" min="1" max="20" step="1" value="5" required></label></details>
@@ -53,6 +54,7 @@ export function render(root) {
     return data;
   }
   function show(report) {
+    if(report.kind==='valve_fusion_shadow'){find('[data-ml-report]').innerHTML=valveReport(report);return;}
     if(report.kind==='bearing_envelope_evidence'){find('[data-ml-report]').innerHTML=rotatingReport(report);return;}
     const r=report.result;
     const last=r.series?.at(-1);
@@ -82,6 +84,11 @@ export function render(root) {
   find('[data-ml-rotating]').onclick=()=>{
     if(canWrite)openRotatingAnalysis({onSaved:report=>{
       if(dead)return;selection++;show(report);offset=0;refresh();message('频谱证据已保存。');
+    }});
+  };
+  find('[data-ml-valve]').onclick=()=>{
+    if(canWrite)openValveAnalysis({onSaved:report=>{
+      if(dead)return;selection++;show(report);offset=0;refresh();
     }});
   };
   const refresh=()=>load().catch(e=>{if(e.name!=='AbortError')message(e.message);});

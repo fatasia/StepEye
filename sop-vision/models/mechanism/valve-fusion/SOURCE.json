@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "id": "weihu-valve-fusion-20261031",
+  "task": "time_series_anomaly_evidence",
+  "source_repository": "https://github.com/fatasia/mechanism-lab",
+  "source_revision": "01d77002e960b93254f137a8dd7e618abb12c3ae",
+  "runtime_run_id": "20261102T091746Z-1c000aed",
+  "export_run_id": "20261031T210409Z-499b5253",
+  "file": "ae.onnx",
+  "bytes": 435073,
+  "sha256": "c5250ae6d94a8f2a4b755a538451e24496200c2864e4a01aa56ce3d84c45fa67",
+  "source_license": "MIT Copyright (c) 2026 fatasia; see LICENSE.weihu.txt",
+  "weights_license_status": "No separately declared weights release terms in source manifest; evaluation only",
+  "data": {
+    "name": "Hydraulic Systems",
+    "authors": [
+      "Nikolai Helwig",
+      "Eliseo Pignanelli",
+      "Andreas Schuetze"
+    ],
+    "doi": "10.24432/C5CW21",
+    "license_in_source_notice": "CC-BY-4.0",
+    "archive_sha256": "24128aad2ee45eea7e6b63ebbd9992cdf25d0483a2cebefbfc13bc69079af1f2",
+    "processing": "PS1/PS2 bar at100Hz; crop cycle [8,12)s; frozen AE top10pct absolute residual AND calibrated timing branch"
+  },
+  "usage": "evaluation_only",
+  "scope": "Historical same-rig research; not site acceptance, alarm, control, SOP, or health probability",
+  "input_shape": [
+    "batch",
+    400,
+    2
+  ],
+  "input_dtype": "float32",
+  "output_shape": [
+    "batch",
+    1
+  ],
+  "sync": {
+    "command_edge_required": true,
+    "lead_s": 8,
+    "tolerance_samples": 1
+  },
+  "minimum_dependencies": [
+    "numpy",
+    "onnxruntime"
+  ],
+  "external_pretrained_weights": false,
+  "notes": "Runtime model was already trained/exported by weihu; StepEye copies the ONNX, not pickle checkpoints or training stack."
+}

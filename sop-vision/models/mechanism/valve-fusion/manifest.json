@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "bundleKind": "valve-fusion-runtime",
+  "task": "valve",
+  "channels": [
+    "PS1",
+    "PS2"
+  ],
+  "units": [
+    "bar",
+    "bar"
+  ],
+  "sampleRateHz": 100,
+  "windowSeconds": 4,
+  "windowStartSeconds": 8,
+  "sync": {
+    "required": true,
+    "expected_lead_s": 8.0,
+    "tolerance_samples": 1
+  },
+  "models": {
+    "ae": {
+      "file": "ae.onnx",
+      "sha256": "c5250ae6d94a8f2a4b755a538451e24496200c2864e4a01aa56ce3d84c45fa67",
+      "inputName": "values",
+      "shape": [
+        null,
+        400,
+        2
+      ],
+      "outputIndex": 0,
+      "transform": "identity",
+      "threshold": 1.0
+    }
+  },
+  "origin": {
+    "export_run_id": "20261031T210409Z-499b5253",
+    "data_sha256": "24128aad2ee45eea7e6b63ebbd9992cdf25d0483a2cebefbfc13bc69079af1f2"
+  },
+  "scope": "frozen historical research candidate; shadow only"
+}
