@@ -29,6 +29,7 @@ from .safety import SafetyMonitor, SafetyRule
 from .ehs import EhsMonitor
 from .proximity import ProximityMonitor
 from .ppe import PPEMonitor
+from .helmet_shadow import HelmetShadow, HelmetSampleMonitor
 from .thermal import ThermalMonitor
 from .sim import SimHands, SimSource
 from .sources import create_source
@@ -105,6 +106,16 @@ class StationRuntime:
         self.ehs = EhsMonitor(cfg.ehs, self.geoms) if cfg.ehs.enabled else None
         self.proximity = ProximityMonitor(cfg.proximity, (self.w, self.h))
         self.ppe = PPEMonitor(cfg.ppe, self.geoms) if cfg.ppe.enabled else None
+        self.helmet_shadow = None
+        self.helmet_samples = None
+        self._helmet_candidate = {"enabled": False, "status": "disabled", "close_complete": None}
+        if cfg.ppe.enabled and cfg.ppe.helmet_probe.enabled:
+            ttl = max(.05, min(5., cfg.ppe.max_gap_s))
+            self.helmet_shadow = HelmetShadow(cfg.ppe.helmet_probe, self.base_dir,
+                                             ttl_s=ttl, idle_s=cfg.ppe.helmet_probe.idle_s)
+            self.helmet_samples = HelmetSampleMonitor(cfg.ppe, self.geoms, ttl_s=ttl)
+            self._helmet_candidate = {"enabled": True, "status": "idle", "close_complete": None}
+
         self.thermal = ThermalMonitor(cfg.thermal)
         # vlm_check:后台线程判帧,不阻塞视频循环;结果以 OBJ_STATE(伪区域)进引擎
         self._vlm_conds = {}
@@ -294,6 +305,10 @@ class StationRuntime:
         self.proximity.reset()
         if self.ppe is not None:
             self.ppe.reset()
+        if self.helmet_shadow is not None:
+            self.helmet_shadow.invalidate()
+            self.helmet_samples.reset()
+            self._helmet_candidate = {"enabled": True, "status": "unknown", "close_complete": None}
         for perceiver in (self.hands, self.persons, self.detector, self.roi):
             if perceiver is None:
                 continue
@@ -335,6 +350,7 @@ class StationRuntime:
 
     # ------------------------------------------------------------ 主循环
     def process_frame(self, ts: float, frame: np.ndarray) -> list[Event]:
+        captured_mono = time.monotonic()
         external = self.signal_inbox.drain(ts) if self.signal_inbox is not None else []
         self.raw = frame
         self._apply_calibration(frame)
@@ -362,6 +378,17 @@ class StationRuntime:
         if self.ppe is not None and not blocked:
             safety_alerts += self.ppe.process(self.ctx.object_tracks, ts,
                 available=self.detector is not None and hasattr(self.detector, "mot"))
+        if self.helmet_shadow is not None and not blocked:
+            self.helmet_shadow.submit(frame, ts, self.ctx.object_tracks, self._vision_generation,
+                                      captured_mono=captured_mono)
+            candidate = self.helmet_shadow.drain(self._vision_generation, ts, self.ctx.object_tracks)
+            safety_alerts += self.helmet_samples.update(candidate, self._vision_generation, ts, self.ctx.object_tracks)
+            if not any(t.label == "person" and t.last_seen == ts for t in self.ctx.object_tracks):
+                self._helmet_candidate = {"enabled": True, "status": "no_person", "close_complete": None}
+            if candidate is not None:
+                self._helmet_candidate = {"enabled": True, "status": candidate["status"],
+                    "frame_ts": candidate["frame_ts"], "captured_mono": candidate["captured_mono"],
+                    "sampled_person_ids": candidate["sampled_person_ids"], "close_complete": None}
         if self.ehs is not None and not blocked:
             safety_alerts += self.ehs.process(self.ctx.object_tracks, ts,
                 available=self.detector is not None and hasattr(self.detector, "mot"),
@@ -393,40 +420,55 @@ class StationRuntime:
             self.signal_inbox.bind_consumer()
         pace = self.cfg.source.type == "sim" and self.cfg.source.realtime
         t0 = time.monotonic()
-        while not self.stop_event.is_set():
-            item = self.source.read()
-            if item is None:
-                break
-            ts, frame = item
-            now = time.monotonic()
-            gap = self.cfg.source.type in ("rtsp", "camera", "industrial") and self._last_frame_wall is not None and now - self._last_frame_wall > max(1.0, 3 / max(self.cfg.source.fps, 1))
-            if gap or frame.shape[1] < 16:
-                self.engine.process(Event(ts, "quality", state="unknown", value="stream_gap", source="source"))
-                self._vision_generation += 1
-                self._vlm_last.clear()
-                if self.cfg.quality.enabled:
-                    self.quality.invalidate("stream_gap", ts)
-                self._reset_visual_observations()
-                if self.safety is not None:
-                    self.safety.pause(ts)
-                self._quality_blocked = True
-            self._last_frame_wall = now
-            if frame.shape[1] != self.w or frame.shape[0] != self.h:
-                if frame.shape[1] < 16:  # 断流占位帧
-                    continue
-                frame = cv2.resize(frame, (self.w, self.h))
-            self.process_frame(ts, frame)
-            if pace:
-                delay = t0 + ts - time.monotonic()
-                if delay > 0:
-                    self.stop_event.wait(delay)
-            if max_frames and self.frame_idx >= max_frames:
-                break
-        self.source.close()
-        self.action_shadow.close()
+        try:
+            while not self.stop_event.is_set():
+                item = self.source.read()
+                if item is None:
+                    break
+                ts, frame = item
+                now = time.monotonic()
+                gap = self.cfg.source.type in ("rtsp", "camera", "industrial") and self._last_frame_wall is not None and now - self._last_frame_wall > max(1.0, 3 / max(self.cfg.source.fps, 1))
+                if gap or frame.shape[1] < 16:
+                    self.engine.process(Event(ts, "quality", state="unknown", value="stream_gap", source="source"))
+                    self._vision_generation += 1
+                    self._vlm_last.clear()
+                    if self.cfg.quality.enabled:
+                        self.quality.invalidate("stream_gap", ts)
+                    self._reset_visual_observations()
+                    if self.safety is not None:
+                        self.safety.pause(ts)
+                    self._quality_blocked = True
+                self._last_frame_wall = now
+                if frame.shape[1] != self.w or frame.shape[0] != self.h:
+                    if frame.shape[1] < 16:  # 断流占位帧
+                        continue
+                    frame = cv2.resize(frame, (self.w, self.h))
+                self.process_frame(ts, frame)
+                if pace:
+                    delay = t0 + ts - time.monotonic()
+                    if delay > 0:
+                        self.stop_event.wait(delay)
+                if max_frames and self.frame_idx >= max_frames:
+                    break
+        finally:
+            try:
+                self.source.close()
+            finally:
+                try:
+                    self.action_shadow.close()
+                finally:
+                    self._close_helmet()
+
+    def _close_helmet(self):
+        if self.helmet_shadow is not None:
+            complete = self.helmet_shadow.close(timeout_s=.5)
+            self.helmet_samples.reset()
+            self._helmet_candidate = {"enabled": True,
+                "status": "closed" if complete else "closing", "close_complete": complete}
 
     def stop(self) -> None:
         self.stop_event.set()
+        self._close_helmet()
         if self.thermal_service is not None:
             self.signal_inbox.close()
             self.thermal_service.close()
@@ -453,6 +495,16 @@ class StationRuntime:
         snap["proximity"] = self.proximity.snapshot()
         snap["thermal"] = self.thermal_service.snapshot() if self.thermal_service is not None else self.thermal.snapshot()
         snap["ppe"] = self.ppe.snapshot() if self.ppe is not None else {"enabled": False}
+        helmet = dict(self._helmet_candidate)
+        captured = helmet.pop("captured_mono", None)
+        if captured is not None:
+            age = time.monotonic() - captured
+            helmet["age_s"] = round(age, 3)
+            if age > self.helmet_shadow.ttl_s:
+                helmet.update(status="expired", sampled_person_ids=[])
+        helmet["samples"] = (self.helmet_samples.snapshot() if self.helmet_samples is not None
+                             and helmet["status"] not in ("expired", "closing", "closed", "unknown") else {})
+        snap["helmet_probe"] = helmet
         snap["ehs"] = self.ehs.snapshot() if self.ehs is not None else {"enabled": False, "rules": {}}
         snap["quality"] = {**self.quality.snapshot(), "confirmed_degraded": self.quality.degraded,
                            "confirmed_reason": self.quality.reason, "degraded": self.engine.world.quality_bad,

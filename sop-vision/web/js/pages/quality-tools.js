@@ -1,5 +1,6 @@
 import { $, esc, fmtTime } from "../util.js";
 import { openDrawer } from "../ui.js";
+import { openEdgeMeasurement } from "./edge-measurement.js";
 import { openEquipmentResults } from "./equipment-results.js";
 
 const types = { spc: "SPC / 过程能力", pareto: "缺陷柏拉图", grr: "GR&R 测量系统", agreement: "复判一致性",
@@ -44,11 +45,18 @@ export function openQualityTools({ canWrite }) {
       <div class="qt-actions"><button class="btn btn-primary" data-qt-run>导入并分析</button></div></div>
       <p data-qt-error class="qt-error" role="alert"></p><section data-qt-result aria-live="polite">尚未导入数据。</section>
       <button class="btn" data-qt-export hidden>导出完整 JSON</button>
-      <section data-qt-measure hidden><h3>平面内两点测量</h3><p>输入当前标定画面中的两点像素坐标：x1,y1,x2,y2。</p><input data-qt-points placeholder="100,100,200,100" aria-label="两点像素坐标"/><button class="btn" data-qt-measure-run>测量</button><p data-qt-distance></p></section>
+      <section data-qt-measure hidden><button class="btn btn-primary" data-qt-edge>框选边缘测量</button><h3>平面内两点测量</h3><p>输入当前标定画面中的两点像素坐标：x1,y1,x2,y2。</p><input data-qt-points placeholder="100,100,200,100" aria-label="两点像素坐标"/><button class="btn" data-qt-measure-run>测量</button><p data-qt-distance></p></section>
       <details open><summary>已保存报告与标定</summary><div data-qt-history>正在读取…</div></details></div>`,
     onClose: () => { closed = true; } });
   const body = drawer.body, kind = $("[data-qt-kind]", body), error = $("[data-qt-error]", body);
   $("[data-qt-equipment]",body).onclick = () => { drawer.close(); openEquipmentResults({ canWrite }); };
+  $("[data-qt-edge]",body).onclick = () => {
+    if (selectedCalibration?.validated && canWrite) {
+      const calibration = selectedCalibration;
+      drawer.close();
+      openEdgeMeasurement(calibration);
+    }
+  };
   const showError = e => { if (!closed) error.textContent = e?.message || ""; };
   function render(report) {
     last = report; selectedCalibration = report.matrix ? report : null;

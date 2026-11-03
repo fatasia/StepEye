@@ -4,6 +4,7 @@ import math
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 from .tracking import iou
+from .helmet_probe import HelmetProbeCfg
 
 ALIASES = {
     'helmet': ('helmet', False), 'with helmet': ('helmet', False),
@@ -16,6 +17,7 @@ ALIASES = {
 class PPECfg(BaseModel):
     model_config=ConfigDict(extra='forbid',allow_inf_nan=False)
     enabled: bool=False
+    helmet_probe: HelmetProbeCfg=Field(default_factory=HelmetProbeCfg)
     zones: list[str]=Field(default_factory=list,max_length=64)
     min_confidence: float=Field(default=.5,ge=0,le=1)
     min_person_height: float=Field(default=80,ge=20,le=4096)
