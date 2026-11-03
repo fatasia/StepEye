@@ -1,103 +1,175 @@
 {
-  "schema_version": 1,
-  "checked_at": "2026-11-03",
-  "scope": "PPE and visible weld detectors only; no ROI classifiers",
-  "production_defaults_changed": false,
-  "models": [
-    {
-      "id": "public-ppe-construction-v03",
-      "name": "PPE / 护目镜·鞋·手套 14类（评估）",
-      "task": "detect",
-      "runtime": "onnx",
-      "model_path": "models/public/ppe-construction-v03.onnx",
-      "classes": [
-        "person",
-        "hardhat",
-        "no-hardhat",
-        "safety vest",
-        "no-safety vest",
-        "no-mask",
-        "gloves",
-        "safety shoes",
-        "excavator",
-        "wheel loader",
-        "dump truck",
-        "goggles",
-        "no-goggles",
-        "no-gloves"
-      ],
-      "sha256": "55f4dd2f53158eac4ff093d938b9fbda80c99454a03672145bbc36f539988249",
-      "bytes": 44766819,
-      "adapter": "yolo_raw",
-      "adapter_compatible": true,
-      "native_input": [
-        1,
-        3,
-        640,
-        640
-      ],
-      "native_output": [
-        1,
-        18,
-        8400
-      ],
-      "license_status": "weights_AGPL-3.0; publisher_data_CC-BY-4.0; full_chain_pending",
-      "commercial_review_required": true,
-      "usage": "evaluation_only",
-      "production_ready": false,
-      "source": {
-        "repo": "constructelligence/construction-site-safety-hazards",
-        "revision": "79673cff5a8bb249fc8ec9cca3daa19e2ef95191",
-        "url": "https://huggingface.co/constructelligence/construction-site-safety-hazards/resolve/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/buildvision-hazards-v0.3.onnx",
-        "model_card_url": "https://huggingface.co/constructelligence/construction-site-safety-hazards/blob/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/README.md",
-        "model_card_sha256": "7091675890c21fa3be69bafa9526b606fb4edd570e1167d5b0d50a68ee4ea10a"
-      },
-      "validation": "real_cpu_child_smoke_only; publisher annotated collage; not independent accuracy",
-      "limitations": [
-        "Gloves/goggles not returned on full publisher collage at0.25; metadata class existence is not validated recall.",
-        "No ESD material/resistance claim; PPE compliance rules not switched automatically."
-      ]
-    },
-    {
-      "id": "public-welding-defect-yolov8",
-      "name": "焊缝外观 / 3类（评估）",
-      "task": "detect",
-      "runtime": "onnx",
-      "model_path": "models/public/welding-defect-yolov8.onnx",
-      "classes": [
-        "Bad Weld",
-        "Good Weld",
-        "Defect"
-      ],
-      "sha256": "dbddf8b39a4425b53aad2de279e0fb18b2189f97afdf9ad1c5a939cf59b29745",
-      "bytes": 44734882,
-      "adapter": "yolo_raw",
-      "adapter_compatible": true,
-      "native_input": [
-        1,
-        3,
-        640,
-        640
-      ],
-      "native_output": [
-        1,
-        7,
-        8400
-      ],
-      "license_status": "weights_metadata_AGPL-3.0; model_card_not_separately_declared; data_license_unknown",
-      "commercial_review_required": true,
-      "usage": "evaluation_only",
-      "production_ready": false,
-      "source": {
-        "repo": "avinashhm/welding-defect-yolov8-full-training",
-        "revision": "2cbc6dc08b74b6bab1ebafc59a3804e4bc43e517",
-        "url": "https://huggingface.co/avinashhm/welding-defect-yolov8-full-training/resolve/2cbc6dc08b74b6bab1ebafc59a3804e4bc43e517/weights/best.onnx"
-      },
-      "validation": "real_cpu_fixed_image_smoke_only; publisher labelled validation montage; not independent accuracy",
-      "limitations": [
-        "Good Weld is a detection class, not a release verdict.",
-        "Visible weld does not imply internal X-ray/solder-pin defect coverage; data licence unknown."
-      ]
-    }
-  ]
+ "schema_version": 1,
+ "checked_at": "2026-11-04",
+ "scope": "PPE and visible weld detectors only; no ROI classifiers",
+ "production_defaults_changed": false,
+ "models": [
+  {
+   "id": "public-ppe-construction-v03",
+   "name": "PPE / 护目镜·鞋·手套 14类（评估）",
+   "task": "detect",
+   "runtime": "onnx",
+   "model_path": "models/public/ppe-construction-v03.onnx",
+   "classes": [
+    "person",
+    "hardhat",
+    "no-hardhat",
+    "safety vest",
+    "no-safety vest",
+    "no-mask",
+    "gloves",
+    "safety shoes",
+    "excavator",
+    "wheel loader",
+    "dump truck",
+    "goggles",
+    "no-goggles",
+    "no-gloves"
+   ],
+   "sha256": "55f4dd2f53158eac4ff093d938b9fbda80c99454a03672145bbc36f539988249",
+   "bytes": 44766819,
+   "adapter": "yolo_raw",
+   "adapter_compatible": true,
+   "native_input": [
+    1,
+    3,
+    640,
+    640
+   ],
+   "native_output": [
+    1,
+    18,
+    8400
+   ],
+   "license_status": "weights_AGPL-3.0; publisher_data_CC-BY-4.0; full_chain_pending",
+   "commercial_review_required": true,
+   "usage": "evaluation_only",
+   "production_ready": false,
+   "source": {
+    "repo": "constructelligence/construction-site-safety-hazards",
+    "revision": "79673cff5a8bb249fc8ec9cca3daa19e2ef95191",
+    "url": "https://huggingface.co/constructelligence/construction-site-safety-hazards/resolve/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/buildvision-hazards-v0.3.onnx",
+    "model_card_url": "https://huggingface.co/constructelligence/construction-site-safety-hazards/blob/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/README.md",
+    "model_card_sha256": "7091675890c21fa3be69bafa9526b606fb4edd570e1167d5b0d50a68ee4ea10a"
+   },
+   "validation": "real_cpu_child_smoke_only; publisher annotated collage; not independent accuracy",
+   "limitations": [
+    "Gloves/goggles not returned on full publisher collage at0.25; metadata class existence is not validated recall.",
+    "No ESD material/resistance claim; PPE compliance rules not switched automatically."
+   ]
+  },
+  {
+   "id": "public-welding-defect-yolov8",
+   "name": "焊缝外观 / 3类（评估）",
+   "task": "detect",
+   "runtime": "onnx",
+   "model_path": "models/public/welding-defect-yolov8.onnx",
+   "classes": [
+    "Bad Weld",
+    "Good Weld",
+    "Defect"
+   ],
+   "sha256": "dbddf8b39a4425b53aad2de279e0fb18b2189f97afdf9ad1c5a939cf59b29745",
+   "bytes": 44734882,
+   "adapter": "yolo_raw",
+   "adapter_compatible": true,
+   "native_input": [
+    1,
+    3,
+    640,
+    640
+   ],
+   "native_output": [
+    1,
+    7,
+    8400
+   ],
+   "license_status": "weights_metadata_AGPL-3.0; model_card_not_separately_declared; data_license_unknown",
+   "commercial_review_required": true,
+   "usage": "evaluation_only",
+   "production_ready": false,
+   "source": {
+    "repo": "avinashhm/welding-defect-yolov8-full-training",
+    "revision": "2cbc6dc08b74b6bab1ebafc59a3804e4bc43e517",
+    "url": "https://huggingface.co/avinashhm/welding-defect-yolov8-full-training/resolve/2cbc6dc08b74b6bab1ebafc59a3804e4bc43e517/weights/best.onnx"
+   },
+   "validation": "real_cpu_fixed_image_smoke_only; publisher labelled validation montage; not independent accuracy",
+   "limitations": [
+    "Good Weld is a detection class, not a release verdict.",
+    "Visible weld does not imply internal X-ray/solder-pin defect coverage; data licence unknown."
+   ]
+  },
+  {
+   "id": "public-fire-smoke-longlivewama-v1",
+   "name": "烟火检测 fire+smoke（YOLOv8n @832，评估）",
+   "task": "detect",
+   "runtime": "onnx",
+   "model_path": "models/public/fire-smoke-longlivewama-v1.onnx",
+   "classes": [
+    "fire",
+    "smoke"
+   ],
+   "sha256": "826e2e2e1cde165abc1d4d03c71e585ed67c83c5967f25dfd67f17ec92afa266",
+   "bytes": 12382299,
+   "adapter": "yolo_raw",
+   "adapter_compatible": true,
+   "native_input": [
+    1,
+    3,
+    832,
+    832
+   ],
+   "native_output": [
+    1,
+    6,
+    14196
+   ],
+   "license_status": "weights_Apache-2.0(源仓库LICENSE); ONNX内嵌样板字符串与实际许可不符,以源仓库为准",
+   "commercial_review_required": false,
+   "usage": "evaluation_only",
+   "production_ready": false,
+   "source": {
+    "repo": "longlivewama/fire-and-smoke-detection",
+    "url": "https://github.com/longlivewama/fire-and-smoke-detection",
+    "note": "自报 0.623 mAP50(Roboflow 集); 10 图试推: 夜景火检出但最高置信框为误报, 烟雾召回弱; 评估后建议阈值 0.3-0.35"
+   },
+   "trial_evidence": ".v0/fire-smoke/candidates.json (2026-11-04)"
+  },
+  {
+   "id": "public-fire-smoke-zyazyz008-v1",
+   "name": "烟火检测 fire+smoke（YOLOv8s @640，评估）",
+   "task": "detect",
+   "runtime": "onnx",
+   "model_path": "models/public/fire-smoke-zyazyz008-v1.onnx",
+   "classes": [
+    "fire",
+    "smoke"
+   ],
+   "sha256": "0131d86369c1d688ea68ee2672ebfc38bff32fac60fa16f4f8948393de8b6d7a",
+   "bytes": 44747427,
+   "adapter": "yolo_raw",
+   "adapter_compatible": true,
+   "native_input": [
+    1,
+    3,
+    640,
+    640
+   ],
+   "native_output": [
+    1,
+    6,
+    8400
+   ],
+   "license_status": "weights_Apache-2.0(ModelScope 模型卡); ONNX内嵌样板字符串与实际许可不符,以模型卡为准",
+   "commercial_review_required": false,
+   "usage": "evaluation_only",
+   "production_ready": false,
+   "source": {
+    "repo": "zyazyz008/yolov8-fire-smoke-merged",
+    "url": "https://modelscope.cn/models/zyazyz008/yolov8-fire-smoke-merged",
+    "note": "自报 mAP50 79.57%(自建合并集); 10 图试推: 烟柱 0.791 检出、负样本零误报、夜景明火漏检; 与 longlivewama 互补"
+   },
+   "trial_evidence": ".v0/fire-smoke/candidates.json (2026-11-04)"
+  }
+ ]
 }
