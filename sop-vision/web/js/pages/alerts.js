@@ -106,10 +106,13 @@ export function render(root, params = {}) {
   const load = async () => {
     const version = ++loadVersion;
     try {
-      const rows = await api.alerts({ status:f.status, source:f.source, limit:500 });
+      const [rows, stats] = await Promise.all([api.alerts({ status:f.status, source:f.source, limit:500 }), api.alertStats()]);
       if (dead || version !== loadVersion) return;
       alertRows = rows.filter((r) => !f.station || r.station.includes(f.station));
-      setHTML(tbl,tableHtml(alertRows)); foot.textContent = `显示最近 ${alertRows.length} 条${f.station ? ` · 工位/场景：${f.station}` : ""}`;
+      // 治理计数只在有值时出现,平时不占视线
+      const gov = stats.dropped || stats.storm_suppressed
+        ? ` · 风暴抑制 ${stats.storm_suppressed || 0} 条 · 预算拦截 ${stats.dropped || 0} 条` : "";
+      setHTML(tbl,tableHtml(alertRows)); foot.textContent = `显示最近 ${alertRows.length} 条${f.station ? ` · 工位/场景：${f.station}` : ""}${gov}`;
     } catch (e) { if (!dead && version === loadVersion) { setHTML(tbl,errorBlock(e.message)); $("[data-retry]",tbl).onclick = load; } }
   };
   const openAlert = (id) => {

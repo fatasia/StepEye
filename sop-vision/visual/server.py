@@ -95,10 +95,14 @@ class StationManager:
         self.equipment_results = EquipmentResults(data_dir / "equipment-results")
         from .action_references import ActionReferenceStore
         self.action_references = ActionReferenceStore(data_dir / "action-references", data_dir / "timelines", data_dir / "timelines.db")
+        from .action_reference_check import ReferenceChecks
+        self.reference_checks = ReferenceChecks(data_dir / "reference-checks.db")
         self.hub = hub
         self.store = CycleStore(data_dir / "sop.db")
         self._owns_alerts = alert_store is None
-        self.alerts = alert_store or AlertStore(data_dir / "alerts.db")
+        # 治理门面:create 叠加风暴抑制与预算闸门,其余方法透传;close 经透传到达真实 store
+        from .alert_governance import GovernedAlerts
+        self.alerts = GovernedAlerts(alert_store or AlertStore(data_dir / "alerts.db"))
         self.feishu_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
         from .notifications import NotificationDispatcher
         from .llm_provider import _default_env_path
@@ -116,6 +120,10 @@ class StationManager:
         self.quality_reports = QualityReports(data_dir / "quality_reports.db")
         from .holdout_routes import HoldoutEvaluations
         self.holdout_evaluations = HoldoutEvaluations(data_dir / "holdout_evaluations.db")
+        from .stock_reconciliation import StockReconStore
+        self.stock_recon = StockReconStore(data_dir / "stock_reconciliation.db")
+        from .model_release import ModelReleases
+        self.model_releases = ModelReleases(data_dir / "model_releases.db")
         from .recipes import RecipeStore, RecipeService
         self.recipe_store = RecipeStore(data_dir / "recipes.db")
         self.recipes = RecipeService(self.recipe_store, self)
@@ -295,12 +303,15 @@ class StationManager:
         self.mechanism.close()
         self.equipment_results.close()
         self.action_references.close()
+        self.reference_checks.close()
         self.training.close()
         self.label_jobs.close()
         self.labels.close()
         self.calibrations.close()
         self.quality_reports.close()
         self.holdout_evaluations.close()
+        self.stock_recon.close()
+        self.model_releases.close()
         self.recipe_store.close()
         for rt in self.runtimes.values():
             rt.stop()
@@ -497,6 +508,12 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(evaluation_router())
     from .holdout_routes import router as holdout_router
     app.include_router(holdout_router(manager.holdout_runner))
+    from .ops_routes import router as ops_router
+    app.include_router(ops_router(manager.data_dir))
+    from .stock_reconciliation_routes import router as stock_recon_router
+    app.include_router(stock_recon_router(manager.stock_recon))
+    from .model_release_routes import router as model_release_router
+    app.include_router(model_release_router(manager.model_releases, manager.holdout_evaluations))
     from .quality_routes import router as quality_router
     app.include_router(quality_router(manager.quality_reports))
     from .recipe_routes import router as recipe_router
@@ -714,13 +731,21 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
     # ---- 告警中心(V7) ----
     @app.get("/api/alerts")
-    def alerts_list(status: str | None = None, source: str | None = None,
+    def alerts_list(request: Request, status: str | None = None, source: str | None = None,
                     limit: int = Query(100, ge=1, le=500)) -> list[dict[str, Any]]:
-        return manager.alerts.list(status=status, source=source, limit=limit)
+        # 数据范围权限:浏览器会话无 project_ids 恒放行;带范围白名单的 MCP 令牌按 station 过滤
+        from .data_scope import scope_filter
+        return scope_filter(current_user(request),
+                            manager.alerts.list(status=status, source=source, limit=limit))
 
     @app.get("/api/alerts/stats")
     def alerts_stats() -> dict[str, Any]:
         return manager.alerts.stats()
+
+    @app.get("/api/alerts/false-positives")
+    def alerts_false_positives(hours: float = Query(24, ge=1, le=720)) -> dict[str, Any]:
+        from .alert_governance import false_positive_report
+        return false_positive_report(manager.alerts, hours)
 
     @app.patch("/api/alerts/{aid}")
     def alerts_patch(aid: int, body: AlertPatchBody, request: Request) -> dict[str, Any]:
