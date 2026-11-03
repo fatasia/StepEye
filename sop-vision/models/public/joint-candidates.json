@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-03",
+  "automatic_registration": false,
+  "production_models_changed": false,
+  "torch_or_pickle_loaded": false,
+  "models": [
+    {
+      "id": "welding-defect-yolov8",
+      "task": "object_detection",
+      "source": {
+        "repository": "https://huggingface.co/avinashhm/welding-defect-yolov8-full-training",
+        "revision": "2cbc6dc08b74b6bab1ebafc59a3804e4bc43e517"
+      },
+      "artifact": {
+        "path": ".v0/joint-models/avinashhm-best.onnx",
+        "source_file": "weights/best.onnx",
+        "bytes": 44734882,
+        "sha256": "dbddf8b39a4425b53aad2de279e0fb18b2189f97afdf9ad1c5a939cf59b29745"
+      },
+      "published_lfs_sha256_matches": true,
+      "licenses": {
+        "code": "Ultralytics AGPL-3.0",
+        "weights": "ONNX metadata AGPL-3.0; model card does not separately declare terms",
+        "data": "unknown; card names The Welding Defect Dataset - v2 without license/source link",
+        "release_approved": false
+      },
+      "classes": [
+        "Bad Weld",
+        "Good Weld",
+        "Defect"
+      ],
+      "input": [
+        [
+          1,
+          3,
+          640,
+          640
+        ]
+      ],
+      "output": [
+        [
+          1,
+          7,
+          8400
+        ]
+      ],
+      "adapter": "yolo_raw",
+      "trial": {
+        "status": "actual_cpu_inference",
+        "report": ".v0/joint-models/weld-real-trial.json",
+        "image": ".v0/joint-models/avinashhm-val_batch0_labels.jpg",
+        "image_sha256": "36834bd1c523b856b1aa0eba432676783b60317a6f28fb4a4b21f091f4437f25",
+        "image_source_file": "val_batch0_labels.jpg",
+        "image_note": "author annotated validation montage; not independent accuracy evidence",
+        "cold_load_and_detect_ms": 550.5559000011999,
+        "threshold": 0.25,
+        "detections": 15,
+        "accuracy": "not_evaluated"
+      }
+    },
+    {
+      "id": "pcb-lead-solderinsufficient",
+      "task": "roi_image_classification",
+      "source": {
+        "repository": "https://huggingface.co/JcProg/PCBInspect-LeadDefect",
+        "revision": "fe29664de102e5e2ecce3bdc52a7f014bd0e9929"
+      },
+      "artifact": {
+        "path": ".v0/joint-models/JcProg-model.onnx",
+        "source_file": "model.onnx",
+        "bytes": 21793705,
+        "sha256": "851a12519c713e676907a5f6e65248a09b033c1c7b4f01c1c87472d6f2bd2f58"
+      },
+      "published_lfs_sha256_matches": true,
+      "licenses": {
+        "code": "Ultralytics AGPL-3.0",
+        "weights": "CONFLICT: publisher model card MIT versus ONNX metadata AGPL-3.0",
+        "data": "proprietary AOI ROI crops, not released",
+        "release_approved": false
+      },
+      "classes": [
+        "Golden",
+        "SolderInsufficient"
+      ],
+      "input": [
+        {
+          "name": "images",
+          "shape": [
+            1,
+            3,
+            640,
+            640
+          ],
+          "type": "tensor(float)"
+        }
+      ],
+      "output": [
+        {
+          "name": "output0",
+          "shape": [
+            1,
+            2
+          ]
+        }
+      ],
+      "trial": {
+        "status": "onnxruntime_session_loaded_static_only",
+        "report": ".v0/joint-models/lead-static.json",
+        "accuracy": "not_evaluated"
+      },
+      "adapter_needed": "explicit ROI classifier, not bounding-box detector; verify output activation before probability conversion"
+    }
+  ],
+  "other_candidates": [
+    {
+      "repository": "https://huggingface.co/ParsaVictor/pcb-solder-defect-detection-yolo26",
+      "revision": "3b7ec12d89b69d6346a1134c02a161374022eaee",
+      "weights": "PT only, not downloaded/executed",
+      "license": "research-use-mixed-sources; data license details not retrieved due TLS errors",
+      "dataset_repository": "https://huggingface.co/datasets/ParsaVictor/pcb-solder-defect-detection",
+      "dataset_revision": "219ff5062b63bd7de745a1669a3d336243695440",
+      "dataset_files": [
+        "data.yaml",
+        "images_and_labels.zip",
+        "LICENSE.md"
+      ],
+      "downloaded": false
+    },
+    {
+      "paper": "https://doi.org/10.1371/journal.pone.0297059",
+      "scope": "solenoid connector inclined pins / missing copper / abnormal wire",
+      "availability": "paper states third-party code/data by request only; no public weights obtained",
+      "license": "article CC-BY does not license third-party data or weights"
+    }
+  ]
+}

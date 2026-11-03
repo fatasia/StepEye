@@ -1,0 +1,174 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-03",
+  "automatic_registration": false,
+  "production_models_changed": false,
+  "models_downloaded": false,
+  "datasets": [
+    {
+      "id": "ev-battery-weld-aesthetical",
+      "source": "https://zenodo.org/records/14025630",
+      "version": "v1",
+      "doi": "10.5281/zenodo.14025630",
+      "license": "CC-BY-4.0 (Zenodo API metadata)",
+      "task": "image_classification",
+      "classes": [
+        "OK",
+        "KO"
+      ],
+      "archive": {
+        "filename": "Weld Aesthetical Defects.zip",
+        "bytes": 1153183844,
+        "published_md5": "f187dac063cf656bb627327fa9771d16",
+        "fully_downloaded": false,
+        "md5_verified": false
+      },
+      "retrieval": "HTTP206 byte ranges: central directory and six members only",
+      "zip_central_sha256": "cffc643f575b7d8515eba06655def2f30e825e58cb256b3daba0e6002bd69596",
+      "counts": {
+        "train/KO": 8253,
+        "train/OK": 34916,
+        "val/KO": 1768,
+        "val/OK": 7482,
+        "test/KO": 1769,
+        "test/OK": 7482
+      },
+      "samples": [
+        {
+          "member": "test/KO/image_1.png",
+          "path": ".v0\\battery-inspection\\test_KO_image_1.png",
+          "sha256": "f23779d951a7198a6afa3edd2e44726a5790153693fa21f33f43ea84d90391ed",
+          "bytes": 31465,
+          "shape": [
+            40,
+            410,
+            3
+          ],
+          "crc32_valid": true,
+          "label": "KO",
+          "split": "test"
+        },
+        {
+          "member": "test/OK/image_1.png",
+          "path": ".v0\\battery-inspection\\test_OK_image_1.png",
+          "sha256": "ce94f329c78c0f9e2e2bdf7022634e06418bc2836f602ee46b98662228f9984c",
+          "bytes": 21059,
+          "shape": [
+            35,
+            316,
+            3
+          ],
+          "crc32_valid": true,
+          "label": "OK",
+          "split": "test"
+        },
+        {
+          "member": "train/KO/image_1.png",
+          "path": ".v0\\battery-inspection\\train_KO_image_1.png",
+          "sha256": "4a08fa2c6274e603f18358134092e8f697cc81f78a36f472577bca81bc0de3f3",
+          "bytes": 28550,
+          "shape": [
+            40,
+            414,
+            3
+          ],
+          "crc32_valid": true,
+          "label": "KO",
+          "split": "train"
+        },
+        {
+          "member": "train/OK/image_1.png",
+          "path": ".v0\\battery-inspection\\train_OK_image_1.png",
+          "sha256": "90737d3f52aca2b5ffcd0721659d4f721b21aceaf9b140127e82d6547448cadd",
+          "bytes": 19452,
+          "shape": [
+            34,
+            315,
+            3
+          ],
+          "crc32_valid": true,
+          "label": "OK",
+          "split": "train"
+        },
+        {
+          "member": "val/KO/image_1.png",
+          "path": ".v0\\battery-inspection\\val_KO_image_1.png",
+          "sha256": "c8922ba9500e2f1c5bbcee37d0eb58147bdd11dc87a6cfaa78726177896d048e",
+          "bytes": 30527,
+          "shape": [
+            41,
+            410,
+            3
+          ],
+          "crc32_valid": true,
+          "label": "KO",
+          "split": "val"
+        },
+        {
+          "member": "val/OK/image_1.png",
+          "path": ".v0\\battery-inspection\\val_OK_image_1.png",
+          "sha256": "59646bb7ec4a9aa7b8ae9cf9a0a3b7fd5f2b3dfe0fefc28c5379d5431435fb54",
+          "bytes": 18479,
+          "shape": [
+            31,
+            317,
+            3
+          ],
+          "crc32_valid": true,
+          "label": "OK",
+          "split": "val"
+        }
+      ],
+      "verified": "six PNG files decoded and member CRC32 checked",
+      "limitations": [
+        "Not sealing-nail weld dataset",
+        "No defect bounding boxes",
+        "No cell SN / face grouping / pack BOM",
+        "All six sampled PNGs have variable dimensions unlike stated fixed 409x40; check class-shape confounding before training",
+        "Asset-group independence of supplied split unverified"
+      ]
+    },
+    {
+      "id": "DAEF-BSD",
+      "source": "https://github.com/sober-white/DAEF",
+      "revision": "ef0e5538a907d4647bb74dc599c8a598190c846e",
+      "code_license": "Apache-2.0",
+      "data_license": "not explicitly declared for external Baidu dataset in inspected README/license",
+      "declared_images": 1266,
+      "declared_resolution": [
+        5184,
+        3456
+      ],
+      "declared_size": "5.77 GB",
+      "annotation_format": "COCO per author README, not downloaded/validated",
+      "classes": [
+        "Indentation",
+        "Explosion valve indentation",
+        "Leakage",
+        "Squeeze",
+        "Blue Film deficiency"
+      ],
+      "dataset_url": "https://pan.baidu.com/s/1GS3CKhxnUPV_73OZjhLuSQ?pwd=hcqm",
+      "downloaded": false,
+      "blocker": "only Baidu download link; automated fetch could not open",
+      "weights_in_repository": [
+        {
+          "filename": "deim_dfine_hgnetv2_n_coco_160e.pth",
+          "bytes": 15500899,
+          "role": "COCO initialization per author training command, not fine-tuned battery detector",
+          "downloaded": false
+        }
+      ],
+      "scope": "battery surface defects, not complete six-face/SN inspection"
+    }
+  ],
+  "sealing_nail": {
+    "status": "no_usable_public_weights_or_labeled_samples_acquired",
+    "primary_research": "https://www.sciencedirect.com/science/article/pii/S0952197625028246",
+    "modality": "3D point-cloud segmentation, not the ordinary visible weld detector"
+  },
+  "production_scope": {
+    "six_face": "requires cell SN + explicit front/back/left/right/top/bottom assignment, completeness, duplicate/mismatch rejection; not provided by these assets",
+    "battery_pack": "EV weld appearance is one inspection step; not pack completeness/electrical/thermal certification"
+  }
+}

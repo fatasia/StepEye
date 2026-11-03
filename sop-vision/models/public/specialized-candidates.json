@@ -308,7 +308,7 @@
       "url": "https://github.com/He001123/UniMatch/tree/7dc782c873817fb61713b9f31e29293c7a59744d/GlueDataset_300",
       "revision": "7dc782c873817fb61713b9f31e29293c7a59744d",
       "tree_jpg_count": 298,
-      "tree_png_mask_count": 300,
+      "tree_png_mask_count": 298,
       "complete_downloaded": false,
       "license": "data_origin_and_permission_not_established; repository MIT credits upstream Lihe Yang",
       "weights_available_in_tree": false,

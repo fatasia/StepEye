@@ -36,6 +36,25 @@
         "url": "https://huggingface.co/betty0/pcb-defect-detection/resolve/08f7ff096054f6ad3e1f37dfdf5cfc63d04dabaa/best.onnx"
       },
       "production_ready": false
+    },
+    {
+      "id": "coating-pinhole-enhanced",
+      "name": "极片针孔 / 增强候选（评估）",
+      "model_path": "models/public/coating-pinhole-enhanced.onnx",
+      "classes": [
+        "pinhole"
+      ],
+      "sha256": "e83906be6691fd3d0752c73ad8c15a52818d04a2e75eab81f8c38adf2a32d4c7",
+      "bytes": 12238814,
+      "adapter": "yolo_raw",
+      "adapter_compatible": true,
+      "license_status": "weights_AGPL-3.0_derivative; data_CoatingVision_CC-BY-4.0; not_release_approved",
+      "source": {
+        "dataset": "CoatingVision",
+        "dataset_version": "CV1-04dd29cac2124ce0-pinhole-ffdebf6bbaad",
+        "training": "existing 3-epoch checkpoint + 30 epochs; R1 train / R7 validation"
+      },
+      "production_ready": false
     }
   ]
 }

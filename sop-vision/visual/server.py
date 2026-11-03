@@ -87,6 +87,8 @@ class StationManager:
         from .documents import DocumentStore
         self.ai_services = AIServiceStore(data_dir / "ai-services.json")
         self.documents = DocumentStore(data_dir / "documents")
+        from .mechanism_routes import MechanismReports
+        self.mechanism = MechanismReports(data_dir / "mechanism.sqlite")
         from .equipment_results import EquipmentResults
         self.equipment_results = EquipmentResults(data_dir / "equipment-results")
         from .action_references import ActionReferenceStore
@@ -280,6 +282,7 @@ class StationManager:
     def stop(self) -> None:
         self.notifications.close()
         self.documents.close()
+        self.mechanism.close()
         self.equipment_results.close()
         self.action_references.close()
         self.training.close()
@@ -478,6 +481,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(calibration_router(manager.calibrations))
     from .measurement_routes import router as measurement_router
     app.include_router(measurement_router(manager.calibrations))
+    from .pin_inspection_routes import router as pin_inspection_router
+    app.include_router(pin_inspection_router())
     app.include_router(evaluation_router())
     from .quality_routes import router as quality_router
     app.include_router(quality_router(manager.quality_reports))
@@ -492,6 +497,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .assistant import Assistant, router as assistant_router
     app.include_router(ai_router(manager.ai_services))
     app.include_router(documents_router(manager.documents))
+    from .mechanism_routes import router as mechanism_router
+    app.include_router(mechanism_router(manager.mechanism))
     from .action_reference_routes import router as action_reference_router
     app.include_router(action_reference_router(manager.action_references, manager))
     app.include_router(assistant_router(Assistant(manager.ai_services, manager.documents)))

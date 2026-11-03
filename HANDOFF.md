@@ -159,3 +159,9 @@ YOLO ZIP 导入已接Web：名称映射、逐项问题、草稿复核、合成�
 - 本批相关169项pytest、下载器5项离线检查及3份JS语法检查通过。UI记录在.v0/output/playwright/helmet-config与edge-measurement。其余任务继续以docs/TASK-COVERAGE.md为准。
 
 提交980bd6a已推送，GitHub Actions 41606725007的Windows/Linux主测试与MCP四个job全部通过。新增地面湿干分类和胶路候选下载实测记录见docs/PUBLIC-SPECIALIZED-MODELS.md；均未自动注册或生产启用。
+
+### 2026-11-03 专用模型优先续作
+
+极片针孔以原三轮权重再训练30轮（274秒），ONNX独立运行验证固定21图TP17/FP6/FN4，召回.810/精确率.739；R7仍是选模验证集，非独立现场测试。新增仓储可见数量/通道规则、安全抽屉配置、单排针脚参考检查、Modbus只读桥、weihu周期偏离/趋势机理实验室。真实Web仓储保存/权限、针脚缺第2针及机理CSV/历史/导出通过；未将规则/传统视觉计作专用模型。新增PPE/焊缝候选固定SHA与许可记录，当前仅评估。
+
+本批全量1006 passed、2 skipped（含未提交独立品牌测试），JS语法检查通过；PPE14类/焊缝3类/增强针孔评估入口已接。新增电池焊缝6张实际样本，发现尺寸与类别潜在偏差；密封钉专用模型和六面SN关联仍未完成，见docs/BATTERY-INSPECTION.md。

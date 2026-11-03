@@ -48,7 +48,7 @@ c51a715e886f585a1046a6b09f62270d212a8715a0e5428490c7897a88ced3a3
 ### 数据与后续路径
 
 - [v1.0 发布包](https://github.com/RicardoSPeres/GAN_Synth_Adhesive/releases/tag/v1.0)：`obj.zip` 464.5MB（594张真实+合成训练图）、`test.zip` 13.5MB（作者称58张验证图）、`holdout.zip` 5.9MB。只下载holdout，SHA256 `5fd644fbaf110aa5b5d5666f476613bd683da327385f57ba8461d0211280159f`；CRC、全图解码、标签边界检查通过。发布说明称18张，包内实际19对，40个断胶框／17个过量胶框，缺标0；差异已记录。
-- [UniMatch GlueDataset_300](https://github.com/He001123/UniMatch/tree/7dc782c873817fb61713b9f31e29293c7a59744d/GlueDataset_300)：固定树含298张JPEG、300张分割PNG，未取得训练好的权重。仓库MIT署名为上游UniMatch作者Lihe Yang，不能据此确认新增工厂图片授权；类别、配对及原帧分组尚未审计，不列已备好训练集。
+- [UniMatch GlueDataset_300](https://github.com/He001123/UniMatch/tree/7dc782c873817fb61713b9f31e29293c7a59744d/GlueDataset_300)：固定树含298张JPEG、298张分割PNG，未取得训练好的权重。仓库MIT署名为上游UniMatch作者Lihe Yang，不能据此确认新增工厂图片授权；类别、配对及原帧分组尚未审计，不列已备好训练集。
 - [simulation-synth-adhesive 作者结果页](https://ricardosperes.github.io/simulation-synth-adhesive/)仍可访问，但论文指向的GitHub仓库本轮404，未从该仓库取得权重。结果图不是模型下载。
 
 下一步先解决胶路权重／数据许可与正确配置来源，再考虑固定版本 ONNX 转换及数值对齐；不为这一个旧格式降级主环境。S11优先补独立工厂地面真值与定位任务数据。两者都需要按真实批次／采集场景隔离验证，不随机拆相邻帧。

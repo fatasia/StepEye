@@ -1,3 +1,4 @@
+import * as mechanism from "./pages/mechanism.js";
 import { mountAssistant } from "./global-assistant.js";
 import * as documents from "./pages/documents.js";
 import { icon, LOGO } from "./icons.js";
@@ -21,9 +22,9 @@ import * as labeling from "./pages/labeling.js";
 import * as models from "./pages/models.js";
 import * as settings from "./pages/settings.js";
 
-const ROUTES = { documents, overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings, labeling, models, settings };
-const TITLES = { documents: "知识与文档", overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库", timeline: "时间轴标注", sitemap: "厂区图", patrol: "巡更到位", recordings: "录像回放", labeling: "标注工作台", models: "视觉应用", settings: "设置" };
-const NAV = [["overview", "总览", "overview"], ["live", "实时监控", "live"], ["trace", "追溯", "trace"], ["inspection", "拍照即检", "camera"], ["alerts", "告警中心", "inbox"], ["samples", "样本库", "copy"], ["models", "视觉应用", "config"], ["timeline", "时间轴标注", "clock"], ["sitemap", "厂区图", "overview"], ["patrol", "巡更到位", "clock"], ["recordings", "录像回放", "live"], ["config", "SOP 配置", "config"], ["documents", "知识与文档", "copy"], ["settings", "设置", "config"]];
+const ROUTES = { mechanism, documents, overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings, labeling, models, settings };
+const TITLES = { mechanism: "机理实验室", documents: "知识与文档", overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库", timeline: "时间轴标注", sitemap: "厂区图", patrol: "巡更到位", recordings: "录像回放", labeling: "标注工作台", models: "视觉应用", settings: "设置" };
+const NAV = [["overview", "总览", "overview"], ["live", "实时监控", "live"], ["trace", "追溯", "trace"], ["inspection", "拍照即检", "camera"], ["alerts", "告警中心", "inbox"], ["samples", "样本库", "copy"], ["models", "视觉应用", "config"], ["timeline", "时间轴标注", "clock"], ["sitemap", "厂区图", "overview"], ["patrol", "巡更到位", "clock"], ["recordings", "录像回放", "live"], ["config", "SOP 配置", "config"], ["documents", "知识与文档", "copy"], ["mechanism", "机理实验室", "config"], ["settings", "设置", "config"]];
 const ACCENTS = [["#3ec6c1", "青"], ["#65aee8", "蓝"], ["#59c58d", "绿"], ["#d8ac52", "琥珀"], ["#b08cf0", "紫"]];
 const CONN = { open: ["实时连接", "success"], retry: ["连接中断，重连中…", "warning"], connecting: ["正在连接…", "info"] };
 

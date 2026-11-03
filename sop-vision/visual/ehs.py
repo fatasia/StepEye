@@ -1,4 +1,4 @@
-"""S1 区域入侵、S5 持续烟火：仅消费当前帧轨迹，不推断 PPE 缺失。"""
+"""区域入侵、烟火、可见物数量与通道占用；只消费当前帧轨迹。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,13 +9,26 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class EhsRuleCfg(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
     id: str = Field(min_length=1, max_length=64)
-    kind: Literal['intrusion', 'fire_smoke']
+    kind: Literal['intrusion', 'fire_smoke', 'object_count', 'aisle_occupied']
     zone: str
     labels: list[str] = Field(default_factory=lambda: ['person'], min_length=1, max_length=32)
     min_s: float = Field(default=1., ge=0, le=3600)
     min_frames: int = Field(default=3, ge=2, le=10000)
     min_confidence: float = Field(default=.5, ge=0, le=1)
     severity: Literal['warn', 'error'] = 'warn'
+    min_count: int | None = Field(default=None, ge=0, le=256, strict=True)
+    max_count: int | None = Field(default=None, ge=0, le=256, strict=True)
+
+    @model_validator(mode='after')
+    def count_limits(self):
+        if self.kind == 'object_count':
+            if self.min_count is None and self.max_count is None:
+                raise ValueError('object_count 需要 min_count 或 max_count')
+            if self.min_count is not None and self.max_count is not None and self.min_count > self.max_count:
+                raise ValueError('min_count 不能大于 max_count')
+        elif self.min_count is not None or self.max_count is not None:
+            raise ValueError('数量上下限仅用于 object_count')
+        return self
 
 
 class EhsCfg(BaseModel):
@@ -48,6 +61,7 @@ class EhsMonitor:
         self._last_ts = None
         self._holds = {}
         self._fired = set()
+        self._counts = {}
         self._states = {r.id: {'status': 'unknown', 'track_ids': []} for r in self.cfg.rules}
 
     def snapshot(self):
@@ -56,7 +70,7 @@ class EhsMonitor:
 
     def process(self, tracks, ts, *, available=True, available_labels=None):
         import math
-        if not available or not math.isfinite(ts):
+        if not self.cfg.enabled or not available or not math.isfinite(ts):
             self.reset()
             return []
         if self._last_ts is not None:
@@ -66,12 +80,17 @@ class EhsMonitor:
                 self.reset()
         self._last_ts = ts
         # 丢失轨迹、过去帧框不能作为当前视觉证据。
-        fresh = [t for t in tracks if t.last_seen == ts]
+        fresh = list({t.track_id:t for t in tracks if t.last_seen == ts}.values())
+        if len(fresh) > 256:
+            self.reset()
+            return []
         alerts, active_keys = [], set()
         for rule in self.cfg.rules:
-            if available_labels is not None and not set(rule.labels).issubset(available_labels):
+            counting = rule.kind == 'object_count'
+            if (counting and available_labels is None) or (available_labels is not None and not set(rule.labels).issubset(available_labels)):
                 self._states[rule.id] = {'status': 'unknown', 'track_ids': []}
                 self._fired.discard(rule.id)
+                self._counts.pop(rule.id, None)
                 continue
             geom = self.geoms[rule.zone]
             matches = []
@@ -98,6 +117,10 @@ class EhsMonitor:
                     matched_ids.append(track.track_id)
                     durations.append(ts-hold.since)
                     growth.append(area/hold.first_area-1 if hold.first_area else 0.)
+            if counting:
+                alert = self._count_state(rule, matches, matched_ids, ts)
+                if alert is not None:alerts.append(alert)
+                continue
             status = 'alert' if matched_ids else ('pending' if matches else 'clear')
             self._states[rule.id] = {'status': status, 'track_ids': [t.track_id for t in matches], 'observed_at': ts}
             if not matches:
@@ -108,7 +131,49 @@ class EhsMonitor:
                                'zone': rule.zone, 'severity': rule.severity, 'ts': ts,
                                'duration_s': round(max(durations),3), 'track_ids': matched_ids,
                                'area_change_ratio': max(growth) if rule.kind == 'fire_smoke' else None,
-                               'message': '区域入侵持续观测' if rule.kind == 'intrusion' else '烟火持续观测',
+                               'message': {'intrusion':'区域入侵持续观测', 'fire_smoke':'烟火持续观测',
+                                           'aisle_occupied':'通道指定物品持续占用'}[rule.kind],
                                'source': 'ehs_tracks'})
         self._holds = {k:v for k,v in self._holds.items() if k in active_keys}
         return alerts
+
+    def _count_state(self, rule, matches, stable_ids, ts):
+        # 单机位当前可见计数；不累计经过量，不承诺遮挡去重或跨机位库存。
+        state = self._counts.setdefault(rule.id, {'since':ts, 'frames':0, 'breach':None})
+        state['frames'] += 1
+        ready = (state['frames'] >= rule.min_frames and ts-state['since'] >= rule.min_s
+                 and len(matches) == len(stable_ids))
+        count = len(stable_ids)
+        side = ('below' if rule.min_count is not None and count < rule.min_count else
+                'above' if rule.max_count is not None and count > rule.max_count else None)
+        snap = {'status':'pending', 'track_ids':list(stable_ids), 'observed_at':ts,
+                'count':count if ready else None, 'observed_count':len(matches),
+                'scope':'single_camera_visible_snapshot', 'anchor':'box_center',
+                'min_count':rule.min_count, 'max_count':rule.max_count}
+        self._states[rule.id] = snap
+        if not ready:
+            state['breach'] = None
+            return None
+        if side is None:
+            snap['status'] = 'clear'
+            state['breach'] = None
+            self._fired.discard(rule.id)
+            return None
+        breach = state['breach']
+        if breach is None or breach['side'] != side:
+            if breach is not None:self._fired.discard(rule.id)
+            breach = {'side':side, 'since':ts, 'frames':0}
+            state['breach'] = breach
+        breach['frames'] += 1
+        snap['reason'] = side
+        if breach['frames'] < rule.min_frames or ts-breach['since'] < rule.min_s:
+            return None
+        snap['status'] = 'alert'
+        if rule.id in self._fired:return None
+        self._fired.add(rule.id)
+        return {'rule':rule.id, 'name':rule.id, 'kind':rule.kind, 'zone':rule.zone,
+                'severity':rule.severity, 'ts':ts, 'duration_s':round(ts-breach['since'],3),
+                'track_ids':list(stable_ids), 'count':count, 'min_count':rule.min_count,
+                'max_count':rule.max_count, 'reason':side, 'scope':snap['scope'],
+                'message':'区域可见物数量低于下限' if side=='below' else '区域可见物数量超过上限',
+                'source':'ehs_tracks'}

@@ -28,6 +28,15 @@ def test_safety_patch_persists_preserves_other_config_and_rejects_bad_binding(tm
         actual=yaml.safe_load(path.read_text(encoding='utf-8'))
         assert actual['ppe']['enabled'] and actual['thermal']['rules'][0]['threshold']==80
         assert actual['source']==raw['source'] and actual['safety']==raw['safety']
+        ehs={'enabled':True,'rules':[{'id':'stock','kind':'object_count','zone':'z','labels':['person'],'min_count':1,'max_count':3}]}
+        endpoint='/api/stations/s/ehs-config'
+        saved=client.put(endpoint,json=ehs)
+        assert saved.status_code==200,saved.text
+        assert saved.json()['config']['rules'][0]['max_count']==3
+        assert yaml.safe_load(path.read_text(encoding='utf-8'))['ppe']['enabled']
+        ehs['rules'][0]['zone']='missing'
+        assert client.put(endpoint,json=ehs).status_code==422
+        assert client.get(endpoint).json()['config']['rules'][0]['zone']=='z'
         body['proximity']['enabled']=True
         assert client.put('/api/stations/s/safety-config',json=body).status_code==422
         body['proximity']['enabled']=False

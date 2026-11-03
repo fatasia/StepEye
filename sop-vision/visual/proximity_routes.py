@@ -8,6 +8,7 @@ from .dsl import StationConfig, Program
 from .proximity import ProximityCfg, ProximityMonitor
 from .ppe import PPECfg
 from .thermal import ThermalCfg
+from .ehs import EhsCfg
 from .recipes import _atomic_write
 
 
@@ -83,5 +84,18 @@ def router(manager, calibrations):
     def put_safety(sid: str, body: SafetyConfigBody):
         save(sid, body.model_dump(mode='json'))
         return get_safety(sid)
+
+    @api.get('/api/stations/{sid}/ehs-config')
+    def get_ehs(sid: str):
+        rt = runtime(sid)
+        return {'config': rt.cfg.ehs.model_dump(mode='json'),
+                'zones': [zone.id for zone in rt.cfg.zones],
+                'labels': list(rt.cfg.detector.classes),
+                'state': rt.ehs.snapshot() if getattr(rt, 'ehs', None) is not None else {'enabled': False, 'rules': {}}}
+
+    @api.put('/api/stations/{sid}/ehs-config')
+    def put_ehs(sid: str, body: EhsCfg):
+        save(sid, {'ehs': body.model_dump(mode='json')})
+        return get_ehs(sid)
 
     return api
