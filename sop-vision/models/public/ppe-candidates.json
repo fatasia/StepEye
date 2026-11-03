@@ -14,7 +14,7 @@
       "runtime": "onnx",
       "adapter": "yolo_raw",
       "adapter_compatible": true,
-      "registry_status": "not_registered",
+      "registry_status": "registered_evaluation_only_when_local_hash_matches",
       "usage": "evaluation_only",
       "production_ready": false,
       "artifact": {
@@ -132,7 +132,8 @@
         "PPEMonitor currently lacks explicit hardhat/no-hardhat and goggles/shoes/negative-glove handling; do not switch detector and assume compliance rules are integrated.",
         "Visible shoes/gloves do not establish protective material certification or ESD resistance.",
         "Model/data licence chain still requires deployment review."
-      ]
+      ],
+      "catalog_manifest": "models/public/specialized-detection-models.json"
     }
   ],
   "other_checked_candidates": [
