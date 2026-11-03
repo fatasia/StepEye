@@ -244,7 +244,7 @@ export function render(root, params = {}) {
   overlay.onpointercancel = () => { if (gesture) { s.targets=gesture.before; gesture=null; paintCanvas(); paintTargets(); } };
 
   function paintEngines() {
-    const select=$("#lab-engine",root), old=select.value;
+    const select=$("#lab-engine",root), old=select.value || params.engine || "";
     select.innerHTML=s.engines.map((e) => `<option value="${esc(e.id)}" ${e.available ? "" : "disabled"}>${esc(e.name)}${e.available ? "" : " · 不可用"}</option>`).join("") || '<option value="">暂无可用引擎</option>';
     if (s.engines.some((e) => e.id===old && e.available)) select.value=old;
     else { const compatible=s.engines.find((e) => e.available && s.project?.classes.every((name) => e.classes.includes(name))); if (compatible) select.value=compatible.id; }

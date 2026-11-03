@@ -1,0 +1,2 @@
+# Optional native notification child process; the vision runtime does not import Apprise.
+apprise==2.1.0

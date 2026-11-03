@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import hmac
 import json
@@ -52,28 +53,60 @@ class AuthStore:
         with self._lock:
             self._db.close()
 
+    @contextmanager
+    def _user_write(self):
+        # BEGIN IMMEDIATE protects the last-admin check across separate DB connections.
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                yield
+                self._db.commit()
+            except Exception:
+                self._db.rollback()
+                raise
+
+    @staticmethod
+    def _username(username: str) -> None:
+        if (not isinstance(username, str) or not 1 <= len(username) <= 64
+                or any(not (c.isalnum() or c in "._-") for c in username)):
+            raise ValueError("用户名须为1–64位中文、字母、数字或 . _ -")
+
+    def _keep_admin(self, username: str) -> None:
+        row = self._db.execute("SELECT role FROM users WHERE username=?", (username,)).fetchone()
+        if row and row[0] == "admin":
+            count = self._db.execute("SELECT COUNT(*) FROM users WHERE role='admin'").fetchone()[0]
+            if count <= 1:
+                raise AuthError("至少保留一个管理员，先创建其他管理员再操作", 409)
+
     # ---- 用户 ----
     def set_user(self, username: str, password: str, role: str = "operator") -> None:
+        self._username(username)
         if role not in ROLES:
             raise ValueError(f"角色必须是 {ROLES} 之一")
-        if len(password) < 8:
+        if not isinstance(password, str) or len(password) < 8:
             raise ValueError("密码至少 8 位")
+        if len(password) > 256:
+            raise ValueError("密码最多256位")
         salt = secrets.token_bytes(16)
-        with self._lock:
-            self._db.execute("INSERT OR REPLACE INTO users VALUES (?,?,?,?,?)",
-                             (username, salt, _hash_pw(password, salt), role,
-                              time.strftime("%Y-%m-%dT%H:%M:%S")))
-            # 改角色或重置口令后，旧授权不因将来重新升权而复活。
+        hashed = _hash_pw(password, salt)
+        with self._user_write():
+            if role != "admin":
+                self._keep_admin(username)
+            self._db.execute("INSERT INTO users VALUES (?,?,?,?,?) ON CONFLICT(username) DO UPDATE SET "
+                             "pw_salt=excluded.pw_salt,pw_hash=excluded.pw_hash,role=excluded.role",
+                             (username, salt, hashed, role, time.strftime("%Y-%m-%dT%H:%M:%S")))
+            # Password/role changes revoke both browser sessions and delegated tokens.
+            self._db.execute("DELETE FROM sessions WHERE username=?", (username,))
             self._db.execute("UPDATE mcp_tokens SET revoked=1 WHERE username=?", (username,))
-            self._db.commit()
 
     def delete_user(self, username: str) -> bool:
-        with self._lock:
+        self._username(username)
+        with self._user_write():
+            self._keep_admin(username)
             cur = self._db.execute("DELETE FROM users WHERE username=?", (username,))
             self._db.execute("DELETE FROM sessions WHERE username=?", (username,))
             self._db.execute("DELETE FROM mcp_tokens WHERE username=?", (username,))
-            self._db.commit()
-        return cur.rowcount > 0
+            return cur.rowcount > 0
 
     def list_users(self) -> list[dict]:
         with self._lock:
@@ -86,16 +119,19 @@ class AuthStore:
 
     # ---- 登录/会话 ----
     def login(self, username: str, password: str) -> str:
-        with self._lock:
-            row = self._db.execute("SELECT pw_salt, pw_hash, role FROM users WHERE username=?", (username,)).fetchone()
-        if row is None or not hmac.compare_digest(row[1], _hash_pw(password, row[0])):
+        # Validation, password verification and session creation share the write lock:
+        # a concurrent reset cannot be followed by a session issued from the old hash.
+        if (not isinstance(username, str) or len(username) > 64
+                or not isinstance(password, str) or len(password) > 256):
             raise AuthError("用户名或密码错误", 401)
-        token = secrets.token_urlsafe(32)
-        th = hashlib.sha256(token.encode()).hexdigest()
-        with self._lock:
+        with self._user_write():
+            row = self._db.execute("SELECT pw_salt, pw_hash, role FROM users WHERE username=?", (username,)).fetchone()
+            if row is None or not hmac.compare_digest(row[1], _hash_pw(password, row[0])):
+                raise AuthError("用户名或密码错误", 401)
+            token = secrets.token_urlsafe(32)
+            th = hashlib.sha256(token.encode()).hexdigest()
             self._db.execute("INSERT OR REPLACE INTO sessions VALUES (?,?,?)",
                              (th, username, time.time() + SESSION_TTL_S))
-            self._db.commit()
         return token
 
     def verify_session(self, token: str) -> dict | None:

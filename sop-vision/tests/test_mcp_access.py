@@ -17,6 +17,7 @@ def api(tmp_path):
     auth = AuthStore(tmp_path / "auth.db")
     for role in ("admin", "operator", "viewer"):
         auth.set_user(role, "test-password", role)
+    auth.set_user("backup-admin", "test-password", "admin")
     app = build_app([], tmp_path / "data", auth=auth)
     with TestClient(app) as client:
         yield client, auth, app.state.manager
@@ -114,3 +115,15 @@ def test_agent_draft_scope_never_confirms_or_crosses_projects(api):
     assert client.post(confirm, json={"expected_revision": 1}, headers=write).status_code == 403
     assert client.post(confirm, json={"expected_revision": 1}).status_code == 200
     assert client.put(route(a), json={**body, "expected_revision": 2}, headers=write).status_code == 409
+
+
+def test_project_mcp_token_cannot_access_global_model_center(api):
+    client, auth, manager = api
+    login(client)
+    p = project(client)
+    t = token(client, p["id"], ["read", "draft"])
+    headers = {"Authorization": "Bearer " + t["token"]}
+    # Project-scoped credentials must not reveal other stations' registered models.
+    assert client.get("/api/models", headers=headers).status_code == 403
+    assert client.post("/api/models/community-helmet/project", json={}, headers=headers).status_code == 403
+    assert client.post("/api/models/community-helmet/trial", headers=headers).status_code == 403

@@ -80,11 +80,16 @@ class StationManager:
                  inspection_config: Path | None = None, vlm_transport=None,
                  provider_cfg: ProviderConfig | None = None,
                  alert_store: AlertStore | None = None, shadow: bool = False):
+        from .audit import AuditStore
+        self.audit = AuditStore(data_dir / "operations.db")
         self.data_dir = data_dir
         self.hub = hub
         self.store = CycleStore(data_dir / "sop.db")
         self.alerts = alert_store or AlertStore(data_dir / "alerts.db")
         self.feishu_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
+        from .notifications import NotificationDispatcher
+        from .llm_provider import _default_env_path
+        self.notifications = NotificationDispatcher.from_env(_default_env_path())
         self.shadow_store: ShadowStore | None = None
         from .geo import GeoStore
         self.geo = GeoStore(data_dir / "geo.db")
@@ -168,9 +173,13 @@ class StationManager:
                 self._push_out(rec)
 
     def _push_out(self, rec: dict[str, Any]) -> None:
-        """告警广播 + 飞书推送(新建时调用一次;推送后回写标记防重)。"""
+        """告警先广播，再异步通知；新渠道配置优先，旧飞书仅作兼容。"""
         self.hub.publish({"type": "alert", "data": rec})
-        if self.feishu_webhook and not rec.get("pushed"):
+        # New channel configuration takes precedence, including invalid configuration:
+        # never silently send to a different destination after a configuration error.
+        if self.notifications.configured:
+            self.notifications.submit(rec)
+        elif self.feishu_webhook and not rec.get("pushed"):
             def send():
                 if _feishu_send(self.feishu_webhook,
                                 f"[视觉告警] {rec['station']} {rec['kind']}\n{rec['message']}\n状态: 待处理"):
@@ -235,6 +244,7 @@ class StationManager:
         self.hub.publish({"type": "event", "station": sid, "kind": "reloaded", "data": {"ok": True}})
 
     def stop(self) -> None:
+        self.notifications.close()
         self.label_jobs.close()
         self.labels.close()
         for rt in self.runtimes.values():
@@ -248,6 +258,7 @@ class StationManager:
         self.store.close()
         self.patrol.close()
         self.signal_store.close()
+        self.audit.close()
 
     def get(self, sid: str) -> StationRuntime:
         rt = self.runtimes.get(sid)
@@ -408,6 +419,12 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     record_dir = os.getenv("MONIBUCA_RECORD_DIR", load_env_file(_default_env_path()).get("MONIBUCA_RECORD_DIR", ""))
     app.state.recordings = RecordingIndex(Path(record_dir)) if record_dir else None
     app.include_router(label_router(manager.labels, manager.label_jobs, manager.label_engines))
+    from .notification_routes import router as notification_router
+    app.include_router(notification_router(manager.notifications))
+    from .audit import router as audit_router
+    app.include_router(audit_router(manager.audit))
+    from .model_routes import router as model_router
+    app.include_router(model_router(manager.labels, manager.label_engines))
 
     @app.exception_handler(LabelError)
     async def label_error(request: Request, e: LabelError):
@@ -450,13 +467,23 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
                 preview_read = (request.method == "POST" and re.fullmatch(r"/api/stations/[^/]+/preview", path)) or \
                     (request.method == "DELETE" and re.fullmatch(r"/api/stations/[^/]+/preview/[\w-]+", path)) or \
                     (request.method == "POST" and re.fullmatch(r"/api/stations/[^/]+/preview/[\w-]+/lease", path))
-                need = "admin" if path.startswith(("/api/users", "/api/mcp/tokens", "/api/mcp/audit")) else \
+                need = "admin" if path.startswith(("/api/users", "/api/mcp/tokens", "/api/mcp/audit", "/api/notifications", "/api/operations")) else \
                     ("viewer" if request.method == "GET" or preview_read else "operator")
                 AuthStore.check(current_user(request), need)
             except AuthError as e:
                 from fastapi.responses import JSONResponse
                 return JSONResponse({"detail": str(e)}, status_code=e.status)
         return await call_next(request)
+
+    @app.middleware("http")
+    async def audit_operations(request: Request, call_next):
+        response = await call_next(request)
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.url.path.startswith("/api/"):
+            # Registered templates exclude user IDs, tokens, query parameters and payloads.
+            route = getattr(request.scope.get("route"), "path", "unmatched")
+            actor = (getattr(request.state, "user", None) or {}).get("username", "anonymous")
+            manager.audit.append(actor, request.method, route, response.status_code)
+        return response
 
     @app.get("/api/mcp/scenes")
     def mcp_scenes(request: Request) -> list[dict]:
@@ -569,6 +596,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
             raise HTTPException(400, "认证未启用")
         try:
             auth.set_user(body.username, body.password, body.role)
+        except AuthError as e:
+            raise HTTPException(e.status, str(e)) from e
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
         return {"ok": True}
@@ -577,7 +606,13 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     def users_del(username: str) -> dict[str, Any]:
         if auth is None:
             raise HTTPException(400, "认证未启用")
-        if not auth.delete_user(username):
+        try:
+            deleted = auth.delete_user(username)
+        except AuthError as e:
+            raise HTTPException(e.status, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        if not deleted:
             raise HTTPException(404, f"用户不存在:{username}")
         return {"ok": True}
 

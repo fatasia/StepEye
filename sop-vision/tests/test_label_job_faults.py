@@ -148,6 +148,7 @@ def test_demote_and_repromote_does_not_resurrect_mcp_credential(tmp_path):
     auth = AuthStore(tmp_path / "auth.db")
     try:
         auth.set_user("admin", "test-only-password", "admin")
+        auth.set_user("backup-admin", "test-only-password", "admin")
         token = auth.issue_mcp_token("admin", "fixture", ["read"], [])
         assert auth.verify_mcp_token(token["token"])
         auth.set_user("admin", "test-only-password", "operator")
