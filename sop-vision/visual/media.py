@@ -6,7 +6,7 @@ import secrets
 import threading
 import time
 import queue
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import httpx
 
@@ -104,8 +104,18 @@ class MediaBridge:
             with self._lock:
                 self._pending -= 1
 
+    def _whep_target(self, stream: str) -> str:
+        """v6(/webrtc/whep) 用 query 风格 ?app=&stream=（v6 beta 实测契约）；
+        v5(/webrtc/play) 保留路径风格。stream 允许 app/name 或裸流名(默认 live)。"""
+        if self.prefix != "/webrtc/whep":
+            return f"{self.prefix}/{stream}"
+        app, _, name = stream.rpartition("/")
+        if not app:
+            app, name = "live", stream
+        return f"{self.prefix}?app={quote(app, safe='')}&stream={quote(name, safe='')}"
+
     def _offer(self, stream: str, sdp: bytes, station: str, owner: str) -> tuple[bytes, str | None]:
-        path = f"{self.prefix}/{stream}"
+        path = self._whep_target(stream)
         res = self.request("POST", path, content=sdp, headers={"Content-Type": "application/sdp"})
         if len(res.content) > 256 * 1024 or not res.content.lstrip().startswith(b"v=0"):
             raise MediaError("Monibuca 未返回有效 SDP，请核对版本与 WHEP 路径")

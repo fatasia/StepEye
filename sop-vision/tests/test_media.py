@@ -22,7 +22,7 @@ def test_preview_stream_rejects_url_and_traversal(path):
 def test_bridge_offer_and_owner_cleanup():
     calls = []
     def handle(req):
-        calls.append((req.method, req.url.path))
+        calls.append((req.method, req.url.path, req.url.query.decode()))
         if req.method == "POST":
             assert req.headers["content-type"] == "application/sdp"
             return httpx.Response(201, content=b"v=0\r\nanswer", headers={"Location": "/webrtc/session/abc"})
@@ -35,7 +35,18 @@ def test_bridge_offer_and_owner_cleanup():
     assert e.value.status == 403
     bridge.release(token, "ST", "viewer")
     bridge.release(token, "ST", "viewer")  # 幂等
-    assert calls == [("POST", "/webrtc/whep/live/test"), ("DELETE", "/webrtc/session/abc")]
+    assert calls == [("POST", "/webrtc/whep", "app=live&stream=test"),
+                     ("DELETE", "/webrtc/session/abc", "")]
+
+
+def test_bridge_v5_keeps_path_style():
+    calls = []
+    def handle(req):
+        calls.append((req.method, req.url.path))
+        return httpx.Response(201, content=b"v=0\r\nanswer", headers={"Location": "/webrtc/session/1"})
+    bridge = MediaBridge("http://media", prefix="/webrtc/play", transport=httpx.MockTransport(handle))
+    bridge.offer("live/test", b"v=0", "ST", "u")
+    assert calls == [("POST", "/webrtc/play/live/test")]
 
 
 @pytest.mark.parametrize("response", [httpx.Response(500), httpx.Response(200, text="not SDP"),
