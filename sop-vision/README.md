@@ -163,8 +163,9 @@ python tools/cam_uploader.py --server http://127.0.0.1:8000 --watch D:\camdrop
 | 形态 | 何时用 |
 |---|---|
 | 直连 RTSP(现状) | 单工位/试点,CvSource 直接拉流分析 |
-| **Monibuca**(推荐) | 多路预览(WebRTC ~0.5s)+ 录像(R3)+ ONVIF 发现取流 + GB28181——一个 Go 二进制全包,与 visual-server.exe 并排部署 |
+| **Monibuca v6**(推荐) | Rust 重写、永久免费无档位售卖;插件生态直接用:WebRTC 预览(~0.5s)+ MP4 录像(R3)+ **GB28181 完整信令**(接入+级联+对讲)——单二进制 <20MB,与 visual-server.exe 并排部署 |
 | ZLMediaKit + wvp-pro | 国标生产重栈兜底(设备目录经纬度经 `geo.sync_from_device_list` 进 GIS) |
 
 ONVIF/GB28181 的发现与坐标读取已平台化:`/api/cameras/onvif/*`、`/api/cameras/gb28181/sync`。
-Monibuca 插件许可(MIT/商业混合)启用前核实现仓;ONVIF 真机联调待验证(已标注)。
+ONVIF 由平台侧自接(visual/onvif.py,真机联调待验证);GB28181 走 Monibuca 插件(官网称永久免费,
+具体开源许可以仓库为准,启用前核对)。

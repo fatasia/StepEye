@@ -50,8 +50,11 @@ monibuca.exe       (流媒体:ONVIF 发现/GB28181/WebRTC 预览/MP4 录像)
 + configs/         (工位与场景配置)
 ```
 
-- Monibuca 配置模板见 `deploy/monibuca/config.yml`:rtsp 拉流转发、webrtc 预览、record 录像(R3)、
-  onvif 发现、gb28181 信令(国标客户启用)。
+- **Monibuca v6(Rust 重写,永久免费,插件生态直接用)**:插件覆盖 WebRTC 预览、MP4 录像(R3)、
+  GB28181 信令(设备接入+级联+语音对讲,国标必选经纬度字段喂 GIS)、RTSP 拉流转发;
+  配置模板见 `deploy/monibuca/config.yml`。
+- ONVIF:平台侧 `visual/onvif.py` 已自接(wsdiscovery 发现 + RTSP 地址/GeoLocation 读取);
+  若未来需要,Monibuca 亦有 ONVIF 插件(v5 系)可选——两条路都通,不锁死。
 - StepEye 的工位 source 指向 Monibuca 转发的 RTSP;浏览器预览走 Monibuca WebRTC(0.5s 延迟)。
 - GIS:GB28181 设备目录经纬度 → `/api/cameras/gb28181/sync` 自动入图;室内用平面图打点。
 
