@@ -109,7 +109,7 @@ class AIServiceStore:
         with self._lock:
             rows=[{k:v for k,v in item.items() if k!='api_key'}|{'api_key_set':bool(item.get('api_key'))}
                   for item in self._data['services'].values()]
-            return {'services':rows,'bindings':dict(self._data['bindings']),'image_supported':False}
+            return {'services':rows,'bindings':dict(self._data['bindings']),'image_supported':True}
 
     def update(self,sid,body):
         if not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}',sid):raise AIServiceError('服务ID无效')
@@ -129,7 +129,7 @@ class AIServiceStore:
             # 未提供保留；显式空字符串清除。修改模型/地址/密钥后测试状态失效。
             rows[sid]={'id':sid,'name':body['name'].strip(),'base_url':url,'model':body['model'].strip(),
                        'api_key':key if 'api_key' in body else old.get('api_key',''),
-                       'checks':dict(chat='unverified',vlm='unverified',image='unsupported')}
+                       'checks':dict(chat='unverified',vlm='unverified',image='unverified')}
             try:self._save()
             except Exception:
                 if old:rows[sid]=old
@@ -139,7 +139,6 @@ class AIServiceStore:
 
     def bind(self,body):
         if not isinstance(body,dict) or set(body)!={'chat','vlm','image'}:raise AIServiceError('须提供chat、vlm、image绑定')
-        if body['image'] is not None:raise AIServiceError('样本生成器尚未支持通用AI服务绑定')
         with self._lock:
             for value in body.values():
                 if value is not None and (not isinstance(value,str) or value not in self._data['services']):
@@ -148,6 +147,14 @@ class AIServiceStore:
             try:self._save()
             except Exception:self._data['bindings']=old;raise
             return dict(body)
+
+    def image_config(self):
+        """Internal-only credentials snapshot; never return this object from an API."""
+        with self._lock:
+            sid = self._data['bindings'].get('image')
+            if sid is None:
+                raise AIServiceError('尚未绑定图片生成服务')
+            return self._config(self._data['services'][sid])
 
     def provider_config(self,purpose,fallback):
         if purpose not in ('chat','vlm'):raise AIServiceError('该用途暂不支持服务绑定')

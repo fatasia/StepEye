@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 from fastapi import APIRouter,HTTPException,Request,Response
+from pydantic import BaseModel
 from .mechanism import MechanismBody,analyze
 
 
@@ -22,15 +23,16 @@ class MechanismReports:
             self._db.execute(f"CREATE TRIGGER IF NOT EXISTS mechanism_no_{op.lower()} BEFORE {op} ON mechanism_reports BEGIN SELECT RAISE(ABORT,'reports are immutable'); END")
         self._db.commit();self._closed=False
 
-    def create(self,body,actor='local'):
-        body=body if isinstance(body,MechanismBody) else MechanismBody.model_validate(body)
+    def create(self,body,actor='local',*,kind='cycle_health_trend',analyzer=analyze):
+        # Each route validates its own input; all analyses share immutable storage.
+        body=body if isinstance(body,BaseModel) else MechanismBody.model_validate(body)
         if not self._slots.acquire(blocking=False):raise RuntimeError('机理分析忙，请稍后重试')
         try:
             inputs=body.model_dump()
             canonical=json.dumps(inputs,ensure_ascii=False,sort_keys=True,allow_nan=False).encode('utf8')
-            result=analyze(body)
-            report={'id':'ML-'+uuid.uuid4().hex,'schema_version':1,'kind':'cycle_health_trend',
-                    'title':body.title,'unit':body.unit,'actor':actor,'created_at':time.time(),
+            result=analyzer(body)
+            report={'id':'ML-'+uuid.uuid4().hex,'schema_version':1,'kind':kind,
+                    'title':body.title,'unit':getattr(body,'unit',''),'actor':actor,'created_at':time.time(),
                     'input_sha256':hashlib.sha256(canonical).hexdigest(),'inputs':inputs,'result':result}
             raw=json.dumps(report,ensure_ascii=False,allow_nan=False)
             with self._lock:

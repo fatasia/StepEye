@@ -502,6 +502,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(documents_router(manager.documents))
     from .mechanism_routes import router as mechanism_router
     app.include_router(mechanism_router(manager.mechanism))
+    from .mechanism_rotating_routes import rotating_router
+    app.include_router(rotating_router(manager.mechanism))
     from .action_reference_routes import router as action_reference_router
     app.include_router(action_reference_router(manager.action_references, manager))
     app.include_router(assistant_router(Assistant(manager.ai_services, manager.documents)))
@@ -913,36 +915,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         return manager.store.hourly(hours, station)
 
     # ---- 样本生成 ----
-    @app.post("/api/samples/generate")
-    async def samples_generate(ref: UploadFile = File(...), label: str = Form(...),
-                               engine: str = Form("augment"), n: int = Form(10),
-                               description: str = Form("与参考图同类场景"),
-                               seed: int = Form(7)) -> dict[str, Any]:
-        """上传参考图 → 批量生成带标注样本(标注继承);augment 秒级同步,cogview 每张 5~15s。"""
-        from .inspection import MAX_IMAGES  # 复用同一个量级约束
-        from .samplegen import COGVIEW_MAX_BATCH, generate_batch
-
-        if engine not in ("augment", "cogview"):
-            raise HTTPException(400, "engine 必须是 augment 或 cogview")
-        if engine == "cogview" and n > COGVIEW_MAX_BATCH:
-            raise HTTPException(400, f"生成式一次最多 {COGVIEW_MAX_BATCH} 张")
-        if not 1 <= n <= 100:
-            raise HTTPException(400, "n 必须在 1~100 之间")
-        data = await ref.read()
-        tmp = manager.data_dir / "samplegen" / f"ref-{int(time.time() * 1000)}-{SAFE_NAME.match(ref.filename) and ref.filename or 'ref.jpg'}"
-        tmp.parent.mkdir(parents=True, exist_ok=True)
-        tmp.write_bytes(data)
-        try:
-            rows = generate_batch(tmp, label.upper(), description, n, tmp.parent / "batch", engine=engine, seed=seed)
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from e
-        except RuntimeError as e:
-            raise HTTPException(502, str(e)) from e
-        from .samplegen import write_manifest
-        mp = write_manifest(tmp.parent / "batch", rows)
-        return {"ok": True, "generated": sum(1 for r in rows if r.get("file")), "rows": rows,
-                "manifest": str(mp.relative_to(manager.data_dir)).replace("\\", "/"),
-                "manifest_hint": "标注继承自 label;生成式样本仅冷启动/调试用,不进验收集"}
+    from .samplegen_routes import router as samplegen_router
+    app.include_router(samplegen_router(manager))
 
     @app.get("/api/samples/manifest")
     def samples_manifest(limit: int = Query(100, ge=1, le=1000)) -> list[dict[str, Any]]:

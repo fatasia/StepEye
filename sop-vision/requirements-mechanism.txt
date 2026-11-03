@@ -1,0 +1,2 @@
+# Optional bearing envelope evidence; no model download or background worker.
+scipy>=1.11

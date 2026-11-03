@@ -157,6 +157,11 @@ def generate_batch(ref_path: Path, label: str, description: str, n: int, out_dir
                    vlm: VLMProvider | None = None, cfg: ProviderConfig | None = None,
                    cogview_transport=None, cogview_fetcher=None) -> list[dict[str, Any]]:
     """统一入口;augment 离线,cogview 走「VLM 读图→写提示词→生成」。返回 manifest 行(含失败行)。"""
+    if engine == "configured":
+        if not 1 <= n <= COGVIEW_MAX_BATCH:
+            raise ValueError("configured generation batch must be 1..8")
+        from .configured_image import configured_batch
+        return configured_batch(ref_path, label, description, n, out_dir, cfg)
     if engine == "augment":
         return augment_batch(ref_path, label, n, out_dir, seed)
     if engine not in ("cogview", "lk888"):
@@ -181,10 +186,10 @@ def generate_batch(ref_path: Path, label: str, description: str, n: int, out_dir
             data = gen(cfg, prompt, transport=cogview_transport, fetcher=cogview_fetcher)
             name = f"{stem}_{label}_gen{i:03d}.jpg"
             (out_dir / name).write_bytes(data)
-            rows.append({"file": name, "label": label, "engine": "cogview", "source": ref_path.name,
+            rows.append({"file": name, "label": label, "engine": engine, "source": ref_path.name,
                          "prompt": prompt, "note": "生成式样本:与真实产线有差距,仅冷启动/调试用"})
         except Exception as err:  # noqa: BLE001 —— 单张失败计入 manifest,不中断批量
-            rows.append({"file": None, "label": label, "engine": "cogview", "error": str(err)[:200]})
+            rows.append({"file": None, "label": label, "engine": engine, "error": str(err)[:200]})
     return rows
 
 

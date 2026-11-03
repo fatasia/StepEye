@@ -177,3 +177,7 @@ YOLO ZIP 导入已接Web：名称映射、逐项问题、草稿复核、合成�
 续作整合检查：本机1059 passed、2 skipped（含独立品牌测试）；新增curl无requests隔离检查及配方快照相关20项通过。修复97573c9跨平台CI的下载器强制依赖requests失败：curl路径独立，requests仅选用该传输时导入。配方版本API新增snapshot_current，显式快照当前业务规则且保留旧patch语义；不修改设备/模型路径、不自动切换。配方与点选标定界面继续验收。
 
 配方与标定UI完成：真实Web配方创建v1→修改规则→快照v2→应用→回滚v1、viewer403通过；图上点选4个标定点及2个独立验证点，实际保存/验证失败/共线422通过，LAN HTTP无subtle仍可手填参考编号保存。相关35项检查、LAN追加专项21项通过；1920截图位于.v0/output/playwright/recipes与calibration-editor。
+
+807f7b2的Windows/Linux主测试及MCP整轮CI通过（41638773647）。新增固定SHA模型→确认标注版本val自动评测CLI，报告逐图FP/FN且不发布；新增weihu轴承包络谱按需分析与机理UI，复用原报告SQLite。主线整合相关58项通过，真实Web波形→报告/导出/viewer403通过，细节见docs/DETECTION-VALIDATION.md及WEIHU-REUSE.md。
+
+通用图片生成绑定已接设置与样本库，复用原生成流程；只支持inline b64文生图，真实本机协议服务UI通过。原图按SHA持久保存，稳定source/group、候选标签待复核；响应/图片限额、单并发与超时定点通过，无云请求或.env修改。
