@@ -148,3 +148,5 @@ YOLO ZIP 导入已接Web：名称映射、逐项问题、草稿复核、合成�
 本批最终后端全量：915 passed、2 skipped；JS语法23文件、JS新鲜度测试、Python编译通过。新增：设备原判/图片原子导入及独立人工/模型复判、SOP开始/关键/完成参考卡、双ROI标定边缘间距API。生产规则不会因参考卡创建而变化。界面真实验收记录见 action-references、safety-config、documents-live 目录。
 
 整合复查修复：温场改由已验收信号入站驱动，不依赖相机出帧，不增加轮询线程；队列满时明确标注未进入SOP。HTTP实际无摄像头帧高温报警/TTL、动态SOP VLM绑定与相关54项检查通过。补齐geo/自有alerts数据库关闭。
+
+提交 f2044c8 已推送；GitHub Actions 41604051799 的 Windows/Linux 主测试及 MCP 四个 job 全部通过。Qwen投影与两份原生运行包已完成哈希校验，主模型仍续传；未启动推理服务。
