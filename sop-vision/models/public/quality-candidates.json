@@ -1,0 +1,369 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-03",
+  "scope": "PCB, surface quality, packaging and battery electrode; separate from safety-models.json",
+  "default_models_changed": false,
+  "trained": false,
+  "torch_or_pickle_loaded": false,
+  "candidates": [
+    {
+      "id": "coatingvision-v1",
+      "domain": [
+        "lithium_battery",
+        "electrode_coating",
+        "surface_quality"
+      ],
+      "kind": "dataset",
+      "publisher": "Vignesh Sampath / Argonne CoatingVision authors",
+      "source": {
+        "url": "https://doi.org/10.6084/m9.figshare.29260121.v1",
+        "revision": "figshare:29260121.v1",
+        "file_id": 55182476,
+        "download_url": "https://ndownloader.figshare.com/files/55182476",
+        "metadata_sha256": "5b8b7dcdedf4ded349f06153ac88ec7121186c143fa18d92c5091a6f90d5e2e3",
+        "code_repository": "https://github.com/vigsam-coder/CoatingVision",
+        "code_revision": "19d857658207491c5711625017c0db9a14233965"
+      },
+      "licenses": {
+        "dataset": "CC-BY-4.0",
+        "dataset_evidence": "https://api.figshare.com/v2/articles/29260121/versions/1",
+        "code": "not_declared_at_inspected_revision",
+        "license_approved_for_release": false
+      },
+      "artifact": {
+        "path": ".v0/quality-models/CoatingVision-v1.zip",
+        "bytes": 94296797,
+        "sha256": "04dd29cac2124ce08410225fbec93ef2e1a91af790cf24a769e29cf316e76655",
+        "published_md5": "7cbbf14725f9762a64a81a12b858a2b4",
+        "md5_matches": true,
+        "downloaded": true
+      },
+      "annotation_format": "YOLO detection txt; independent 4-channel segmentation PNG; multi-label CSV",
+      "detection_classes": [
+        {
+          "id": 0,
+          "name": "pinhole",
+          "boxes": 564,
+          "images": 519
+        },
+        {
+          "id": 1,
+          "name": "unclassified",
+          "boxes": 85,
+          "images": 78
+        }
+      ],
+      "detection_class_evidence": "https://pmc.ncbi.nlm.nih.gov/articles/PMC13594281/",
+      "classification_classes": [
+        "Surface_Crack",
+        "Delamination",
+        "Pinhole",
+        "unclassified"
+      ],
+      "validation": {
+        "images": 2227,
+        "size": [
+          640,
+          480
+        ],
+        "image_decode_errors": 0,
+        "sha_duplicate_groups": 0,
+        "label_files": 581,
+        "missing_labels": 1646,
+        "boxes": 649,
+        "invalid_box_rows": 0,
+        "archive_crc": "passed",
+        "unsafe_paths": 0,
+        "report": ".v0/quality-models/coating-validation.json"
+      },
+      "splits": {
+        "provided": false,
+        "roll_prefix_counts": {
+          "R1": 2095,
+          "R7": 132
+        },
+        "source_video_prefix_count": 8,
+        "group_key_source": "classification/labels.csv:original_file_name",
+        "grouping_warning": "Confirm physical-roll grouping; never randomly split same-frame patches/adjacent frames."
+      },
+      "status": "downloaded_data_requires_review_and_group_split",
+      "production_ready": false,
+      "training_ready": false,
+      "blockers": [
+        "1646 images lack detection labels; not reviewed background",
+        "unclassified has only 78 images below default per-class minimum",
+        "no independent group-separated train/val/test",
+        "no target-line validation"
+      ],
+      "next_step": "Review paired 581 images, group by physical source roll/video, import with exact two-class mapping, run training_preflight; do not train four-class detector from two-class boxes."
+    },
+    {
+      "id": "betty0-pcb-yolo26s",
+      "domain": [
+        "pcb",
+        "automotive_electronics"
+      ],
+      "kind": "pretrained_onnx",
+      "publisher": "betty0 / tun0000",
+      "source": {
+        "url": "https://huggingface.co/betty0/pcb-defect-detection",
+        "revision": "08f7ff096054f6ad3e1f37dfdf5cfc63d04dabaa",
+        "download_url": "https://huggingface.co/betty0/pcb-defect-detection/resolve/08f7ff096054f6ad3e1f37dfdf5cfc63d04dabaa/best.onnx",
+        "model_card_sha256": "4f564ef759aa197386fa236d0231c7150fdf844001f8282db7427ad15faca523",
+        "training_code": "https://github.com/tun0000/pcb-defect-detection"
+      },
+      "licenses": {
+        "weights": "AGPL-3.0 per model card and ONNX metadata",
+        "training_dataset": "HRIPCB Kaggle mirror license Unknown per publisher",
+        "license_approved_for_release": false
+      },
+      "artifact": {
+        "path": ".v0/quality-models/pcb-yolo26-best.onnx",
+        "bytes": 38175508,
+        "sha256": "057c61dbd2745f59bd246effebf47a31686e95b0e2263610b0600664e5210fc5",
+        "matches_hf_lfs_oid": true,
+        "downloaded": true
+      },
+      "classes": [
+        "missing_hole",
+        "mouse_bite",
+        "open_circuit",
+        "short",
+        "spur",
+        "spurious_copper"
+      ],
+      "validation": {
+        "onnx_checker": "passed",
+        "input": {
+          "name": "images",
+          "type": 1,
+          "shape": [
+            1,
+            3,
+            640,
+            640
+          ]
+        },
+        "output": {
+          "name": "output0",
+          "type": 1,
+          "shape": [
+            1,
+            300,
+            6
+          ]
+        },
+        "opset": 20,
+        "external_initializers": 0,
+        "custom_domains": [],
+        "inference_run": false,
+        "report": ".v0/quality-models/pcb-onnx-static.json"
+      },
+      "splits": {
+        "publisher_claim": "8 source boards train / 1 val / 1 test",
+        "independently_verified": false
+      },
+      "status": "quarantined_adapter_and_license_blocked",
+      "production_ready": false,
+      "training_ready": false,
+      "blockers": [
+        "Current detector explicitly rejects end-to-end [1,300,6] output",
+        "training dataset rights unresolved",
+        "no target-production evaluation"
+      ],
+      "next_step": "Resolve data/weight use terms, add explicit YOLO26 end-to-end adapter, evaluate on independent real boards before registration."
+    },
+    {
+      "id": "deeppcb-author",
+      "domain": [
+        "pcb",
+        "surface_quality"
+      ],
+      "kind": "dataset_sample",
+      "publisher": "Tang et al. / tangsanli5201",
+      "source": {
+        "url": "https://github.com/tangsanli5201/DeepPCB",
+        "revision": "08e98c4db5922613fb97176eb3d6497d48260cb1",
+        "readme_sha256": "7af2628c43ee4c516d1c948eb38507adf4552e5ed0c6e51e7406ac3fa29b4fb6",
+        "license_file_sha256": "e3f8bb38535cbb3a497255c13664de9a2dc4fbbd61a950cc6941be7d6b1afe71"
+      },
+      "licenses": {
+        "repository_file": "MIT",
+        "dataset": "Research-purpose-only restriction in README Notification",
+        "license_approved_for_release": false
+      },
+      "classes_original_1based": [
+        "open",
+        "short",
+        "mousebite",
+        "spur",
+        "copper",
+        "pin-hole"
+      ],
+      "artifact": {
+        "path": ".v0/quality-models/deeppcb/PCBData",
+        "downloaded": "one test/template pair, matching 10-box annotation, complete trainval/test lists",
+        "sample_sha256": {
+          "00041000_test.jpg": "624b448f0737aaa8bdc53963a752800147bffb2591365b9810b3f2a83b956c4a",
+          "00041000_temp.jpg": "23fdb1ea59a65d2431572440eb3959e4a5c02e6328b3d67dce7bbd55a0009a3e",
+          "00041000.txt": "bcfd04a77cdbb237f0ef70f3c4ae121ac492ac3776f71af09769633cbf9d9d60"
+        }
+      },
+      "annotation_format": "pixel-space x0 y0 x1 y1 class_id, classes 1..6; not YOLO normalized labels",
+      "validation": {
+        "sample_size": [
+          640,
+          640
+        ],
+        "template_size": [
+          640,
+          640
+        ],
+        "box_count": 10,
+        "classes_1based": {
+          "3": 1,
+          "2": 1,
+          "4": 2,
+          "5": 2,
+          "6": 3,
+          "1": 1
+        },
+        "all_boxes_in_bounds": true,
+        "trainval_entries": 1000,
+        "test_entries": 500,
+        "split_path_overlap": [],
+        "split_group_overlap": [
+          "group00041",
+          "group13000",
+          "group20085",
+          "group44000",
+          "group50600",
+          "group77000",
+          "group92000"
+        ],
+        "sample_sha256": {
+          "00041000_test.jpg": "624b448f0737aaa8bdc53963a752800147bffb2591365b9810b3f2a83b956c4a",
+          "00041000_temp.jpg": "23fdb1ea59a65d2431572440eb3959e4a5c02e6328b3d67dce7bbd55a0009a3e",
+          "00041000.txt": "bcfd04a77cdbb237f0ef70f3c4ae121ac492ac3776f71af09769633cbf9d9d60"
+        }
+      },
+      "status": "research_only_sample_verified",
+      "production_ready": false,
+      "training_ready": false,
+      "next_step": "Obtain dataset commercial permission first; convert verified labels and split by source board, not existing mixed source-group lists."
+    },
+    {
+      "id": "gc10-det-author",
+      "domain": [
+        "metal_surface",
+        "surface_quality"
+      ],
+      "kind": "dataset_reference",
+      "publisher": "Xiaoming Lv et al.",
+      "source": {
+        "url": "https://github.com/lvxiaoming2019/GC10-DET-Metallic-Surface-Defect-Datasets",
+        "revision": "c89df4f2bf0417f842461407a11e9371ad6d035c",
+        "download_page": "https://pan.baidu.com/s/1Zrd-gzfVhG6oKdVSa9zoPQ",
+        "tree_sha256": "a4327993e53879f75690c825e1f66e1b1513a5a4f7f11986e7844c4f437168df"
+      },
+      "licenses": {
+        "dataset": "not_declared_in_author_repository",
+        "license_approved_for_release": false
+      },
+      "classes": null,
+      "class_count_publisher": 10,
+      "splits": null,
+      "artifact": {
+        "downloaded": false,
+        "sha256": null
+      },
+      "status": "license_and_download_unverified",
+      "production_ready": false,
+      "training_ready": false,
+      "blockers": [
+        "author repository has only README and example image",
+        "no explicit data license, class-id order, splits, ONNX artifact verified"
+      ],
+      "next_step": "Ask authors for dataset rights and authoritative class/split manifest; third-party mirror license is insufficient."
+    },
+    {
+      "id": "merge-yolo-packaging-author",
+      "domain": [
+        "packaging",
+        "quality"
+      ],
+      "kind": "paper_repository_reference",
+      "publisher": "Wang, Luo et al.",
+      "source": {
+        "url": "https://github.com/luoyirong123/Merge-YOLO",
+        "revision": "2799011d06c3ba56b57a005af119e0f1f23a3b2c",
+        "paper": "https://doi.org/10.1371/journal.pone.0340205",
+        "tree_sha256": "76f4380ba353cd1b22c8acc24c41b0638c88c9b485f1c536e8017209ce7d2f61"
+      },
+      "licenses": {
+        "data_and_weights": "not_declared_or_available_at_inspected_revision",
+        "license_approved_for_release": false
+      },
+      "classes": null,
+      "splits": null,
+      "artifact": {
+        "downloaded": false,
+        "sha256": null
+      },
+      "validation": {
+        "repository_file_count": 13,
+        "dataset_placeholder_bytes": 1,
+        "onnx_or_pt_files": 0,
+        "image_or_label_dataset_files": 0
+      },
+      "status": "no_released_data_or_weights",
+      "production_ready": false,
+      "training_ready": false,
+      "next_step": "Await real author dataset/weights and license; a one-byte placeholder is not training data."
+    },
+    {
+      "id": "securecoating-community-yolo26",
+      "domain": [
+        "electrode_coating",
+        "surface_quality"
+      ],
+      "kind": "pretrained_model_reference",
+      "publisher": "thtcsec / SecureCoating-Vision Team 71",
+      "source": {
+        "url": "https://github.com/thtcsec/securecoating-vision",
+        "revision": "c557b956760577d9d709304f3effe7002927838d",
+        "tree_sha256": "5dbabc86b56404c2d506f896e441da4f4b60a2249c01c7025dd399d7ac192406",
+        "config_path": "configs/model.yaml",
+        "notice_path": "NOTICE.md"
+      },
+      "licenses": {
+        "code_and_claimed_weights": "AGPL-3.0 per author NOTICE",
+        "training_dataset": "CoatingVision CC-BY-4.0",
+        "license_approved_for_release": false
+      },
+      "classes": [
+        "surface_crack",
+        "delamination_crack"
+      ],
+      "artifact": {
+        "downloaded": false,
+        "path": null,
+        "sha256": null,
+        "author_config_expected_onnx_sha256": "fa1c467a5857bb68d226eb0b76c7ca4eeee1f94e0f710559401a5f223f8a1a14"
+      },
+      "splits": {
+        "author_claim": "image-disjoint not physical-roll-disjoint",
+        "independently_verified": false
+      },
+      "validation": {
+        "pt_or_onnx_in_inspected_tree": 0,
+        "release_asset_checked": false,
+        "inference_run": false
+      },
+      "status": "claimed_artifact_not_obtained",
+      "production_ready": false,
+      "training_ready": false,
+      "next_step": "Locate a genuine author release asset matching configured SHA before any model registration."
+    }
+  ]
+}

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -17,7 +18,10 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .local_vlm import LocalVLMConfig
 
 # 瞬时失败:值得退避重试;其余 4xx 是请求本身的问题,重试无意义
 _TRANSIENT_CODES = frozenset({429, 500, 502, 503, 504})
@@ -54,6 +58,20 @@ class ProviderConfig:
     timeout_s: float = 120.0
     max_retries: int = 2
     temperature: float = 0.1  # 判定任务锁低温:同一张图反复判不能在 NG/待复核之间跳
+    max_tokens: int | None = None  # 本地短判定可设256；旧云端配置保持不变
+    local_vlm: LocalVLMConfig | None = None
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.api_key or self.local_vlm)
+
+    def __post_init__(self):
+        if not math.isfinite(self.timeout_s) or not 0 < self.timeout_s <= 600:
+            raise ValueError("ZHIPU_TIMEOUT 须为0–600秒之间的正数")
+        if not 0 <= self.max_retries <= 3:
+            raise ValueError("ZHIPU_MAX_RETRIES 须为0–3")
+        if self.max_tokens is not None and not 16 <= self.max_tokens <= 8192:
+            raise ValueError("ZHIPU_MAX_TOKENS 须为16–8192")
 
     @classmethod
     def from_env(cls, env_file: str | Path | None = None) -> ProviderConfig:
@@ -62,11 +80,17 @@ class ProviderConfig:
         def get(key: str, default: str = "") -> str:
             return os.environ.get(key) or file_vals.get(key, default)
 
+        from .local_vlm import LocalVLMConfig
+        local = LocalVLMConfig.from_values({**file_vals, **os.environ})
         return cls(
-            base_url=get("ZHIPU_BASE", cls.base_url),
-            model=get("ZHIPU_MODEL", cls.model),
-            api_key=get("ZHIPU_API_KEY"),
-            timeout_s=float(get("ZHIPU_TIMEOUT", "120") or 120),
+            base_url=local.base_url if local else get("ZHIPU_BASE", cls.base_url),
+            model=local.model_alias if local else get("ZHIPU_MODEL", cls.model),
+            api_key="" if local else get("ZHIPU_API_KEY"),
+            timeout_s=local.request_timeout_s if local else float(get("ZHIPU_TIMEOUT", "120") or 120),
+            max_retries=0 if local else int(get("ZHIPU_MAX_RETRIES", "2")),
+            max_tokens=(int(get("ZHIPU_MAX_TOKENS", "256")) if local else
+                        int(get("ZHIPU_MAX_TOKENS")) if get("ZHIPU_MAX_TOKENS") else None),
+            local_vlm=local,
         )
 
 
@@ -91,6 +115,9 @@ class VLMProvider:
 
     def __init__(self, config: ProviderConfig, transport: Transport | None = None):
         self.cfg = config
+        if transport is None and config.local_vlm is not None:
+            from .local_vlm import get_transport
+            transport = get_transport(config.local_vlm)
         self.transport = transport or Transport(config.timeout_s)
 
     def chat(self, messages: list[dict]) -> str:
@@ -98,12 +125,23 @@ class VLMProvider:
         url = self.cfg.base_url.rstrip("/") + "/chat/completions"
         headers = {"Authorization": f"Bearer {self.cfg.api_key}"}
         payload = {"model": self.cfg.model, "messages": messages, "temperature": self.cfg.temperature}
+        if self.cfg.max_tokens is not None:
+            payload["max_tokens"] = self.cfg.max_tokens
         last_err: Exception | None = None
         for attempt in range(self.cfg.max_retries + 1):
             try:
                 resp = self.transport.post(url, headers, payload)
-                return resp["choices"][0]["message"]["content"]
+                choice = resp["choices"][0]
+                # 截断JSON可能仍能解析为部分结论，不得拿它当完整质检结果。
+                if choice.get("finish_reason") == "length":
+                    raise ValueError("模型输出达到长度上限，请缩短提示词或增加输出额度")
+                content = choice["message"]["content"]
+                if not isinstance(content, str):
+                    raise ValueError("模型返回的文本格式不正确")
+                return content
             except Exception as err:  # noqa: BLE001 —— 下面按类型分流,不静默吞
+                if not isinstance(err, (urllib.error.URLError, TimeoutError, ConnectionError)):
+                    raise
                 if isinstance(err, urllib.error.HTTPError) and err.code not in _TRANSIENT_CODES:
                     raise
                 last_err = err

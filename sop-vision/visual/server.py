@@ -101,7 +101,11 @@ class StationManager:
         # 只登记已验证布局/来源的现有权重；不启用被淘汰的烟火模型。
         self.label_engines.register("community-helmet", ROOT / "models/community/helmet.onnx",
                                     ["With Helmet", "Without Helmet"], "安全帽 ONNX · 现有评估权重")
+        from .public_models import register_public_models
+        register_public_models(self.label_engines, ROOT)
         self.label_jobs = LabelJobs(data_dir / "labeling/jobs.db", self.labels, self.label_engines)
+        from .training_jobs import TrainingJobs
+        self.training = TrainingJobs.from_env(data_dir / "training", self.labels, self.label_engines)
         self.evidence_root = data_dir / "evidence"
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
@@ -111,13 +115,13 @@ class StationManager:
         self.inspection: InspectionService | None = None
         if inspection_config is not None:
             cfg = provider_cfg or ProviderConfig.from_env()
-            if cfg.api_key:
+            if cfg.configured:
                 self.inspection = InspectionService(
                     load_scenarios(inspection_config), InspectionStore(data_dir / "sop.db"),
                     data_dir / "inspection", VLMProvider(cfg, vlm_transport),
                     publish=self._on_inspection_msg, refs_root=data_dir)
             else:
-                print("提示:未配置 ZHIPU_API_KEY(.env),拍照即检功能不可用,其余功能不受影响")
+                print("提示:未配置云端凭据或本地VLM，拍照即检不可用，其余功能不受影响")
         for p in config_paths:
             cfg: StationConfig = load_config(p)
             if shadow:
@@ -245,6 +249,7 @@ class StationManager:
 
     def stop(self) -> None:
         self.notifications.close()
+        self.training.close()
         self.label_jobs.close()
         self.labels.close()
         for rt in self.runtimes.values():
@@ -255,6 +260,8 @@ class StationManager:
             rt.signal_inbox.close()
         if self.inspection is not None:
             self.inspection.stop(close_store=True)
+        from .local_vlm import close_all
+        close_all()
         self.store.close()
         self.patrol.close()
         self.signal_store.close()
@@ -425,6 +432,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(audit_router(manager.audit))
     from .model_routes import router as model_router
     app.include_router(model_router(manager.labels, manager.label_engines))
+    from .training_routes import router as training_router
+    app.include_router(training_router(manager.training))
 
     @app.exception_handler(LabelError)
     async def label_error(request: Request, e: LabelError):

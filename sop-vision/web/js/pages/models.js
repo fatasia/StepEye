@@ -69,9 +69,9 @@ export function render(root) {
       el.setAttribute("aria-pressed", String(on));
     });
     $("[data-model-heading]", root).innerHTML =
-      `<div class="models-detail-title"><h3>${esc(selected.name)}</h3><span class="models-status ${selected.available ? "available" : "unavailable"}">${selected.available ? "可试跑" : "不可用"}</span></div><p>${selected.available ? "已登记的本机检测模型，场景效果待独立验证。" : esc(selected.reason || "模型尚未准备好")}</p><div class="models-classes">${selected.classes.map((c) => `<span>${esc(c)}</span>`).join("")}</div>`;
+      `<div class="models-detail-title"><h3>${esc(selected.name)}</h3><span class="models-status ${selected.available ? "available" : "unavailable"}">${selected.available ? "可试跑" : "不可用"}</span></div><p>${selected.available ? (selected.usage === "evaluation_only" ? "仅供评估 · 许可待审核，尚未通过生产验收。" : "已登记的本机检测模型，场景效果待独立验证。") : esc(selected.reason || "模型尚未准备好")}</p><div class="models-classes">${selected.classes.map((c) => `<span>${esc(c)}</span>`).join("")}</div>`;
     $("[data-model-metadata]", root).innerHTML =
-      `<dl><dt>模型 ID</dt><dd>${esc(selected.id)}</dd><dt>任务 / 运行时</dt><dd>${esc(selected.task || "detect")} / ${esc(selected.runtime || "onnx")}</dd><dt>生产评测</dt><dd>尚未验收</dd><dt>类别数</dt><dd>${selected.classes.length}</dd></dl>`;
+      `<dl><dt>模型 ID</dt><dd>${esc(selected.id)}</dd><dt>任务 / 运行时</dt><dd>${esc(selected.task || "detect")} / ${esc(selected.runtime || "onnx")}</dd><dt>使用范围</dt><dd>${selected.usage === "evaluation_only" ? "仅供评估，商用许可待审核" : "按已登记模型许可使用"}</dd><dt>许可记录</dt><dd>${esc(selected.license_status || "未登记")}</dd><dt>生产评测</dt><dd>尚未验收</dd><dt>类别数</dt><dd>${selected.classes.length}</dd></dl>`;
     const compatible = projects.filter(
       (p) =>
         p.classes.length === selected.classes.length && p.classes.every((c) => selected.classes.includes(c)),

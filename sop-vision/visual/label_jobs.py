@@ -48,26 +48,34 @@ class LabelEngines:
     """仅本机管理员配置的模型；HTTP 输入不能指定文件路径或下载 URL。"""
     def __init__(self):
         self._models: dict[str, dict] = {}
+        self._guard = threading.RLock()
 
-    def register(self, engine_id: str, model_path: Path, classes: list[str], name: str = "") -> None:
-        self._models[engine_id] = {"id": engine_id, "name": name or engine_id,
-                                   "model_path": str(model_path.resolve()), "classes": list(classes)}
+    def register(self, engine_id: str, model_path: Path, classes: list[str], name: str = "",
+                 *, metadata: dict | None = None) -> None:
+        with self._guard:
+            self._models[engine_id] = {**(metadata or {}), "id": engine_id, "name": name or engine_id,
+                                       "model_path": str(model_path.resolve()), "classes": list(classes)}
 
     def list(self) -> list[dict]:
         out = []
-        for m in self._models.values():
+        with self._guard:
+            registered = list(self._models.values())
+        for m in registered:
             available = Path(m["model_path"]).is_file() and importlib.util.find_spec("onnxruntime") is not None
             out.append({k: v for k, v in m.items() if k != "model_path"} | {
                 "available": available, "reason": "" if available else "缺少模型或 onnxruntime；可先手工标注"})
         return out
 
     def snapshot(self, engine_id: str) -> dict:
-        if engine_id not in self._models:
-            raise LabelError("预标注引擎未登记，请选现有引擎或手工框选", 404)
-        m = dict(self._models[engine_id])
+        with self._guard:
+            if engine_id not in self._models:
+                raise LabelError("预标注引擎未登记，请选现有引擎或手工框选", 404)
+            m = dict(self._models[engine_id])
         if not Path(m["model_path"]).is_file():
             raise LabelError("模型未安装，可先手工框选", 409)
         m["model_sha256"] = fingerprint(Path(m["model_path"]))
+        if m.get("expected_sha256") and m["model_sha256"] != m["expected_sha256"]:
+            raise LabelError("模型文件与登记指纹不一致，请重新安装已审核权重", 409)
         return m
 
 

@@ -161,3 +161,18 @@
 .label-import-files span { color: var(--text-muted); max-width: 60%; overflow-wrap: anywhere; }
 .label-import-files.is-error span, .label-import-warning { color: var(--warning); }
 .label-import-warning { font-size: 11px; line-height: 1.8; padding: 12px 0; overflow-wrap: anywhere; }
+.label-training-intro h3 { color: var(--text-strong); font-size: 18px; font-weight: 500; margin: 14px 0; }
+.label-training-intro p { color: var(--text-muted); font-size: 11px; line-height: 1.9; }
+.label-training-cap { border: 1px solid var(--line); background: var(--surface-2); color: var(--text-muted); border-radius: var(--r-ctl); padding: 14px; font-size: 11px; line-height: 1.8; margin: 20px 0; }
+.label-training-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.label-training-actions [hidden], .label-training-error[hidden] { display: none !important; }
+.label-training-error { color: var(--warning); font-size: 11px; line-height: 1.8; margin-top: 16px; overflow-wrap: anywhere; }
+.label-training-job { border-top: 1px solid var(--line); padding: 20px 0; margin-top: 20px; }
+.label-training-job header { display: flex; gap: 14px; justify-content: space-between; align-items: center; }
+.label-training-job header b { color: var(--text-strong); font-size: 13px; font-weight: 500; }
+.label-training-job header span { color: var(--text-faint); font-size: 10px; }
+.label-training-job dl { display: grid; grid-template-columns: 65px minmax(0,1fr); gap: 10px; color: var(--text-muted); font-size: 10px; }
+.label-training-job dt { color: var(--text-faint); }
+.label-training-job dd { margin: 0; overflow-wrap: anywhere; }
+.label-training-job .btn { margin-top: 12px; font-size: 11px; }
+.label-training-job details { margin-top: 14px; }

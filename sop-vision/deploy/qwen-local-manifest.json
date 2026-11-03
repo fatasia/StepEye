@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "model_repo": "Qwen/Qwen3-VL-2B-Instruct-GGUF",
+  "model_revision": "52d6c8ffea26cc873ac5ad116f8631268d7eb503",
+  "model_card_license": "apache-2.0",
+  "llama_tag": "b12064",
+  "files": [
+    {
+      "name": "Qwen3VL-2B-Instruct-Q4_K_M.gguf",
+      "role": "model",
+      "platform": "all",
+      "bytes": 1107409952,
+      "sha256": "089d75c52f4b7ffc56ba998ffc50aae89fcafc755f9e7208aacca281dca6c2ae",
+      "url": "https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF/resolve/52d6c8ffea26cc873ac5ad116f8631268d7eb503/Qwen3VL-2B-Instruct-Q4_K_M.gguf"
+    },
+    {
+      "name": "mmproj-Qwen3VL-2B-Instruct-F16.gguf",
+      "role": "mmproj",
+      "platform": "all",
+      "bytes": 819394848,
+      "sha256": "c3d5afbef5287953acd57b4043d2269456e5761a4eaccb3b71b062996970aea5",
+      "url": "https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-GGUF/resolve/52d6c8ffea26cc873ac5ad116f8631268d7eb503/mmproj-Qwen3VL-2B-Instruct-F16.gguf"
+    },
+    {
+      "name": "llama-b12064-bin-win-cuda-12.4-x64.zip",
+      "role": "runtime",
+      "platform": "windows",
+      "bytes": 286851554,
+      "sha256": "4eb0adb9257f5815510c59d434dfbd5902137b94cdfa99d6589e519bd0786209",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12064/llama-b12064-bin-win-cuda-12.4-x64.zip"
+    },
+    {
+      "name": "cudart-llama-bin-win-cuda-12.4-x64.zip",
+      "role": "runtime",
+      "platform": "windows",
+      "bytes": 391443627,
+      "sha256": "8c79a9b226de4b3cacfd1f83d24f962d0773be79f1e7b75c6af4ded7e32ae1d6",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12064/cudart-llama-bin-win-cuda-12.4-x64.zip"
+    },
+    {
+      "name": "cudart-llama-b12064-bin-ubuntu-cuda-12.8-x64.tar.gz",
+      "role": "runtime",
+      "platform": "linux",
+      "bytes": 594374001,
+      "sha256": "8c1d266a37de0415f1fc8df0c28690156aaf5b428fedf7a425832d8cbeef6f94",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12064/cudart-llama-b12064-bin-ubuntu-cuda-12.8-x64.tar.gz"
+    },
+    {
+      "name": "llama-b12064-bin-ubuntu-cuda-12.8-x64.tar.gz",
+      "role": "runtime",
+      "platform": "linux",
+      "bytes": 187091781,
+      "sha256": "4e4660d37312bdc802a3ffa335b36387c0950f283ec780723b9226ff47c33d04",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12064/llama-b12064-bin-ubuntu-cuda-12.8-x64.tar.gz"
+    }
+  ]
+}

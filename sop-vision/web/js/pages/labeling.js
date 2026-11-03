@@ -1,4 +1,5 @@
 import { icon } from "../icons.js";
+import { openTraining } from "./labeling-training.js";
 import { openDrawer, toast } from "../ui.js";
 import { $, esc, fmtTime } from "../util.js";
 
@@ -42,7 +43,7 @@ export function render(root, params = {}) {
       <aside class="label-controls"><section><header class="label-control-head"><span class="label-kicker">标注与复核</span><b class="num" data-target-count>0 个目标</b></header><div class="label-class-palette" data-classes></div><div class="label-target-list" data-targets><span class="label-muted">选择图片后查看目标</span></div><div data-selected-target></div>
         <label class="label-background" data-background-wrap hidden><input type="checkbox" id="lab-background">我已核对：本图没有任何目标</label><div class="label-save-actions" data-write hidden><button class="btn" id="lab-save">保存草稿</button><button class="btn btn-primary" id="lab-confirm">确认标注</button></div><p class="label-help" data-annotation-help>机器建议不是人工真值，确认后才可进入确认版。</p></section>
         <section><header class="label-control-head"><span class="label-kicker">模型预标注</span><button class="label-link" id="lab-jobs">任务记录</button></header><label class="label-form-field"><span>选择引擎</span><select id="lab-engine"></select></label><p class="label-help" data-engine-reason></p><label class="label-form-field label-threshold"><span>置信度阈值</span><input type="number" id="lab-threshold" min=".05" max=".95" step=".05" value=".4"></label><div class="label-auto-actions" data-write hidden><button class="btn" id="lab-trial">先试两张</button><button class="btn" id="lab-batch" disabled>批量预标注</button></div><p class="label-help" data-trial-note>先试两张、逐张确认，再对勾选的图片批量运行。</p><div data-current-job></div></section>
-        <section class="label-delivery"><header class="label-control-head"><span class="label-kicker">质量与交付</span></header><div class="label-quality-mini" data-quality-mini>正在读取质量统计…</div><div class="label-delivery-actions"><button class="btn" id="lab-quality">质量检查</button><button class="btn" id="lab-versions">确认版与导出</button></div><p class="label-help">导出来自不可变确认版，不读取未复核的机器建议。</p></section></aside></div></div>`;
+        <section class="label-delivery"><header class="label-control-head"><span class="label-kicker">质量与交付</span></header><div class="label-quality-mini" data-quality-mini>正在读取质量统计…</div><div class="label-delivery-actions"><button class="btn" id="lab-quality">质量检查</button><button class="btn" id="lab-versions">确认版与导出</button><button class="btn" id="lab-training">训练 / 增强</button></div><p class="label-help">导出来自不可变确认版，不读取未复核的机器建议。</p></section></aside></div></div>`;
 
   const s = { projects: [], project: null, assets: [], total: 0, offset: 0, asset: null, targets: [], selected: -1, classId: 0, dirty: false, baseline: "[]", undo: [], redo: [], zoom: 1, tool: "draw", engines: [], jobs: [], selectedIds: new Set(), trial: null, trialReady: false, busy: false, assetLoading: false, currentJob: null, finishedJobId: null };
   let dead = false, canWrite = false, loadSeq = 0, assetSeq = 0, drawer = null, poll = null, polling = false, gesture = null, pendingJob = null;
@@ -128,6 +129,7 @@ export function render(root, params = {}) {
     $("#lab-jobs",root).disabled = !s.project;
     $("#lab-quality",root).disabled = !s.project;
     $("#lab-versions",root).disabled = !s.project;
+    $("#lab-training",root).disabled = !s.project;
   }
 
   function paintClasses() {
@@ -444,6 +446,7 @@ export function render(root, params = {}) {
   root.querySelectorAll("[data-tool]").forEach((b)=>b.onclick=()=>{s.tool=b.dataset.tool;root.querySelectorAll("[data-tool]").forEach((n)=>n.classList.toggle("on",n===b));paintCanvas();});
   $("#lab-fit",root).onclick=()=>{s.zoom=1;fitImage();};$("#lab-zoom-in",root).onclick=()=>{s.zoom=Math.min(4,s.zoom*1.25);fitImage();};$("#lab-zoom-out",root).onclick=()=>{s.zoom=Math.max(.5,s.zoom/1.25);fitImage();};
   $("#lab-history",root).onclick=history;$("#lab-jobs",root).onclick=showJobs;$("#lab-quality",root).onclick=quality;$("#lab-versions",root).onclick=versions;
+  $("#lab-training",root).onclick=()=>{if(!s.project)return;drawer?.close();drawer=openTraining({project:s.project,engine:s.engines.find((e)=>e.id===$("#lab-engine",root).value),canWrite});};
   $("#lab-engine",root).onchange=engineReason;$("#lab-trial",root).onclick=()=>startJob(true);$("#lab-batch",root).onclick=()=>startJob(false);
   image.onerror=()=>notice("图片读取失败。请刷新图片列表，或检查原始文件是否仍可访问。");
   const keyboard=(e)=>{if(dead || drawer?.el?.classList.contains("in") || /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();saveDraft().catch(failure);}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"){e.preventDefault();undo(e.shiftKey);}else if(["Delete","Backspace"].includes(e.key)&&s.selected>=0){e.preventDefault();deleteSelected();}else if(e.key.toLowerCase()==="b"&&editable()){$("[data-tool=draw]",root).click();}else if(e.key.toLowerCase()==="v"){$("[data-tool=select]",root).click();}else if(/^[1-9]$/.test(e.key)&&+e.key<=s.project?.classes.length){s.classId=+e.key-1;paintClasses();}};

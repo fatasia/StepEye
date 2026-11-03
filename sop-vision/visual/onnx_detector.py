@@ -32,6 +32,18 @@ COCO80 = ("person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", 
           "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush")
 
 
+def native_input_size(inputs) -> int:
+    """Use the registered graph's fixed square input; no runtime resolution search."""
+    if len(inputs) != 1 or inputs[0].type != "tensor(float)":
+        raise ValueError("仅支持单输入 float32 YOLO ONNX")
+    shape = inputs[0].shape
+    if (len(shape) != 4 or any(type(v) is not int for v in shape)
+            or shape[:2] != [1, 3] or shape[2] != shape[3]
+            or not 128 <= shape[2] <= 1280 or shape[2] % 32):
+        raise ValueError("仅支持静态单图 NCHW 方形 YOLO 输入，边长128–1280且为32倍数")
+    return shape[2]
+
+
 def letterbox(frame: np.ndarray, size: int = INPUT_SIZE) -> tuple[np.ndarray, float, tuple[int, int]]:
     """保持长宽比缩放并垫灰边;返回(网络输入, 缩放系数, 垫边偏移)。"""
     h, w = frame.shape[:2]
@@ -110,13 +122,16 @@ class OnnxObjectDetector:
         if not model.exists():
             raise FileNotFoundError(f"ONNX 检测模型不存在: {model}")
         self.session = onnxruntime.InferenceSession(str(model), providers=["CPUExecutionProvider"])
+        self.input_size = native_input_size(self.session.get_inputs())
+        if len(self.session.get_outputs()) != 1:
+            raise ValueError("不支持多输出模型，请安装对应适配器")
         self.input_name = self.session.get_inputs()[0].name
         self.class_names = list(cfg.class_names) or list(COCO80)
         self.cfg = cfg
         self.tracker = ZoneCountTracker(geoms, cfg.enter_frames, cfg.exit_frames)
 
     def process(self, frame: np.ndarray, ts: float, ctx: Context) -> list[Event]:
-        blob, r, pad = letterbox(frame)
+        blob, r, pad = letterbox(frame, self.input_size)
         x = blob[:, :, ::-1].transpose(2, 0, 1)[None].astype(np.float32) / 255.0  # BGR→RGB, HWC→CHW
         pred = self.session.run(None, {self.input_name: x})[0]
         pred = np.squeeze(pred, axis=0) if pred.ndim == 3 else pred  # (1, 4+nc, N) → (4+nc, N)

@@ -110,8 +110,10 @@ class StationRuntime:
         self._vlm_ok: set[str] = set()
         self._vlm_thread: threading.Thread | None = None
         self._vlm_guard = threading.Lock()
-        if self._vlm_conds and ProviderConfig.from_env().api_key:
-            self._vlm_provider = VLMProvider(ProviderConfig.from_env())
+        if self._vlm_conds:
+            provider_cfg = ProviderConfig.from_env()
+            if provider_cfg.configured:
+                self._vlm_provider = VLMProvider(provider_cfg)
 
         self.recorder = EvidenceRecorder(data_dir / "evidence", self.store, lambda: self.annotated,
                                          {"hands": "mediapipe-hand-landmarker" if src.type != "sim" else "sim",

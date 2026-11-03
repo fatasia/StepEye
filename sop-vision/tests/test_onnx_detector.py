@@ -95,3 +95,33 @@ def test_missing_model_fails_fast(tmp_path):
     cfg = DetectorCfg(enabled=True, model="models/nope.onnx", classes=["person"])
     with pytest.raises(FileNotFoundError):
         create_detector(cfg, build_geoms([ZONE], 100, 100), base_dir=tmp_path)
+
+def test_native_input_size_rejects_unsupported_contracts():
+    from types import SimpleNamespace
+    from visual.onnx_detector import native_input_size
+    assert native_input_size([SimpleNamespace(type='tensor(float)',shape=[1,3,320,320])])==320
+    for shape in ([1,3,320,640],['batch',3,640,640],[2,3,640,640],[1,640,640,3],[1,3,4096,4096],[1,3,321,321]):
+        with pytest.raises(ValueError): native_input_size([SimpleNamespace(type='tensor(float)',shape=shape)])
+    with pytest.raises(ValueError): native_input_size([])
+    with pytest.raises(ValueError): native_input_size([SimpleNamespace(type='tensor(float16)',shape=[1,3,320,320])])
+
+
+def test_native_320_realtime_and_label_predict(tmp_path):
+    import cv2
+    from visual.label_predict import predict
+    model=_synthetic_model(tmp_path,[(160.,160.,160.,160.,0,.9)])
+    graph=onnx.load(model)
+    graph.graph.input[0].type.tensor_type.shape.dim[2].dim_value=320
+    graph.graph.input[0].type.tensor_type.shape.dim[3].dim_value=320
+    onnx.save(graph,model)
+    classes=['person']+[f'c{i}' for i in range(79)]
+    cfg=DetectorCfg(enabled=True,model=str(model),classes=['person'],class_names=classes)
+    geoms=build_geoms([ZONE],640,640); ctx=Context(geoms)
+    detector=OnnxObjectDetector(cfg,geoms)
+    frame=np.zeros((640,640,3),np.uint8)
+    detector.process(frame,0.1,ctx)
+    assert detector.input_size==320 and ctx.object_boxes[0][1]==pytest.approx((160.,160.,480.,480.))
+    image=tmp_path/'frame.png'; cv2.imwrite(str(image),frame)
+    result=predict({'model_path':str(model),'image_path':str(image),'threshold':.25,'classes':classes,'project_classes':classes})
+    assert result[0]['xyxy_norm']==pytest.approx([.25,.25,.75,.75])
+    detector.close()

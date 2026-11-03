@@ -9,23 +9,21 @@ def predict(spec: dict) -> list[dict]:
     import cv2
     import numpy as np
     import onnxruntime as ort
-    from .onnx_detector import letterbox, postprocess_detections
+    from .onnx_detector import letterbox, postprocess_detections, native_input_size
 
     options = ort.SessionOptions()
     options.intra_op_num_threads = 2
     options.inter_op_num_threads = 1
     session = ort.InferenceSession(spec["model_path"], sess_options=options, providers=["CPUExecutionProvider"])
     inputs = session.get_inputs()
-    if len(inputs) != 1 or inputs[0].type != "tensor(float)":
-        raise ValueError("该模型不是支持的单输入 YOLO float32 ONNX")
-    shape = inputs[0].shape
-    if len(shape) != 4 or any(isinstance(v, int) and v != wanted for v, wanted in zip(shape, (1, 3, 640, 640))):
-        raise ValueError("仅支持单图 NCHW 640 YOLO 模型")
+    input_size = native_input_size(inputs)
+    if len(session.get_outputs()) != 1:
+        raise ValueError("不支持多输出模型，请安装对应适配器")
     frame = cv2.imdecode(np.fromfile(spec["image_path"], dtype=np.uint8), cv2.IMREAD_COLOR)
     if frame is None:
         raise ValueError("标注资源无法解码")
     h, w = frame.shape[:2]
-    blob, r, pad = letterbox(frame)
+    blob, r, pad = letterbox(frame, input_size)
     x = blob[:, :, ::-1].transpose(2, 0, 1)[None].astype(np.float32) / 255
     outputs = session.run(None, {inputs[0].name: x})
     if len(outputs) != 1:

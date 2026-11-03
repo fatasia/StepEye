@@ -25,6 +25,8 @@ def test_new_feature_modules_keep_bounded_responsibilities():
     root = Path(__file__).resolve().parents[1]
     modules = ["visual/model_routes.py", "visual/notification_routes.py", "visual/notifications.py",
                "visual/label_import.py", "visual/audit.py", "web/js/pages/models.js",
-               "web/js/pages/settings.js"]
+               "web/js/pages/settings.js", "visual/training_jobs.py", "visual/training_worker.py",
+               "visual/training_routes.py", "visual/public_models.py", "visual/local_vlm.py",
+               "web/js/pages/labeling-training.js"]
     for name in modules:
         assert len((root / name).read_text(encoding="utf-8").splitlines()) <= 500, name
