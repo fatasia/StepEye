@@ -66,3 +66,41 @@ def test_build_dataset_rejects_empty_source(tmp_path):
     src.mkdir()
     with pytest.raises(ValueError, match="未找到"):
         build_dataset(src, tmp_path / "out", CLASSES)
+
+
+def test_nested_yolo_labels_preserved_and_missing_not_background(tmp_path):
+    src = tmp_path / "src"
+    for folder in ("a", "b"):
+        (src / "images" / folder).mkdir(parents=True)
+        (src / "labels" / folder).mkdir(parents=True)
+        _img(src / "images" / folder, "same.jpg")
+    (src / "labels/a/same.txt").write_text("1 0.5 0.5 0.2 0.2")
+    build_dataset(src, tmp_path / "out", CLASSES)
+    root = tmp_path / "out/dataset"
+    assert len(list((root / "images").rglob("*.jpg"))) == 2
+    labels = list((root / "labels").rglob("*.txt"))
+    assert len(labels) == 1
+    assert labels[0].read_text().startswith("1 ")
+
+
+@pytest.mark.parametrize("line", ["5 0.5 0.5 0.2 0.2", "0 nan 0.5 0.2 0.2", "0 0 0 2 2"])
+def test_bad_yolo_box_rejected_before_output(tmp_path, line):
+    src = tmp_path / "src"
+    (src / "images").mkdir(parents=True)
+    (src / "labels").mkdir()
+    _img(src / "images", "a.jpg")
+    (src / "labels/a.txt").write_text(line)
+    with pytest.raises(ValueError):
+        build_dataset(src, tmp_path / "out", CLASSES)
+    assert not (tmp_path / "out/dataset").exists()
+
+
+def test_xany_path_escape_rejected(tmp_path):
+    import json
+    src = tmp_path / "src"
+    src.mkdir()
+    _img(tmp_path, "outside.jpg")
+    (src / "a.json").write_text(json.dumps({"imagePath":"../outside.jpg", "imageWidth":200,
+        "imageHeight":100, "shapes": []}))
+    with pytest.raises(ValueError, match="目录内"):
+        build_dataset(src, tmp_path / "out", CLASSES)

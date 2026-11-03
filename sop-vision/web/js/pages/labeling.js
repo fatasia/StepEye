@@ -30,7 +30,7 @@ const json = (method, body) => ({ method, headers: { "Content-Type": "applicatio
 
 export function render(root, params = {}) {
   root.innerHTML = `<div class="label-workspace">
-    <header class="label-page-head"><div><span class="label-kicker">数据工作流 / 人机协同标注</span><h2>把第一张图，变成可训练的数据。</h2></div><div class="label-head-actions"><label class="field"><span>项目</span><select id="lab-project" aria-label="选择标注项目"><option>正在读取…</option></select></label><button class="btn" id="lab-create" data-write hidden>新建项目</button><button class="btn btn-primary" id="lab-upload" data-write hidden>${icon("camera",14)}导入图片</button></div></header>
+    <header class="label-page-head"><div><span class="label-kicker">数据工作流 / 人机协同标注</span><h2>把第一张图，变成可训练的数据。</h2></div><div class="label-head-actions"><label class="field"><span>项目</span><select id="lab-project" aria-label="选择标注项目"><option>正在读取…</option></select></label><button class="btn" id="lab-create" data-write hidden>新建项目</button><button class="btn" id="lab-import-dataset" data-write hidden>导入标注 ZIP</button><button class="btn btn-primary" id="lab-upload" data-write hidden>${icon("camera",14)}导入图片</button></div></header>
     <div class="label-flow" aria-label="标注工作流"><div class="on"><b>01</b><span>导入与类别<small>先定义要找什么</small></span></div><i></i><div data-flow-trial><b>02</b><span>先试两张<small>看建议，再确认真值</small></span></div><i></i><div data-flow-batch><b>03</b><span>批量与确认版<small>确认后才进入导出</small></span></div><span class="label-role" data-role></span></div>
     <div class="label-notice" role="alert" data-notice hidden></div>
     <div class="label-layout"><aside class="label-assets"><header><div><span class="label-kicker">项目图片</span><b data-asset-total>—</b></div><button class="icon-btn" id="lab-refresh-assets" aria-label="刷新图片">${icon("refresh",14)}</button></header>
@@ -124,6 +124,7 @@ export function render(root, params = {}) {
     $("#lab-batch",root).textContent = `批量预标注${s.selectedIds.size ? `（${s.selectedIds.size}）` : ""}`;
     $("#lab-batch",root).title = !s.trialReady ? "先试两张并逐张确认，再运行批量任务" : !s.selectedIds.size ? "先在左侧勾选未确认图片" : "仅运行勾选图片，不改已确认真值";
     $("#lab-upload",root).disabled = !s.project || s.busy;
+    $("#lab-import-dataset",root).disabled = !s.project || s.busy;
     $("#lab-jobs",root).disabled = !s.project;
     $("#lab-quality",root).disabled = !s.project;
     $("#lab-versions",root).disabled = !s.project;
@@ -346,6 +347,51 @@ export function render(root, params = {}) {
     if(fill)fill.onclick=()=>{const engine=templates.find((e)=>e.id===form.elements.template_engine.value);if(engine){form.elements.classes.value=engine.classes.join("\n");toast(`已沿用 ${engine.classes.length} 个模型类别`);}};
     form.onsubmit=async(e)=>{e.preventDefault();const classes=form.elements.classes.value.split(/[\n,，]/).map((v)=>v.trim()).filter(Boolean);if(!classes.length||new Set(classes).size!==classes.length)return toast("类别需非空且不能重复","error");const b=$("button[type=submit]",form);b.disabled=true;try{const project=await request("/api/label-projects",json("POST",{name:form.elements.name.value.trim(),classes,scene_id:form.elements.scene_id.value.trim(),license_ref:form.elements.license_ref.value.trim()}));d.close();await loadProjects(project.id);toast("标注项目已创建");}catch(e){failure(e);b.disabled=false;}};
   }
+  function importDataset() {
+    if (!s.project || !canWrite || s.busy) return;
+    drawer?.close();
+    const pid=s.project.id, endpoint=projectPath("/import-dataset");
+    const d=drawer=openDrawer({title:"导入已有标注",subtitle:esc(s.project.name),html:`
+      <form class="label-dialog-form" data-dataset-form>
+        <p>把 YOLO 检测数据集压缩为 ZIP，图片和已有框一起导入。类别按名称匹配，不要求编号相同。</p>
+        <div class="label-import-layout"><b>ZIP 内需要</b><code>classes.txt 或 data.yaml（names）<br>images/train/part.jpg<br>labels/train/part.txt</code><span>也支持不分 train / val 的 images、labels 目录。仅检测框，不导入分割多边形。</span></div>
+        <label>选择数据集 ZIP<input name="file" type="file" accept=".zip,application/zip" required></label>
+        <label class="label-check"><input type="checkbox" name="synthetic">这些图片是生成式／合成样本（仅训练集）</label>
+        <p>单批最多 200 张图片，ZIP 不超过 100MB。已有标签进入待复核草稿；缺标签保持未标注，空标签不自动确认为背景。</p>
+        <details><summary>来源分组与许可（可选）</summary><div><label>拍摄批次 / 视频分组<input name="group_id" maxlength="200" placeholder="同一视频或拍摄批次使用相同分组"></label><label>来源许可<input name="license_ref" maxlength="500" placeholder="沿用项目许可，或填写来源记录"></label></div></details>
+        <button class="btn btn-primary" type="submit">校验并导入</button>
+      </form><section data-import-result aria-live="polite"></section>`});
+    const form=$("form",d.body), button=$("button[type=submit]",form);
+    form.onsubmit=async(event)=>{
+      event.preventDefault();
+      if(s.busy)return;
+      const file=form.elements.file.files[0];
+      if(!file)return;
+      if(!file.name.toLowerCase().endsWith(".zip")||file.size>100*1024*1024)return toast("请选择不超过100MB的ZIP数据集","error");
+      const fd=new FormData();fd.append("file",file);fd.append("synthetic",String(form.elements.synthetic.checked));
+      for(const name of ["group_id","license_ref"])fd.append(name,form.elements[name].value.trim());
+      s.busy=true;paintActions();button.disabled=true;button.textContent="正在校验图片与标签…";
+      const report=$("[data-import-result]",d.body);report.innerHTML="";
+      try {
+        const out=await request(endpoint,{method:"POST",body:fd});
+        if(dead)return;
+        const items=out.items||[], errors=out.errors||[], skipped=out.skipped||[];
+        const rows=(list,kind)=>list.map((r)=>`<li><b>${esc(r.name||r.asset_id||"文件")}</b><span>${esc(kind==="ok" ? (STATE[r.state]||"待复核") : r.error||r.reason||r.message||"未导入")}</span></li>`).join("");
+        report.innerHTML=`<div class="label-import-summary"><span>导入结果</span><strong>${out.imported??items.length}<small> 张成功</small></strong><p>${errors.length} 项失败 · ${skipped.length} 项跳过</p></div>
+          <p class="label-help">导入不等于确认。请检查标注，再生成确认版。</p>
+          ${(out.warnings||[]).map((v)=>`<p class="label-import-warning">${esc(v)}</p>`).join("")}
+          ${errors.length?`<h3 class="d-h">需处理的问题</h3><ul class="label-import-files is-error">${rows(errors,"error")}</ul>`:""}
+          ${skipped.length?`<h3 class="d-h">已跳过</h3><ul class="label-import-files">${rows(skipped,"skip")}</ul>`:""}
+          ${items.length?`<details open><summary class="label-link">成功导入的图片（${items.length}）</summary><ul class="label-import-files">${rows(items,"ok")}</ul></details><button class="btn" type="button" data-review-import>去复核图片</button>`:""}`;
+        const review=$("[data-review-import]",report);if(review)review.onclick=()=>d.close();
+        form.elements.file.value="";
+        if(s.project?.id===pid){s.offset=0;$("#lab-state",root).value="";try{await loadAssets(!s.dirty);await refreshQuality();}catch(e){notice(`数据已导入，刷新列表失败：${e.message}。请点击刷新，不必重复导入。`);}}
+        button.textContent="继续导入";
+      } catch(e) { report.innerHTML=`<div class="label-import-warning" role="alert">${esc(e.message)}</div>`;button.textContent="重新校验并导入"; }
+      finally {s.busy=false;button.disabled=false;if(!dead)paintActions();}
+    };
+  }
+
   function upload() {
     if(!canWrite||!s.project)return;drawer?.close();
     const d=drawer=openDrawer({title:"导入项目图片",html:`<form class="label-dialog-form"><label>图片文件<input type="file" name="files" accept="image/png,image/jpeg,image/webp" multiple required></label><label class="label-check"><input type="checkbox" name="synthetic">这些图片是生成式／合成样本</label><p>合成样本会保留来源标记，不进入独立验证集。</p>
@@ -386,7 +432,7 @@ export function render(root, params = {}) {
   }
 
   $("#lab-project",root).onchange=(e)=>selectProject(e.target.value);
-  $("#lab-create",root).onclick=newProject;$("#lab-upload",root).onclick=upload;
+  $("#lab-create",root).onclick=newProject;$("#lab-upload",root).onclick=upload;$("#lab-import-dataset",root).onclick=importDataset;
   $("#lab-state",root).onchange=()=>{s.offset=0;loadAssets().catch(failure);};
   $("#lab-refresh-assets",root).onclick=()=>loadAssets().catch(failure);
   $("#lab-prev-page",root).onclick=()=>{s.offset=Math.max(0,s.offset-100);loadAssets().catch(failure);};

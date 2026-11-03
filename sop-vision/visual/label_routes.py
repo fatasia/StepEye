@@ -69,6 +69,13 @@ def router(labels: LabelStore, jobs: LabelJobs, engines: LabelEngines) -> APIRou
                offset: int = Query(0, ge=0)) -> dict:
         return labels.list_assets(pid, state, limit, offset)
 
+    @api.post("/api/label-projects/{pid}/import-dataset", status_code=201)
+    async def import_zip(pid: str, request: Request, file: UploadFile = File(...),
+                         group_id: str = Form(""), license_ref: str = Form(""), synthetic: bool = Form(False)) -> dict:
+        from .label_import import MAX_ARCHIVE_BYTES, import_dataset
+        raw = await file.read(MAX_ARCHIVE_BYTES + 1)
+        return await asyncio.to_thread(import_dataset, labels, pid, raw, actor(request), group_id, license_ref, synthetic)
+
     @api.post("/api/label-projects/{pid}/assets", status_code=201)
     async def upload(pid: str, files: list[UploadFile] = File(...), group_id: str = Form(""),
                      illumination_bucket: str = Form("unknown"), license_ref: str = Form(""),

@@ -145,3 +145,19 @@
 .label-version-form .btn { grid-column: 1 / -1; justify-content: center; }
 .label-version-warning { color: var(--warning) !important; }
 @media (max-width: 1350px) { .page-labeling .label-layout { grid-template-columns: 185px minmax(0,1fr) 290px; } .page-labeling .label-page-head { flex-wrap: wrap; } .page-labeling .label-tools > button { padding-inline: 5px; } }
+
+.label-import-layout { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); }
+.label-import-layout b { color: var(--text); font-size: 12px; font-weight: 500; }
+.label-import-layout code { color: var(--accent); font-size: 12px; line-height: 1.9; overflow-wrap: anywhere; }
+.label-import-layout span { color: var(--text-faint); font-size: 11px; line-height: 1.8; }
+.label-import-summary { display: grid; gap: 10px; padding-block: 24px 16px; margin-top: 22px; border-top: 1px solid var(--line); }
+.label-import-summary > span { color: var(--text-muted); font-size: 11px; }
+.label-import-summary strong { color: var(--text-strong); font-size: 36px; font-weight: 500; }
+.label-import-summary small { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.label-import-summary p { color: var(--text-faint); font-size: 11px; }
+.label-import-files { list-style: none; padding: 0; margin: 10px 0 18px; max-height: 220px; overflow-y: auto; }
+.label-import-files li { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 9px 0; border-bottom: 1px solid var(--line-subtle); font-size: 11px; }
+.label-import-files b { color: var(--text); font-weight: 400; overflow-wrap: anywhere; min-width: 0; }
+.label-import-files span { color: var(--text-muted); max-width: 60%; overflow-wrap: anywhere; }
+.label-import-files.is-error span, .label-import-warning { color: var(--warning); }
+.label-import-warning { font-size: 11px; line-height: 1.8; padding: 12px 0; overflow-wrap: anywhere; }
