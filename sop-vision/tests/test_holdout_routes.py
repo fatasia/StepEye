@@ -69,11 +69,17 @@ def test_run_creates_immutable_report_and_lists_summary(api):
     assert record["evaluation"]["summary"]["fp"] >= 4  # 第二类没有真值
     assert record["evaluation"]["summary"]["tp"] > 0
     assert record["publication"] == "not_requested"
+    # 新增字段向后兼容:AP 随报告入库,列表摘要也携带;无真值类不混入均值。
+    ap = record["average_precision"]
+    assert 0 < ap["ap50"] <= 1
+    assert ap["ap50"] == ap["classes"]["part"]["ap50"]
+    assert ap["classes"]["other"]["ap50"] is None
     assert any(s["state"] == "background" for s in record["sources"])
     listed = client.get("/api/evaluations/holdout").json()
     assert listed["total"] == 1
     item = listed["items"][0]
     assert item["frames"] == 4 and item["summary"] == record["evaluation"]["summary"]
+    assert item["average_precision"]["ap50"] == ap["ap50"]
     assert "sources" not in item and "evaluation" not in item
     detail = client.get(f"/api/evaluations/holdout/{record['id']}").json()
     assert detail["evaluation"]["details"] == record["evaluation"]["details"]

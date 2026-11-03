@@ -75,6 +75,7 @@ export function openHoldoutEvaluation({ canWrite }) {
         <div>漏检框 FN<strong>${number(s.fn)}</strong></div>
       </div>
       <p class="muted">误检帧 ${number(ev.false_positive_frames)} · 漏检帧 ${number(ev.missed_frames)} · 工作点 IoU ${ev.iou_threshold} / 置信度 ${ev.confidence_threshold} · 耗时 ${number(record.elapsed_ms)} ms · ${esc(record.adapter)}</p>
+      ${ev.average_precision ? `<p class="muted">AP@0.5 ${pct(ev.average_precision.ap50 ?? ev.average_precision["AP@0.5"])} · AP@0.5:0.95 ${pct(ev.average_precision.ap50_95 ?? ev.average_precision["AP@0.5:0.95"])}（导出 val 上计算，非独立未见数据）</p>` : ""}
       ${Object.keys(classes).length ? `<table><thead><tr><th>类别</th><th>TP</th><th>FP</th><th>FN</th><th>Precision</th><th>Recall</th></tr></thead><tbody>${Object.entries(classes).map(([name, c]) => `<tr><td>${esc(name)}</td><td>${c.tp}</td><td>${c.fp}</td><td>${c.fn}</td><td>${pct(c.precision)}</td><td>${pct(c.recall)}</td></tr>`).join("")}</tbody></table>` : ""}
       <p class="muted">排除（合成/未确认）${number((record.excluded || []).length)} 张；完整逐图 FP/FN 明细见导出 JSON。</p>
       <details><summary>逐图 FP/FN（前 80 行）</summary><table><thead><tr><th>图片</th><th>误检框</th><th>漏检框</th><th>低置信忽略</th></tr></thead><tbody>${(ev.details || []).slice(0, 80).map((d) => `<tr><td>${esc(d.id)}</td><td>${d.false_positives.length}</td><td>${d.missed.length}</td><td>${d.ignored_low_confidence}</td></tr>`).join("")}</tbody></table><pre>逐图数据来源与排除原因已随报告记录（sources / excluded）。</pre></details>

@@ -11,7 +11,7 @@ import tempfile
 import time
 import zipfile
 
-from .detection_eval import evaluate_boxes
+from .detection_eval import average_precision, evaluate_boxes
 from .detector_registry import create_backend
 
 
@@ -126,13 +126,15 @@ def run_holdout(dataset, model, output, *, model_sha256, dataset_sha256,
             finally:
                 backend.close()
     result=evaluate_boxes(classes,frames,iou_threshold=iou,confidence_threshold=confidence)
+    # AP 在同一份导出 val 帧上计算,不是独立未见数据;边界声明随字段入库。
     report={'schema_version':1,'kind':'detection_validation','model_sha256':model_sha256,
             'dataset_sha256':dataset_sha256,'manifest_sha256':manifest_sha,
             'dataset_version_id':meta['dataset_version_id'],'adapter':adapter,'split':'val',
             'scope':'exported group/hash-isolated validation; physical workpiece independence not verified',
             'model_training_overlap':'unknown; validation split is not an independent unseen holdout claim',
             'publication':'not_requested','excluded':excluded,'sources':sources,'frames':frames,
-            'evaluation':result,'elapsed_ms':round((time.monotonic()-started)*1000,2)}
+            'evaluation':result,'average_precision':average_precision(classes,frames),
+            'elapsed_ms':round((time.monotonic()-started)*1000,2)}
     output.parent.mkdir(parents=True,exist_ok=True)
     # Same-filesystem hard link publishes complete bytes without overwriting an existing report.
     fd,temp=tempfile.mkstemp(prefix='.eval-',suffix='.json',dir=output.parent)

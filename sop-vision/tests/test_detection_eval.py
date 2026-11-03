@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from visual.detection_eval import evaluate_boxes
+from visual.detection_eval import average_precision, evaluate_boxes
 from visual.server import build_app
 from visual.auth import AuthStore
 
@@ -70,3 +70,84 @@ def test_api_requires_operator_and_rejects_invalid_frames(tmp_path):
         payload['frames'][0]['reviewed'] = False
         assert client.post('/api/evaluations/detection', json=payload).status_code == 422
     auth.close()
+
+
+def ap_frame(fid, truth, predictions):
+    return {'id': fid, 'reviewed': True, 'truth': truth, 'predictions': predictions}
+
+
+def test_ap_perfect_predictions_score_one():
+    frames = [ap_frame('a', [box()], [box(confidence=.9)]),
+              ap_frame('b', [box()], [box(confidence=.8)])]
+    report = average_precision(['part'], frames)
+    assert report['metric'] == 'average_precision'
+    assert report['ap50'] == 1.0 and report['ap50_95'] == 1.0
+    assert report['classes']['part'] == {'ap50': 1.0, 'ap50_95': 1.0}
+
+
+def test_ap_known_partial_curve_matches_hand_computed_value():
+    # 3 truths; confidence order TP(.9), FP(.8), TP(.7) with identical boxes (IoU=1 at every threshold).
+    # Suffix-max precision [1, 2/3, 2/3], recall steps 1/3, 1/3, 2/3:
+    # 34 recall points <= 1/3 hit precision 1, 33 points in (1/3, 2/3] hit 2/3 -> AP = 56/101.
+    frames = [ap_frame('a', [box(), box()], [box(confidence=.9)]),
+              ap_frame('b', [], [box(confidence=.8)]),
+              ap_frame('c', [box()], [box(confidence=.7)])]
+    report = average_precision(['part'], frames)
+    assert report['ap50'] == pytest.approx(56 / 101)
+    assert report['ap50_95'] == pytest.approx(56 / 101)
+    assert [row['ap'] for row in report['per_threshold']] == [pytest.approx(56 / 101)] * 10
+
+
+def test_ap_all_false_positives_is_zero_when_truth_exists():
+    frames = [ap_frame('a', [box()], [box('other', .9)])]
+    report = average_precision(['part', 'other'], frames)
+    assert report['ap50'] == 0.0
+    assert report['classes']['part']['ap50'] == 0.0
+    assert report['classes']['other']['ap50'] is None  # no truth -> excluded from the mean
+
+
+def test_ap_without_any_truth_is_none():
+    frames = [ap_frame('a', [], [box(confidence=.9)])]
+    report = average_precision(['part'], frames)
+    assert report['ap50'] is None and report['ap50_95'] is None
+    assert report['classes']['part'] == {'ap50': None, 'ap50_95': None}
+
+
+def test_ap_duplicate_prediction_is_single_match_and_late_fp_does_not_lower_ap():
+    # One truth, two identical detections: first is TP, duplicate is FP.
+    # Recall reaches 1.0 at precision 1, so COCO suffix-max keeps AP at 1.0.
+    frames = [ap_frame('a', [box()], [box(confidence=.9), box(confidence=.8)])]
+    report = average_precision(['part'], frames)
+    assert report['ap50'] == 1.0 and report['ap50_95'] == 1.0
+
+
+def test_ap_partial_overlap_only_counts_at_lower_iou_thresholds():
+    # Boxes overlap with IoU = 2/3: matches COCO thresholds 0.50-0.65 (4 of 10), fails 0.70+.
+    truth = {'label': 'part', 'box': [0., 0., .5, .5]}
+    hit = {'label': 'part', 'box': [0., .1, .5, .6], 'confidence': .9}
+    report = average_precision(['part'], [ap_frame('a', [truth], [hit])])
+    assert report['ap50'] == 1.0
+    assert report['ap50_95'] == pytest.approx(0.4)
+
+
+def test_ap_mean_excludes_classes_without_truth():
+    frames = [ap_frame('a', [box('part')], [box('part', .9)])]
+    report = average_precision(['part', 'other'], frames)
+    assert report['ap50'] == report['classes']['part']['ap50'] == 1.0
+    assert report['classes']['other'] == {'ap50': None, 'ap50_95': None}
+
+
+def test_ap_reuses_frame_validation_and_checks_thresholds():
+    valid = [ap_frame('a', [], [])]
+    with pytest.raises(ValueError):
+        average_precision(['part'], [ap_frame('a', [box('unknown')], [])])
+    with pytest.raises(ValueError):
+        average_precision(['part'], [{'id': 'a', 'reviewed': False, 'truth': [], 'predictions': []}])
+    with pytest.raises(ValueError):
+        average_precision([], valid)
+    with pytest.raises(ValueError):
+        average_precision(['part'], valid, iou_thresholds=[])
+    with pytest.raises(ValueError):
+        average_precision(['part'], valid, iou_thresholds=[0])
+    with pytest.raises(ValueError):
+        average_precision(['part'], valid, iou_thresholds=[1.5])

@@ -39,6 +39,12 @@ def test_real_onnx_version_to_report(tmp_path):
     assert report['evaluation']['summary']['tp']>0
     assert any(s['state']=='background' for s in report['sources'])
     assert report['split']=='val' and report['publication']=='not_requested'
+    # AP 与单工作点指标共用同一份导出 val 帧;边界声明随字段入库,逐类 AP 不混入无真值类。
+    ap=report['average_precision']
+    assert ap['metric']=='average_precision' and 0<ap['ap50']<=1
+    assert 'not an independent unseen' in ap['scope']
+    assert ap['ap50']==ap['classes']['part']['ap50']
+    assert ap['classes']['other']=={'ap50':None,'ap50_95':None}
     assert json.loads(args['output'].read_text(encoding='utf8'))==report
     with pytest.raises(FileExistsError):run_holdout(**args)
 
