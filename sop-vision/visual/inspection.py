@@ -227,6 +227,9 @@ class InspectionService:
         def enc(name: str) -> str:
             return base64_of(task_dir / name)
 
+        # 同一多图/首件任务固定一次服务，管理员改绑定只影响下一任务。
+        snapshot = getattr(self.provider, 'snapshot', None)
+        provider = snapshot('vlm') if callable(snapshot) else self.provider
         imgs = [enc(n) for n in image_names]
         if sc.mode == "first_article":
             groups = []
@@ -241,14 +244,14 @@ class InspectionService:
             for img in imgs:
                 # Each view needs its own difference evidence. A failed first step is
                 # not evidence of "no differences", and must not become a PASS.
-                step1 = self.provider.inspect(ok_imgs + [img], DIFF_PROMPT.format(n_ok=len(ok_imgs)))
+                step1 = provider.inspect(ok_imgs + [img], DIFF_PROMPT.format(n_ok=len(ok_imgs)))
                 raw = step1.get("raw")
                 parsed = extract_json(raw) if step1.get("ok") and isinstance(raw, str) else None
                 differences = parsed.get("differences") if parsed else None
                 if not isinstance(differences, list) or any(not isinstance(v, str) for v in differences):
                     raise RuntimeError("首件差异分析失败，需重新检查或人工复核")
                 diffs = json.dumps(differences, ensure_ascii=False)
-                step2 = self.provider.inspect(
+                step2 = provider.inspect(
                     ok_imgs + ng_imgs + [img], VERDICT_PROMPT.format(
                         n_ok=len(ok_imgs), n_ng=len(ng_imgs), differences=diffs))
                 if not step2["ok"]:
@@ -258,7 +261,7 @@ class InspectionService:
             return aggregate_judgements(verdicts)
         verdicts = []
         for img in imgs:
-            out = self.provider.inspect([img], sc.prompt)
+            out = provider.inspect([img], sc.prompt)
             if not out["ok"]:
                 raise RuntimeError(out["reason"])
             verdicts.append(out)

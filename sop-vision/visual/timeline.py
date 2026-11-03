@@ -30,6 +30,11 @@ class TimelineStore:
             "CREATE TABLE IF NOT EXISTS timelines (id TEXT PRIMARY KEY, name TEXT, status TEXT,"
             " video TEXT, duration_s REAL, fps REAL, intervals TEXT, created TEXT, updated TEXT)"
         )
+        # Older databases have no extracted-file index; never infer filenames in browsers.
+        self._db.execute("BEGIN IMMEDIATE")
+        columns = {row[1] for row in self._db.execute("PRAGMA table_info(timelines)")}
+        if "frames" not in columns:
+            self._db.execute("ALTER TABLE timelines ADD COLUMN frames TEXT NOT NULL DEFAULT '[]'")
         self._db.commit()
 
     def close(self) -> None:
@@ -38,16 +43,17 @@ class TimelineStore:
 
     @staticmethod
     def _row(row) -> dict[str, Any]:
-        keys = ("id", "name", "status", "video", "duration_s", "fps", "intervals", "created", "updated")
+        keys = ("id", "name", "status", "video", "duration_s", "fps", "intervals", "created", "updated", "frames")
         d = dict(zip(keys, row))
         d["intervals"] = json.loads(d["intervals"] or "[]")
+        d["frames"] = json.loads(d["frames"] or "[]")
         return d
 
     def create(self, name: str, video_rel: str, duration_s: float, fps: float) -> dict[str, Any]:
         tid = f"TL-{time.strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
         with self._lock:
-            self._db.execute("INSERT INTO timelines VALUES (?,?,?,?,?,?,?,?,?)",
+            self._db.execute("INSERT INTO timelines (id,name,status,video,duration_s,fps,intervals,created,updated) VALUES (?,?,?,?,?,?,?,?,?)",
                              (tid, name, "draft", video_rel, duration_s, fps, "[]", now, now))
             self._db.commit()
         return self.get(tid)  # type: ignore[return-value]
@@ -55,13 +61,13 @@ class TimelineStore:
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
             rows = self._db.execute(
-                "SELECT id,name,status,video,duration_s,fps,intervals,created,updated FROM timelines ORDER BY id DESC").fetchall()
+                "SELECT id,name,status,video,duration_s,fps,intervals,created,updated,frames FROM timelines ORDER BY id DESC").fetchall()
         return [self._row(r) for r in rows]
 
     def get(self, tid: str) -> dict[str, Any] | None:
         with self._lock:
             row = self._db.execute(
-                "SELECT id,name,status,video,duration_s,fps,intervals,created,updated FROM timelines WHERE id=?", (tid,)).fetchone()
+                "SELECT id,name,status,video,duration_s,fps,intervals,created,updated,frames FROM timelines WHERE id=?", (tid,)).fetchone()
         return self._row(row) if row else None
 
     def update(self, tid: str, **fields: Any) -> dict[str, Any] | None:

@@ -1,4 +1,4 @@
-"""设备信号入箱：HTTP 只入队，采集线程按当前帧时钟消费。
+"""设备信号入箱：SOP 按帧消费；温场观察器在验收入站后独立处理。
 
 接收序号与审计落 SQLite，重启不重放已接受信号。队列是有界内存队列，
 202 只表示已接收，不等于设备动作已执行；进程中断的未消费项记为 abandoned。
@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import logging
 import sqlite3
 import threading
 import time
@@ -195,6 +196,8 @@ class SignalInbox:
         self._queue: deque[tuple[SignalPacket, dict[str, Any]]] = deque()
         self._consumer: threading.Thread | None = None
         self._closed = False
+        self._observer = None
+        self._observer_keys = frozenset()
 
     @property
     def depth(self) -> int:
@@ -226,14 +229,40 @@ class SignalInbox:
         with self._lock:
             if self._closed:
                 raise SignalError("工位信号队列已关闭", 503, "closed")
+            observer = self._observer if (packet.source, packet.name) in self._observer_keys else None
+            has_capacity = len(self._queue) < self.capacity
             receipt = self.store.admit(self.scope, packet, fingerprint, self.clock(),
-                                       len(self._queue) < self.capacity, self.max_future_skew_s,
+                                       has_capacity or observer is not None, self.max_future_skew_s,
                                        max_keys=self.max_keys, legacy=legacy)
+            receipt["queued_for_sop"] = receipt["status"] == "accepted" and has_capacity
             if receipt["status"] == "accepted":
                 if legacy:
                     packet = packet.model_copy(update={"sequence": receipt["sequence"]})
-                self._queue.append((packet, receipt))
-            return {**receipt, "queued": len(self._queue)}
+                if has_capacity:
+                    self._queue.append((packet, receipt))
+                else:
+                    self.store.finish(receipt["audit_id"], "consumed", self.clock(),
+                                      reason="thermal_observer_only")
+            result = {**receipt, "queued": len(self._queue)}
+        # Never hold the inbox lock during observers/listeners; SOP owns its queue unchanged.
+        if observer is not None and receipt["status"] == "accepted":
+            try:
+                observer(packet.model_copy(deep=True), dict(result))
+                result["observer_status"] = "processed"
+            except Exception:
+                logging.getLogger(__name__).exception("Signal observer failed: %s", self.scope)
+                result["observer_status"] = "failed"
+        return result
+
+    def bind_observer(self, observer, keys) -> None:
+        """Bind one lightweight thermal observer and its explicit source/name allowlist."""
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("信号队列已关闭")
+            if self._observer is not None:
+                raise RuntimeError("信号观察器已绑定")
+            self._observer = observer
+            self._observer_keys = frozenset(keys)
 
     def bind_consumer(self) -> None:
         """由采集线程 run() 开头调用；HTTP 工作线程不得绑定/消费。"""

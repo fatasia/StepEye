@@ -1,0 +1,83 @@
+.safety-config-form [hidden] {
+  display: none !important;
+}
+.safety-config-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.safety-config-form section {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.safety-config-form section:first-child {
+  padding-top: 5px;
+}
+.safety-config-form header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.safety-config-form h3 {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-strong);
+  margin: 0;
+}
+.safety-config-form p {
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.8;
+}
+.safety-config-form label {
+  display: grid;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 12px 0;
+}
+.safety-config-form input:not([type="checkbox"]),
+.safety-config-form select {
+  padding: 10px;
+  width: 100%;
+  min-width: 0;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+.safety-config-form label.safety-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--accent);
+}
+.safety-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+.safety-config-form details {
+  padding: 20px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.safety-config-form summary {
+  cursor: pointer;
+}
+.safety-config-form [role="status"] {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.safety-config-form [type="submit"] {
+  width: 100%;
+}
+@media (max-width: 600px) {
+  .safety-grid {
+    grid-template-columns: 1fr;
+  }
+}

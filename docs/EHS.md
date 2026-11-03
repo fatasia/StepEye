@@ -52,3 +52,24 @@ ehs:
 - 人车距离、车速、越线方向：需要校准版本与业务阈值消费者，未用像素替代米或 km/h。
 - 前端配置编辑、规则现场验收、独立烟火持续视频真值评测。
 - 本次复用的仓储公开权重许可仍未知，保持评估用途；不因规则可运行就改变生产授权状态。
+
+## S2 逐人 PPE 关联
+
+`PPEMonitor` 消费本帧 person 与用品轨迹，按头部/躯干/手部近似区域分配；一件用品只关联一人，多人歧义、正负冲突和小目标均为 unknown。输出按人、按 helmet/vest/gloves 分组：`observed`（正类关联）、`pending`（负类计时）、`missing`、`unknown`，附简短 reason 与 evidence_track_ids。
+
+- `PPECfg.gloves_required=1|2` 按工序选择；重复手套框不计作双手。
+- 现仓储模型的正类支持逐人 observed/unknown；未检出用品不产生缺失告警。
+- `Without Helmet` 是当前唯一支持的明确负类；必须覆盖足够头部区域、达到置信度、同人持续帧数和时长，才发 `kind=ppe_missing` 的既有 safety 告警。
+- 旧 helmet 模型没有 person 类；当前单检测器还不能同时提供仓储人框与旧帽子负类，实际未戴帽告警尚需附加头部检测接线。鞋/眼镜没有权重，不提供状态。
+
+6 项专项测试覆盖逐人分配、歧义/冲突、双手计数、明确负类持续、过期证据与重置。复用仓储公开示例实测 1 人，用品证据为空时全部 unknown、缺失告警 0；证据 `.v0/public-models/ppe-example.json`，无佩戴真值准确率评价。
+
+### 头部二阶段探针（未启用实时）
+
+`HelmetROIProbe` 复用旧 `helmet.onnx`：单输入 `[1,3,640,640]`、输出 `[1,6,8400]`、With Helmet / Without Helmet；SHA256 `fa30e26e86c6cc1a1c78678aca272b4ce06bba85b38e3d08cceb1e590c0cc5ab`。加载时检查哈希、metadata 类别和形状，模型许可状态不变。
+
+`process(frame, ts, person_tracks)` 返回 observations、sampled_person_ids、原 frame_ts、status。默认关闭，默认每 0.2 秒最多 2 个 ROI，轮转覆盖人选；重叠头部跳过，输出绑定 parent_track_id。会话首次需要时加载、连续调用复用，空闲 10 秒后在 process/tick 调用中关闭，close/reset 立即释放；没有常驻线程。
+
+此接口是同步底层，**不接实时主循环**。后续须有界最新帧异步 worker，按原时间戳、相机 epoch、person ID 与 TTL 消费；不能把旧结果重标为当前帧，也不能把未采样帧当缺失证据。
+
+实际仓储示例采到 1 个头部 ROI，冷加载+推理 117.6 ms，没有返回帽子正/负框；只证明真实模型通路可运行，没有未戴帽准确率证据。记录 `.v0/public-models/helmet-roi-example.json`。

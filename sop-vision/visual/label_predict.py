@@ -8,13 +8,14 @@ import sys
 def predict(spec: dict) -> list[dict]:
     import cv2
     import numpy as np
-    from .detector_registry import YoloOnnxBackend
+    from .detector_registry import create_backend
 
     frame = cv2.imdecode(np.fromfile(spec["image_path"], dtype=np.uint8), cv2.IMREAD_COLOR)
     if frame is None:
         raise ValueError("标注资源无法解码")
     h, w = frame.shape[:2]
-    backend = YoloOnnxBackend(spec["model_path"], spec["classes"], spec["threshold"])
+    backend = create_backend(spec["model_path"], spec["classes"], spec["threshold"],
+                             adapter=spec.get("adapter","yolo_raw"))
     try:
         hits = backend.detect(frame)
     finally:

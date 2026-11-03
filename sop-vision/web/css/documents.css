@@ -1,0 +1,124 @@
+.documents-page {
+  max-width: 1400px;
+  margin: auto;
+}
+.documents-page [hidden] {
+  display: none !important;
+}
+.documents-page header span,
+.documents-page header p {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.documents-page h2 {
+  font-weight: 500;
+  color: var(--text-strong);
+  margin: 12px 0;
+}
+.documents-page [role="status"] {
+  color: var(--text-muted);
+  font-size: 12px;
+  min-height: 20px;
+}
+.document-search {
+  display: flex;
+  gap: 10px;
+  margin: 24px 0;
+}
+.document-search input {
+  flex: 1;
+}
+.documents-page input {
+  padding: 11px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  min-width: 0;
+}
+.documents-page details {
+  border: 1px solid var(--line);
+  padding: 18px;
+  margin-bottom: 22px;
+  border-radius: var(--r-panel);
+}
+.documents-page summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 12px;
+}
+.document-upload {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 24px;
+}
+.document-upload label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.document-upload p {
+  grid-column: 1/-1;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.document-table {
+  overflow: auto;
+}
+.document-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.document-table th,
+.document-table td {
+  padding: 16px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-muted);
+}
+.document-table b {
+  color: var(--text);
+  font-weight: 500;
+}
+.document-table small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-faint);
+}
+.document-table td:last-child {
+  white-space: nowrap;
+}
+.document-detail,
+.document-hit {
+  padding: 24px;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  margin-top: 20px;
+  color: var(--text);
+}
+.document-detail article {
+  padding-top: 20px;
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.document-detail small {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.documents-page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.9 inherit;
+}
+@media (max-width: 800px) {
+  .document-upload {
+    grid-template-columns: 1fr;
+  }
+  .document-search {
+    flex-wrap: wrap;
+  }
+}

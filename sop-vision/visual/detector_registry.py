@@ -26,8 +26,19 @@ class DetectorBackend(Protocol):
     def close(self) -> None: ...
 
 
+def create_backend(model_path, classes, threshold=.5, max_results=500, *, adapter="yolo_raw") -> DetectorBackend:
+    """只接受登记的明确布局，不凭六列形状把任意ONNX猜成YOLO。"""
+    if adapter=="yolo_raw":
+        return YoloOnnxBackend(model_path,classes,threshold,max_results)
+    if adapter=="yolo_e2e":
+        from .yolo_e2e import YoloE2EOnnxBackend
+        return YoloE2EOnnxBackend(model_path,classes,threshold,max_results)
+    raise ValueError("未登记的检测器输出适配器")
+
+
 class YoloOnnxBackend:
     """现有 v5/v8 原始布局适配；不是任意 ONNX/YOLOX/DETR 适配器。"""
+    adapter_name = "yolo_raw"
     def __init__(self, model_path, classes, threshold=.5, max_results=500):
         import onnxruntime as ort
         from .onnx_detector import native_input_size
@@ -39,6 +50,10 @@ class YoloOnnxBackend:
         options.inter_op_num_threads = 1
         self.session = ort.InferenceSession(str(model_path), sess_options=options,
                                             providers=["CPUExecutionProvider"])
+        if (self.adapter_name=="yolo_raw" and
+                self.session.get_modelmeta().custom_metadata_map.get("end2end","").lower()=="true"):
+            self.close()
+            raise ValueError("模型声明端到端输出，请显式登记yolo_e2e适配器")
         self.input_size = native_input_size(self.session.get_inputs())
         if len(self.session.get_outputs()) != 1:
             raise ValueError("不支持多输出模型，请安装对应适配器")

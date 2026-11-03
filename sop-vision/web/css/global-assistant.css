@@ -1,0 +1,147 @@
+.global-assistant [hidden] {
+  display: none !important;
+}
+.assistant-launch {
+  position: fixed;
+  right: 26px;
+  bottom: 24px;
+  z-index: 160;
+  background: var(--surface-2);
+  border: 1px solid var(--accent);
+  border-radius: 24px;
+  padding: 13px 20px;
+  color: var(--accent);
+  box-shadow: 0 8px 28px #0003;
+  font: 500 12px inherit;
+}
+.assistant-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 78px;
+  width: min(420px, calc(100vw - 24px));
+  height: min(710px, calc(100dvh - 110px));
+  z-index: 161;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-panel);
+  box-shadow: 0 18px 70px #0004;
+  overflow: hidden;
+}
+.assistant-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.assistant-panel header b {
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 500;
+}
+.assistant-panel header small {
+  display: block;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.assistant-panel button {
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 8px 13px;
+  cursor: pointer;
+}
+.assistant-panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.assistant-messages {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+  padding: 20px;
+  overscroll-behavior: contain;
+}
+.assistant-messages:empty::before {
+  content: "从一个具体问题开始。助手只接收你的消息和当前页面名称，不会自动发送画面或业务数据。";
+  color: var(--text-faint);
+  font-size: 12px;
+  line-height: 1.9;
+}
+.assistant-message {
+  margin-bottom: 22px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.assistant-message > b {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 500;
+}
+.assistant-message p {
+  white-space: pre-wrap;
+  line-height: 1.9;
+  color: var(--text);
+  margin: 8px 0;
+}
+.assistant-message-user {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 12px;
+}
+.assistant-message details {
+  border: 1px solid var(--line);
+  padding: 10px;
+  border-radius: var(--r-ctl);
+  margin-top: 12px;
+}
+.assistant-message summary {
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+.assistant-message details p {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.assistant-status {
+  padding: 0 20px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--text-muted);
+  min-height: 18px;
+}
+.assistant-form {
+  border-top: 1px solid var(--line);
+  padding: 16px 20px;
+  display: grid;
+  gap: 10px;
+}
+.assistant-form label {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.assistant-form textarea {
+  resize: vertical;
+  max-height: 160px;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  padding: 11px;
+  font: 12px/1.7 inherit;
+}
+.assistant-form > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.assistant-form [type="submit"] {
+  color: var(--accent);
+  border-color: var(--accent);
+}

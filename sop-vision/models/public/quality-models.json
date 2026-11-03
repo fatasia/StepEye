@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-03",
+  "models": [
+    {
+      "id": "public-pcb-yolo26",
+      "name": "PCB裸板缺陷 / 六类（评估）",
+      "model_path": "models/public/pcb-yolo26.onnx",
+      "classes": [
+        "missing_hole",
+        "mouse_bite",
+        "open_circuit",
+        "short",
+        "spur",
+        "spurious_copper"
+      ],
+      "sha256": "057c61dbd2745f59bd246effebf47a31686e95b0e2263610b0600664e5210fc5",
+      "bytes": 38175508,
+      "adapter": "yolo_e2e",
+      "adapter_compatible": true,
+      "native_input": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "native_output": [
+        1,
+        300,
+        6
+      ],
+      "license_status": "weights_AGPL-3.0; source_HRIPCB_dataset_license_unknown; not_release_approved",
+      "source": {
+        "repo": "betty0/pcb-defect-detection",
+        "revision": "08f7ff096054f6ad3e1f37dfdf5cfc63d04dabaa",
+        "url": "https://huggingface.co/betty0/pcb-defect-detection/resolve/08f7ff096054f6ad3e1f37dfdf5cfc63d04dabaa/best.onnx"
+      },
+      "production_ready": false
+    }
+  ]
+}

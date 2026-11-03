@@ -1,0 +1,11 @@
+# Optional isolated training environment, never install into the real-time vision environment.
+# GPU wheels: install the two matching packages from https://download.pytorch.org/whl/cu130 first.
+torch==2.12.0
+torchvision==0.27.0
+ultralytics==8.4.198
+numpy==2.5.4
+opencv-python==5.0.0.93
+Pillow==12.2.0
+PyYAML==6.0.2
+onnx==1.23.2
+onnxruntime==1.27.0

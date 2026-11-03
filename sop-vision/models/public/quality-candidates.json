@@ -156,22 +156,25 @@
         "opset": 20,
         "external_initializers": 0,
         "custom_domains": [],
-        "inference_run": false,
-        "report": ".v0/quality-models/pcb-onnx-static.json"
+        "inference_run": true,
+        "report": ".v0/quality-models/pcb-onnx-static.json",
+        "adapter": "yolo_e2e",
+        "fixed_image_trial_report": ".v0/quality-models/pcb-e2e-real-trial.json",
+        "fixed_image_targets": 0,
+        "accuracy": null
       },
       "splits": {
         "publisher_claim": "8 source boards train / 1 val / 1 test",
         "independently_verified": false
       },
-      "status": "quarantined_adapter_and_license_blocked",
+      "status": "evaluation_only_license_review_required",
       "production_ready": false,
       "training_ready": false,
       "blockers": [
-        "Current detector explicitly rejects end-to-end [1,300,6] output",
         "training dataset rights unresolved",
-        "no target-production evaluation"
+        "fixed DeepPCB binary sample returned zero detections; no target-production evaluation"
       ],
-      "next_step": "Resolve data/weight use terms, add explicit YOLO26 end-to-end adapter, evaluate on independent real boards before registration."
+      "next_step": "Resolve training data/weight terms and independently evaluate representative target-line images; no production registration."
     },
     {
       "id": "deeppcb-author",

@@ -46,6 +46,7 @@ def main():
         report = {"schema": 1, "platform": platform.platform(), "model_sha256": worker.model_sha256,
                   "providers": worker.providers, "shape": list(CLIP_SHAPE), "batch": 1, "runs": args.runs,
                   "startup_ms": startup_ms, "first_roundtrip_ms": first["roundtrip_ms"],
+                  "first_prediction": {k: first[k] for k in ("label", "class_id", "confidence", "top_k")},
                   "warm_roundtrip": quantile("roundtrip_ms"), "warm_inference": quantile("inference_ms"),
                   "scope": "single preloaded clip; no capture, sampling window, queue, accuracy or multi-station measurement"}
     with args.out.open("x", encoding="utf-8") as stream:

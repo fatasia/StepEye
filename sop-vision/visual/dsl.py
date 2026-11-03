@@ -12,6 +12,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .ehs import EhsCfg
+from .proximity import ProximityCfg
+from .ppe import PPECfg
+from .thermal import ThermalCfg
 
 
 class Zone(BaseModel):
@@ -332,6 +335,9 @@ class StationConfig(BaseModel):
     detector: DetectorCfg = DetectorCfg()
     safety: SafetyCfg = SafetyCfg()
     ehs: EhsCfg = Field(default_factory=EhsCfg)
+    proximity: ProximityCfg = Field(default_factory=ProximityCfg)
+    ppe: PPECfg = Field(default_factory=PPECfg)
+    thermal: ThermalCfg = Field(default_factory=ThermalCfg)
     roi_states: list[RoiStateCfg] = []
     quality: QualityCfg = QualityCfg()
     action_shadow: ActionShadowCfg = Field(default_factory=ActionShadowCfg)
@@ -341,7 +347,7 @@ class StationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_refs(self) -> "StationConfig":
-        if not self.steps and not self.safety.rules and not (self.ehs.enabled and self.ehs.rules):
+        if not self.steps and not self.safety.rules and not (self.ehs.enabled and self.ehs.rules) and not self.proximity.enabled and not self.ppe.enabled and not (self.thermal.enabled and self.thermal.rules):
             raise ValueError("工位至少要有 SOP 步骤或常驻安全规则之一")
         if self.steps and self.cycle is None:
             raise ValueError("有 SOP 步骤就必须定义 cycle(周期开始/结束条件)")
@@ -349,6 +355,8 @@ class StationConfig(BaseModel):
         if len(set(ids)) != len(ids):
             raise ValueError("zone id 重复")
         known = set(ids)
+        if any(z not in known for z in self.ppe.zones):
+            raise ValueError("ppe 引用了未定义的 zone")
         if any(r.zone not in known for r in self.ehs.rules):
             raise ValueError("ehs 引用了未定义的 zone")
         if self.action_shadow.trigger_zone and self.action_shadow.trigger_zone not in known:

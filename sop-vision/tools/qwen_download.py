@@ -20,7 +20,7 @@ def digest(path):
     return h.hexdigest()
 
 
-def fetch(item,root,timeout):
+def fetch(item,root,timeout,tls12=False):
     if Path(item['name']).name != item['name']:
         return {'name':item['name'],'status':'invalid_filename'}
     path=root/item['name']; part=path.with_name(path.name+'.part')
@@ -31,7 +31,8 @@ def fetch(item,root,timeout):
     curl=shutil.which('curl.exe') or shutil.which('curl')
     if not curl: return {'name':item['name'],'status':'download_failed','error':'curl_not_found'}
     try:
-        result=subprocess.run([curl,'--silent','--show-error','--location','--fail','--connect-timeout','15',
+        compatibility=['--http1.1','--tlsv1.2','--tls-max','1.2'] if tls12 else []
+        result=subprocess.run([curl,*compatibility,'--silent','--show-error','--location','--fail','--connect-timeout','15',
              '--max-time',str(timeout),'--continue-at','-','--output',str(part),item['url']],capture_output=True,
              timeout=timeout+20,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     except (subprocess.TimeoutExpired,OSError) as exc:
@@ -75,13 +76,14 @@ def main():
     p.add_argument('--manifest',type=Path,default=Path(__file__).resolve().parents[1]/'deploy/qwen-local-manifest.json')
     p.add_argument('--timeout',type=int,default=300); p.add_argument('--extract',action='store_true')
     p.add_argument('--workers',type=int,choices=[1,2],default=2)
+    p.add_argument('--tls12',action='store_true',help='Use verified TLS 1.2 / HTTP 1.1 for endpoints with TLS EOF issues')
     args=p.parse_args()
     if not 15<=args.timeout<=3600: p.error('timeout must be15..3600 seconds per asset')
     args.root.mkdir(parents=True,exist_ok=True)
     manifest=json.loads(args.manifest.read_text(encoding='utf-8'))
     items=[i for i in manifest['files'] if i['platform'] in ('all','windows' if sys.platform=='win32' else 'linux')]
     def safe_fetch(item):
-        try: return fetch(item,args.root,args.timeout)
+        try: return fetch(item,args.root,args.timeout,args.tls12)
         except Exception as exc:
             return {'name':item.get('name','unknown'),'status':'download_failed','error':type(exc).__name__}
     with ThreadPoolExecutor(max_workers=args.workers) as pool:

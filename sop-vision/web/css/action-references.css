@@ -1,0 +1,64 @@
+.action-reference-form {
+  display: grid;
+  gap: 18px;
+}
+.action-reference-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.action-reference-form input,
+.action-reference-form select {
+  width: 100%;
+  padding: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+}
+.action-reference-form p,
+.action-reference-content p,
+.action-reference-card p {
+  font-size: 11px;
+  line-height: 1.8;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+.action-reference-card {
+  margin: 24px 0;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.action-reference-card h3 {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.action-reference-frames {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+.action-reference-frames figure {
+  margin: 0;
+  min-width: 0;
+}
+.action-reference-frames img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: contain;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.action-reference-frames figcaption {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+.action-reference-card summary {
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+}

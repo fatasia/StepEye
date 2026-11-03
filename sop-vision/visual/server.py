@@ -83,8 +83,17 @@ class StationManager:
         from .audit import AuditStore
         self.audit = AuditStore(data_dir / "operations.db")
         self.data_dir = data_dir
+        from .ai_services import AIServiceStore
+        from .documents import DocumentStore
+        self.ai_services = AIServiceStore(data_dir / "ai-services.json")
+        self.documents = DocumentStore(data_dir / "documents")
+        from .equipment_results import EquipmentResults
+        self.equipment_results = EquipmentResults(data_dir / "equipment-results")
+        from .action_references import ActionReferenceStore
+        self.action_references = ActionReferenceStore(data_dir / "action-references", data_dir / "timelines", data_dir / "timelines.db")
         self.hub = hub
         self.store = CycleStore(data_dir / "sop.db")
+        self._owns_alerts = alert_store is None
         self.alerts = alert_store or AlertStore(data_dir / "alerts.db")
         self.feishu_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
         from .notifications import NotificationDispatcher
@@ -122,13 +131,13 @@ class StationManager:
         self.inspection: InspectionService | None = None
         if inspection_config is not None:
             cfg = provider_cfg or ProviderConfig.from_env()
-            if cfg.configured:
-                self.inspection = InspectionService(
-                    load_scenarios(inspection_config), InspectionStore(data_dir / "sop.db"),
-                    data_dir / "inspection", VLMProvider(cfg, vlm_transport),
-                    publish=self._on_inspection_msg, refs_root=data_dir)
-            else:
-                print("提示:未配置云端凭据或本地VLM，拍照即检不可用，其余功能不受影响")
+            self.inspection = InspectionService(
+                load_scenarios(inspection_config), InspectionStore(data_dir / "sop.db"),
+                data_dir / "inspection", VLMProvider(cfg, vlm_transport),
+                publish=self._on_inspection_msg, refs_root=data_dir)
+        if self.inspection is not None:
+            from .ai_services import DynamicAIProvider
+            self.inspection.provider = DynamicAIProvider(self.ai_services, self.inspection.provider)
         for p in config_paths:
             cfg: StationConfig = load_config(p)
             if shadow:
@@ -136,8 +145,10 @@ class StationManager:
             if cfg.station in self.runtimes:
                 raise ValueError(f"工位 id 重复: {cfg.station}")
             rt = StationRuntime(cfg, data_dir, base_dir=ROOT, store=self.store)
+            rt.bind_calibrations(self.calibrations)
+            rt.bind_ai_services(self.ai_services)
             rt.frame_observers.append(self.patrol.observe_runtime)
-            rt.signal_inbox = SignalInbox(self.signal_store, scope=cfg.station)
+            rt.bind_signal_inbox(SignalInbox(self.signal_store, scope=cfg.station))
             rt.listeners.append(self._forwarder(cfg.station))
             if cfg.source.shadow:
                 if self.shadow_store is None:
@@ -203,8 +214,10 @@ class StationManager:
         if cfg.station in self.runtimes:
             raise ValueError(f"工位 id 已存在:{cfg.station}")
         rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        rt.bind_calibrations(self.calibrations)
+        rt.bind_ai_services(self.ai_services)
         rt.frame_observers.append(self.patrol.observe_runtime)
-        rt.signal_inbox = SignalInbox(self.signal_store, scope=cfg.station)
+        rt.bind_signal_inbox(SignalInbox(self.signal_store, scope=cfg.station))
         rt.listeners.append(self._forwarder(cfg.station))
         if cfg.source.shadow and self.shadow_store is None:
             self.shadow_store = ShadowStore(self.data_dir / "shadow.db")
@@ -252,8 +265,10 @@ class StationManager:
             raise HTTPException(409, "停机前新周期已启动，拒绝切换配方")
         old.signal_inbox.close()
         rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        rt.bind_calibrations(self.calibrations)
+        rt.bind_ai_services(self.ai_services)
         rt.frame_observers.append(self.patrol.observe_runtime)
-        rt.signal_inbox = SignalInbox(self.signal_store, scope=cfg.station)
+        rt.bind_signal_inbox(SignalInbox(self.signal_store, scope=cfg.station))
         rt.listeners.append(self._forwarder(sid))
         self.runtimes[sid] = rt
         nt = threading.Thread(target=rt.run, name=f"station-{sid}", daemon=True)
@@ -264,6 +279,9 @@ class StationManager:
 
     def stop(self) -> None:
         self.notifications.close()
+        self.documents.close()
+        self.equipment_results.close()
+        self.action_references.close()
         self.training.close()
         self.label_jobs.close()
         self.labels.close()
@@ -282,8 +300,11 @@ class StationManager:
         close_all()
         self.store.close()
         self.patrol.close()
+        self.geo.close()
         self.signal_store.close()
         self.audit.close()
+        if self._owns_alerts:
+            self.alerts.close()
 
     def get(self, sid: str) -> StationRuntime:
         rt = self.runtimes.get(sid)
@@ -433,8 +454,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         while True:
             await asyncio.sleep(0.5)
             for sid, rt in manager.runtimes.items():
-                if rt.state_cache:
-                    hub.publish({"type": "state", "station": sid, "data": rt.state_cache})
+                if rt.state_cache or rt.thermal_service is not None:
+                    hub.publish({"type": "state", "station": sid, "data": rt.public_state()})
 
     app = FastAPI(title="SOP Vision", lifespan=lifespan)
     app.state.manager = manager
@@ -455,6 +476,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .calibration_routes import router as calibration_router
     from .evaluation_routes import router as evaluation_router
     app.include_router(calibration_router(manager.calibrations))
+    from .measurement_routes import router as measurement_router
+    app.include_router(measurement_router(manager.calibrations))
     app.include_router(evaluation_router())
     from .quality_routes import router as quality_router
     app.include_router(quality_router(manager.quality_reports))
@@ -464,6 +487,16 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(camera_router(manager))
     from .reader_routes import router as reader_router
     app.include_router(reader_router())
+    from .ai_routes import router as ai_router
+    from .documents_routes import router as documents_router
+    from .assistant import Assistant, router as assistant_router
+    app.include_router(ai_router(manager.ai_services))
+    app.include_router(documents_router(manager.documents))
+    from .action_reference_routes import router as action_reference_router
+    app.include_router(action_reference_router(manager.action_references, manager))
+    app.include_router(assistant_router(Assistant(manager.ai_services, manager.documents)))
+    from .proximity_routes import router as proximity_router
+    app.include_router(proximity_router(manager, manager.calibrations))
 
     @app.exception_handler(LabelError)
     async def label_error(request: Request, e: LabelError):
@@ -506,8 +539,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
                 preview_read = (request.method == "POST" and re.fullmatch(r"/api/stations/[^/]+/preview", path)) or \
                     (request.method == "DELETE" and re.fullmatch(r"/api/stations/[^/]+/preview/[\w-]+", path)) or \
                     (request.method == "POST" and re.fullmatch(r"/api/stations/[^/]+/preview/[\w-]+/lease", path))
-                need = "admin" if path.startswith(("/api/users", "/api/mcp/tokens", "/api/mcp/audit", "/api/notifications", "/api/operations")) else \
-                    ("viewer" if request.method == "GET" or preview_read else "operator")
+                need = "admin" if path.startswith(("/api/users", "/api/mcp/tokens", "/api/mcp/audit", "/api/notifications", "/api/operations", "/api/ai/")) else \
+                    ("viewer" if request.method == "GET" or preview_read or path == "/api/assistant/chat" else "operator")
                 AuthStore.check(current_user(request), need)
             except AuthError as e:
                 from fastapi.responses import JSONResponse
@@ -678,12 +711,12 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
     @app.get("/api/stations")
     def stations() -> list[dict[str, Any]]:
-        return [rt.state_cache or {"meta": rt.meta()} for rt in manager.runtimes.values()]
+        return [rt.public_state() for rt in manager.runtimes.values()]
 
     @app.get("/api/stations/{sid}/state")
     def station_state(sid: str) -> dict[str, Any]:
         rt = manager.get(sid)
-        return rt.state_cache or {"meta": rt.meta()}
+        return rt.public_state()
 
     @app.get("/api/stations/{sid}/config")
     def station_config(sid: str) -> dict[str, Any]:
@@ -1239,7 +1272,7 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         if not check["ok"]:
             store.close()
             raise HTTPException(400, ";".join(check["problems"][:3]))
-        rec = store.update(tid, intervals=body.intervals, status="annotated")
+        rec = store.update(tid, intervals=body.intervals, status="annotated", frames=[])
         extracted = 0
         if body.extract:
             vpath = manager.data_dir / "timelines" / rec["video"]
@@ -1247,6 +1280,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
             rows = extract_interval_frames(vpath, body.intervals, frames_dir, body.per_interval)
             write_manifest(frames_dir, rows)
             extracted = len(rows)
+            frames = [{**row, "url": f"/api/timelines/{tid}/frames/{row['file']}"} for row in rows]
+            rec = store.update(tid, frames=frames)
         store.close()
         return {**rec, "check": check, "extracted": extracted,
                 "frames_url_prefix": f"/api/timelines/{tid}/frames"}
@@ -1431,9 +1466,12 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
     # ---- 拍照即检(V 系列) ----
     def _inspection() -> InspectionService:
-        if manager.inspection is None:
-            raise HTTPException(503, "拍照即检未启用:缺少 ZHIPU_API_KEY(在 sop-vision/.env 配置后重启服务)")
+        if manager.inspection is None or (not manager.ai_services.catalog()["bindings"].get("vlm") and not manager.inspection.provider.cfg.configured):
+            raise HTTPException(503, "请在设置中绑定 VLM 服务，或配置 ZHIPU_API_KEY；同时需要即检场景配置")
         return manager.inspection
+
+    from .equipment_results_routes import router as equipment_router
+    app.include_router(equipment_router(manager.equipment_results, _inspection))
 
     @app.get("/api/inspection/scenarios")
     def inspection_scenarios() -> list[dict[str, Any]]:
@@ -1493,14 +1531,38 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         await sock.accept()
         q: asyncio.Queue = asyncio.Queue(maxsize=500)
         hub.clients.add(q)
-        try:
-            await sock.send_json({"type": "hello", "stations": [rt.meta() for rt in manager.runtimes.values()]})
+        tasks: list[asyncio.Task] = []
+
+        async def send_events() -> None:
             while True:
                 await sock.send_json(await q.get())
-        except (WebSocketDisconnect, RuntimeError):
+
+        async def watch_disconnect() -> None:
+            # Read even when no station emits events: an idle q.get cannot see a closed socket.
+            # Incoming payloads are deliberately ignored; this endpoint is push-only.
+            while True:
+                message = await sock.receive()
+                if message["type"] == "websocket.disconnect":
+                    return
+
+        try:
+            await sock.send_json({"type": "hello", "stations": [rt.meta() for rt in manager.runtimes.values()]})
+            tasks = [asyncio.create_task(send_events(), name="stepeye-ws-send"),
+                     asyncio.create_task(watch_disconnect(), name="stepeye-ws-receive")]
+            done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                task.result()
+        except (WebSocketDisconnect, RuntimeError, OSError, asyncio.CancelledError):
             pass
         finally:
             hub.clients.discard(q)
+            # Drain cancellation so neither queue wait nor socket receive survives this client.
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                import anyio
+                with anyio.CancelScope(shield=True):
+                    await asyncio.gather(*tasks, return_exceptions=True)
 
     app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
     return app

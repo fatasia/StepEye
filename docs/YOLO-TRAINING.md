@@ -7,7 +7,7 @@
 - 本机 YOLO 检测 `.pt` 基座 → 训练 → 独立验证集评测 → 固定 640、batch=1、float32 原始输出 ONNX。
 - 图像与标签、类别顺序、版本清单、基座都有 SHA256；训练前后重新核对，内容改变则不接纳结果。
 - 每类必须在 train 和 val 中有正样本；相同图像哈希和清单中的同源组不能跨集合，合成样本不能进入验证集。
-- 成功只得到 `candidate`，不写生产配置。单测使用假训练器验证流程，没有完成真实模型训练。
+- 成功只得到 `candidate`，不写生产配置。单测使用假训练器验证流程；本机另完成了文末的单针孔真实训练实验。
 
 ## 输入规格
 
@@ -61,3 +61,56 @@ ONNX 要求单输入 `[1,3,640,640]`、单输出 `[1,4+类别数,候选点数]`�
 用户在视觉应用选择模型 → 打开标注项目 → 导入样本并复核 → 点击“训练/增强”。后台固定当前确认版本，默认30轮、batch 4、输入640；同一次提交使用幂等键，避免网络重试重复训练。模型必须有同名、同目录的管理员批准 `.pt` 基座，ONNX 本身不能继续训练；新下载的仅ONNX评估模型不具备增强基座。
 
 一个训练进程串行处理，最多4个活动任务，4小时超时停止；可取消，队列空后线程退出。服务重启将中断任务标为 `interrupted`，不自动重新花费GPU。成功候选回到视觉应用试跑，后续还需独立测试与人工发布审批，当前不自动改生产模型。
+
+## 2026-11-03：实际训练记录
+
+已完成 **CoatingVision 单针孔**实验，不是完整两类模型，也没有发布。数据来自[作者 Figshare v1](https://doi.org/10.6084/m9.figshare.29260121.v1)，CC BY 4.0；YOLOv8n 基座取自[Ultralytics 官方 v8.3.0](https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt)，资产 ID 195719301，6,549,796 字节，SHA256 `f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36`。代码／权重 AGPL 条款与数据 CC BY 分开记录，商用发布尚未审批。
+
+### 源批次与任务范围
+
+581 张有框图中，原文件名 R1 前缀为 560 张（针孔 543 框、未分类 85 框），R7 为 21 张（针孔 21 框、未分类 0）。两类若按 R1/R7 隔离，验证集缺少未分类正样本，状态为 `blocked_missing_class`；未随机拆 R1 相邻帧／同帧 patch 来补验证。
+
+实验收窄为 `pinhole`：R1 中 498 张有针孔框的图片训练，R7 的 21 张验证；62 张仅含其他类框的图被排除，不补空背景。另 1,646 张缺标签图片全部排除。标签注明“作者发布、未在 StepEye 人工复核”，未生成假的人工确认 manifest。R 前缀是保守源组隔离，不等于已核实物理生产卷独立；只有两组，不能组成独立 train/val/test 三批，R7 是开发验证集而非最终盲测集。
+
+可复现转换（仓库根目录，输出目录必须不存在）：
+
+```powershell
+python sop-vision/tools/prepare_coating_dataset.py .v0/quality-models/CoatingVision-v1.zip .v0/train-run/coating-two-class --mode two-class
+python sop-vision/tools/prepare_coating_dataset.py .v0/quality-models/CoatingVision-v1.zip .v0/train-run/coating-pinhole --mode pinhole
+```
+
+第一条正常返回退出码 2 并保存缺类报告；第二条生成实验数据。每图／转换标签的哈希、原文件名、源组与集合写入 `metadata.json`，`preparation.json` 记录排除数与限制；原 ZIP 不变。默认 500 图／类门槛仍未满足，实验准入不是生产准入。
+
+### 环境
+
+新建 `.v0/train-venv`，本地 NumPy 2.5.4 使用 OpenBLAS；显式通过 `.pth` **只读借用**已有 GPU 包，不修改主环境或 action-venv。这不是自包含发行环境；主依赖变化后必须重新检查。
+
+```powershell
+python sop-vision/tools/train_setup.py --venv .v0/train-venv --borrow-site C:/Users/rain/anaconda3/Lib/site-packages --report .v0/train-run/environment.json
+```
+
+新机器可不借包，先按[官方 PyTorch 入口](https://pytorch.org/get-started/locally/)在该虚拟环境安装匹配 GPU 的固定 torch/torchvision，再用 `--install` 安装 `requirements-training.txt`；不要在主环境安装。`--check-only` 只核验，报告含解释器、包版本／路径、METADATA/RECORD 指纹和实际 GPU。
+
+本次实际：Python 3.13.9、torch 2.12.0+cu130、torchvision 0.27.0+cu130、Ultralytics 8.4.198、ONNX 1.23.2，RTX 4060 Laptop 8188MiB。旧 `helmet.pt` 只检查 SHA、ZIP CRC 与静态 pickle globals，没有作为训练基座加载。
+
+### 运行结果
+
+规格在 `.v0/train-run/pinhole-3epoch-spec.json`：3 epochs、batch 4、640、GPU 0、seed 42、workers 0、AMP 关闭。实际经现有 `visual.training_worker` 完成 train → val → export，退出码 0，总计 32.96 秒。
+
+| 验证口径 | 结果 |
+|---|---|
+| R7，21图／21框；PyTorch验证 | Precision 0.51765、Recall 0.56247、mAP50 0.47407、mAP50–95 0.25225 |
+| 导出 | float32 `[1,3,640,640]` → `[1,5,8400]`，opset 17，ONNX checker通过 |
+| 同一真实R7图，PyTorch/ONNX输出差 | 最大绝对差 0.00048828125 |
+| 平台CPU解码，conf 0.25／IoU 0.5 | TP 11、FP 2、FN 10；Precision 0.84615、Recall 0.52381 |
+| CPU ONNX，21图、2线程 | P50 40.82ms、P95 46.98ms，非相机端到端延迟 |
+
+PyTorch 验证与固定 conf 的 ONNX 工作点不同，不能互相替代。第一次 CPU 检查脚本因严格评测器拒绝 NumPy scalar 失败，显式转 Python float 后重跑通过；失败保留在 `onnx-check-first-attempt.json`，不是训练／导出失败。
+
+数据指纹 `4408d2946c38979b2090fb5a269bce7c0279cb84c3ff65eff30cc2952bc3f5d5`；数据版本 `CV1-04dd29cac2124ce0-pinhole-ffdebf6bbaad`。
+
+- ONNX：`.v0/train-run/pinhole-pilot-3epoch/train/weights/best.onnx`，SHA256 `c2a5e9af8e1311a7d3392b6503ffda3142c9eea0929316a53e7804d928c594d0`。
+- 同目录 `best.pt`：SHA256 `240793e1744ffd9073f5f88a3f27629b0b6479ca349cb4518bb7b4310b12fa4a`。
+- 原始证据：`pinhole-3epoch.log`、`train/results.csv`、`result.json`、`metrics.json`、`onnx-platform-check.json`。
+
+未验证未分类、裂纹、分层，没有现场盲测／长期影子／生产合格结论。另查[官方 COCO8](https://docs.ultralytics.com/datasets/detect/coco8)小型 CC BY 数据：只适合链路冒烟，且来自 COCO、与通用预训练来源重叠，未用它冒充质量模型独立效果。完整两类实验仍需在独立源组补足未分类正样本，或选另一个类别／分组完整的质量数据集。

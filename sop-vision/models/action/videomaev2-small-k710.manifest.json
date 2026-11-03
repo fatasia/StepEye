@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "id": "videomaev2-small-k710",
+  "name": "VideoMAEv2 Small / Kinetics-710",
+  "task": "video-classification",
+  "model_path": "models/action/videomaev2-small-k710.onnx",
+  "classes_path": "models/action/videomaev2-small-k710.classes.json",
+  "model_sha256": "6748dbc33dfb4f83c581bfdd695c99c4f83654d63e87867d8b289f7fb40558a2",
+  "weight_sha256": "24fb71687fa3671b8387cadfbcbab0f72af695692e93cf1ecc82caa888626172",
+  "weight_url": "https://huggingface.co/OpenGVLab/VideoMAE2/resolve/706cc172d65ebd4dedbee3f9c0183a93df9fa125/distill/vit_s_k710_dl_from_giant.pth",
+  "weight_bytes": 44334609,
+  "weight_card_license": "Apache-2.0",
+  "code_license": "MIT",
+  "weight_license_source": "https://huggingface.co/OpenGVLab/VideoMAE2/tree/706cc172d65ebd4dedbee3f9c0183a93df9fa125",
+  "code_license_source": "https://github.com/OpenGVLab/VideoMAEv2/blob/29eab1e8a588d1b3ec0cdec7b03a86cca491b74b/LICENSE",
+  "input_shape": [
+    1,
+    3,
+    16,
+    224,
+    224
+  ],
+  "output_shape": [
+    1,
+    710
+  ],
+  "source_head_shape": [
+    710,
+    384
+  ],
+  "validation": "single_public_clip_verified",
+  "industrial_accuracy": "unverified",
+  "auto_enable": false,
+  "preprocessing": "RGB short-side256 center224 ImageNet mean/std; batch1 fixed16 frames; single crop"
+}

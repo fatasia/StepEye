@@ -27,6 +27,9 @@ from .perception.quality import QualityPerceiver
 from .perception.roi_state import RoiStatePerceiver
 from .safety import SafetyMonitor, SafetyRule
 from .ehs import EhsMonitor
+from .proximity import ProximityMonitor
+from .ppe import PPEMonitor
+from .thermal import ThermalMonitor
 from .sim import SimHands, SimSource
 from .sources import create_source
 
@@ -54,9 +57,11 @@ class StationRuntime:
         self.stream: np.ndarray | None = None
         self.frame_idx = 0
         self.alerts: list[dict[str, Any]] = []
+        self._alerts_lock = threading.Lock()
         self.listeners: list[Callable[[str, dict[str, Any]], None]] = []
         self.frame_observers: list[Callable] = []
         self.signal_inbox = None
+        self.thermal_service = None
         self._last_frame_wall: float | None = None
         self._calib_request: list[str] | None = None
         self._lock = threading.Lock()
@@ -98,6 +103,9 @@ class StationRuntime:
                             severity=r.severity, name=r.name, target=r.target) for r in cfg.safety.rules]
         self.safety = SafetyMonitor(rules) if cfg.safety.enabled and rules else None
         self.ehs = EhsMonitor(cfg.ehs, self.geoms) if cfg.ehs.enabled else None
+        self.proximity = ProximityMonitor(cfg.proximity, (self.w, self.h))
+        self.ppe = PPEMonitor(cfg.ppe, self.geoms) if cfg.ppe.enabled else None
+        self.thermal = ThermalMonitor(cfg.thermal)
         # vlm_check:后台线程判帧,不阻塞视频循环;结果以 OBJ_STATE(伪区域)进引擎
         self._vlm_conds = {}
         for st in self.program.steps:
@@ -189,6 +197,8 @@ class StationRuntime:
                 self.engine.process(Event(ts, OBJ_STATE, zone=key, state="ok"))
         if self._vlm_provider is None or not self.engine.cycle:
             return
+        if getattr(self._vlm_provider, 'ready', True) is False:
+            return
         active_keys = {c.vlm_check.key for st in self.engine.cycle.steps if st.status == "active"
                        for c in st.spec.evidence.conds if c.kind == "vlm_check"}
         due = [(key, vc) for key, vc in self._vlm_conds.items()
@@ -242,10 +252,48 @@ class StationRuntime:
                                    cycle_id=cycle.id if cycle else None, object_id=token,
                                    quality_ok=not blocked, visible=token is not None, trigger=trigger)
 
+    def bind_calibrations(self, store):
+        self.proximity.bind_calibrations(store)
+
+    def bind_signal_inbox(self, inbox):
+        """Thermal input bypasses camera reads; SOP keeps its existing frame queue."""
+        self.signal_inbox = inbox
+        if self.cfg.thermal.enabled:
+            from .thermal_service import ThermalSignalService
+            self.thermal_service = ThermalSignalService(self.cfg.thermal, self._emit_safety)
+            inbox.bind_observer(self.thermal_service.observe, self.thermal_service.keys)
+
+    def _emit_safety(self, alert):
+        with self._alerts_lock:
+            self.alerts.insert(0, {"station": self.cfg.station, "cycle_id": None,
+                                  "at": int(time.time() * 1000), **alert})
+            del self.alerts[50:]
+        for fn in self.listeners:
+            fn("safety", alert)
+
+    def public_state(self):
+        """Refresh device TTL without reading the camera-owned engine from HTTP."""
+        snap = dict(self.state_cache) if self.state_cache else {"meta": self.meta()}
+        if self.thermal_service is not None:
+            snap["thermal"] = self.thermal_service.snapshot()
+            with self._alerts_lock:
+                snap["alerts"] = self.alerts[:20]
+        return snap
+
+    def bind_ai_services(self, store):
+        """SOP and snapshot inspection share the same configured VLM binding."""
+        if self._vlm_conds:
+            from .ai_services import DynamicAIProvider
+            fallback = self._vlm_provider or VLMProvider(ProviderConfig.from_env())
+            self._vlm_provider = DynamicAIProvider(store, fallback)
+
     def _reset_visual_observations(self) -> None:
         """只清观测/去抖缓存，保留模型、标定参考和原始帧。"""
         if self.ehs is not None:
             self.ehs.reset()
+        self.proximity.reset()
+        if self.ppe is not None:
+            self.ppe.reset()
         for perceiver in (self.hands, self.persons, self.detector, self.roi):
             if perceiver is None:
                 continue
@@ -301,7 +349,8 @@ class StationRuntime:
         events += self.roi.process(frame, ts, self.ctx)
         quality_events = self.quality.process(frame, ts, self.ctx)
         blocked, gate_event = self._quality_gate(ts)
-        safety_alerts = []
+        # Device temperatures remain independent of camera lighting quality.
+        safety_alerts = [] if self.thermal_service is not None else self.thermal.process(external, ts)
         frame_events = ([] if blocked else sorted(events, key=lambda e: e.ts)) + external
         self.engine.process_batch(frame_events, ts)
         if not blocked:
@@ -310,17 +359,21 @@ class StationRuntime:
                     safety_alerts += self.safety.process(ev)
         if self.safety is not None and not blocked:
             safety_alerts += self.safety.tick(ts)
+        if self.ppe is not None and not blocked:
+            safety_alerts += self.ppe.process(self.ctx.object_tracks, ts,
+                available=self.detector is not None and hasattr(self.detector, "mot"))
         if self.ehs is not None and not blocked:
             safety_alerts += self.ehs.process(self.ctx.object_tracks, ts,
                 available=self.detector is not None and hasattr(self.detector, "mot"),
                 available_labels=set(self.cfg.detector.classes) & set(getattr(self.detector, "class_names", [])))
         if not blocked:
-            for alert in safety_alerts:
-                self.alerts.insert(0, {"station": self.cfg.station, "cycle_id": None,
-                                       "at": int(time.time() * 1000), **alert})
-                del self.alerts[50:]
-                for fn in self.listeners:
-                    fn("safety", alert)
+            safety_alerts += self.proximity.process(self.ctx.object_tracks, ts,
+                available=self.detector is not None and hasattr(self.detector, "mot"),
+                available_labels=set(self.cfg.detector.classes) & set(getattr(self.detector, "class_names", [])),
+                frame_size=(frame.shape[1], frame.shape[0]))
+        # Visual rules are gated above; device signals still report with a dark camera.
+        for alert in safety_alerts:
+            self._emit_safety(alert)
         if not blocked:
             self._vlm_drain(ts, frame)
         self._action_observe(ts, frame, blocked)
@@ -374,6 +427,9 @@ class StationRuntime:
 
     def stop(self) -> None:
         self.stop_event.set()
+        if self.thermal_service is not None:
+            self.signal_inbox.close()
+            self.thermal_service.close()
         self.action_shadow.close()
         with self._vlm_guard:
             worker = self._vlm_thread
@@ -394,6 +450,9 @@ class StationRuntime:
 
     def state(self) -> dict[str, Any]:
         snap = self.engine.snapshot()
+        snap["proximity"] = self.proximity.snapshot()
+        snap["thermal"] = self.thermal_service.snapshot() if self.thermal_service is not None else self.thermal.snapshot()
+        snap["ppe"] = self.ppe.snapshot() if self.ppe is not None else {"enabled": False}
         snap["ehs"] = self.ehs.snapshot() if self.ehs is not None else {"enabled": False, "rules": {}}
         snap["quality"] = {**self.quality.snapshot(), "confirmed_degraded": self.quality.degraded,
                            "confirmed_reason": self.quality.reason, "degraded": self.engine.world.quality_bad,

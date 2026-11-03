@@ -1,11 +1,11 @@
 # 质量检测公开资产
 
-2026-11-03。本次找到并下载了极片涂层数据和 PCB ONNX 候选；均未接入生产、未训练。此前资产不重复下载，基线见[既有模型审计](MODEL-ASSET-AUDIT.md)。
+2026-11-03。已下载极片数据和 PCB ONNX 候选，并完成受限的单针孔真实训练；均未接入生产。此前资产不重复下载，基线见[既有模型审计](MODEL-ASSET-AUDIT.md)。
 
 | 方向 | 实际取得 | 当前判断 |
 |---|---|---|
-| 锂电／极片涂层 | CoatingVision v1，94.3MB 完整 ZIP | 最值得继续的数据；检测标注仅针孔／未分类两类，不是四类检测器 |
-| 汽车电子／PCB | 社区 PCB YOLO26s，38.2MB ONNX | 文件合格；训练数据许可未明，且当前解码器不支持其端到端输出，隔离保留 |
+| 锂电／极片涂层 | CoatingVision v1，94.3MB 完整 ZIP | R1→R7两类缺验证类别；已完成单针孔3轮候选，不是完整两类／四类模型 |
+| 汽车电子／PCB | 社区 PCB YOLO26s，38.2MB ONNX | 独立端到端适配与CPU固定图实推已接；数据许可未明，仅供评估 |
 | PCB 数据 | 作者 DeepPCB 一对图及框标注 | 数据明确仅限研究；不能拿仓库 MIT 当数据商用授权 |
 | 金属表面 | 作者 GC10-DET 仓库及下载入口 | 未找到作者数据许可证；暂不选作默认交付 |
 | 包装 | 作者 Merge-YOLO 仓库 | “Defective Dataset”实际是 1 字节文件，未提供可训练数据或权重 |
@@ -32,7 +32,7 @@ MD5 与作者 Figshare file 55182476 发布值一致，ZIP 全量 CRC 通过，�
 
 `coating-validation.json` 是全包检查结果；`coatingvision-sample/` 保留一组原始检测图／标签及 CSV。作者 GitHub 的 8 对 train/val 示例另存在 `coatingvision-source/`，不是完整训练拆分，也不代替全包数据。
 
-**下一步可实际做的事**：将有框的 581 图按原视频／物理卷分组导入两类项目，核实标注和许可归属，保留独立批次，再执行[训练预检](TRAINING-READINESS.md)。未分类类仅 78 张，达不到现有每类 500 张默认门槛；当前也没有独立现场验证集。裂纹／分层需另外审核多通道分割标注后决定做分割还是人工框，不能直接改类名复用针孔检测标签。
+**实际继续结果**：转换脚本已生成按 R1/R7 隔离的 560/21 图两类数据，但 R7 未分类正样本为 0，两类训练仍 blocked。另明确限定单针孔任务，R1 498 图训练、R7 21 图验证，官方YOLOv8n三轮真实 train/val/export完成；mAP50 0.47407、mAP50–95 0.25225，模型仍是实验候选。完整环境、指纹、命令和CPU核验见[训练记录](YOLO-TRAINING.md#2026-11-03实际训练记录)。未分类仅78图仍不满足默认500图/类门槛，裂纹／分层不能改名复用针孔框。
 
 ## 2. PCB ONNX：文件可核验，不能直接上岗
 
@@ -42,7 +42,11 @@ MD5 与作者 Figshare file 55182476 发布值一致，ZIP 全量 CRC 通过，�
 
 静态 `onnx.checker` 通过，无 external-data 引用，无自定义算子域：float32 输入 `[1,3,640,640]`，输出 `[1,300,6]`，顺序为 `[x1,y1,x2,y2,confidence,class_id]`，opset 20。类别表与文件元数据一致：missing_hole、mouse_bite、open_circuit、short、spur、spurious_copper。
 
-当前 `visual/onnx_detector.py` 明确不支持端到端 NMS 输出，不能按 v8 原始输出解码。此模型只完成下载、哈希和静态结构校验，未执行推理或独立评测；没有安装或加载 PT/pickle。作者报告的 board-grouped 成绩不是本项目实测，也不代替目标汽车电子产线数据。
+已增加 `visual/yolo_e2e.py`，经 `detector_registry.create_backend(adapter="yolo_e2e")` 显式选择，不把六列输出猜成 v8 原始布局，也不再执行 NMS。原始布局适配保持原路；遇 `end2end=True` 元数据会要求明确适配器，防止两类别原始输出与六列布局混淆。
+
+`models/public/quality-models.json` 固定指纹、6类及许可状态；本机权重复制到 `sop-vision/models/public/pcb-yolo26.onnx` 后登记 `public-pcb-yolo26`。只登记 `evaluation_only`，不下载 PT、不替换任何生产模型、不自动切到相机。现有视觉应用试图及机器建议均使用原来的按需子进程，通过登记的 adapter 选择布局。
+
+实际测试使用 DeepPCB 固定图 `00041000_test.jpg`，SHA256 `624b448f0737aaa8bdc53963a752800147bffb2591365b9810b3f2a83b956c4a`：完整 `ModelTrials` CPU子进程链路约948ms，conf 0.25 返回 **0框**。该二值图与模型训练来源不同，未比较真值、未计算准确率；0框不是“PCB合格”。报告在 `.v0/quality-models/pcb-e2e-real-trial.json`。作者报告的 board-grouped 成绩仍不是本项目实测，不代替真实汽车电子产线评测；训练数据许可未明的状态没有因适配完成而改变。
 
 ## 3. 不应误列为可用的其他候选
 
@@ -53,4 +57,4 @@ MD5 与作者 Figshare file 55182476 发布值一致，ZIP 全量 CRC 通过，�
 
 ## 本轮结论
 
-可继续准备的是 **CoatingVision 两类极片检测数据**；PCB ONNX 仅留作输出适配和评测候选。没有新增已合格的包装、表面或汽车电子生产模型，没有训练、替换 YOLO 或修改现有模型配置。
+**CoatingVision 单针孔已产生真实训练候选，两类仍缺独立验证类别**；PCB ONNX仅留作输出适配和评测候选。没有新增生产合格模型，没有替换现有YOLO或修改生产配置。
