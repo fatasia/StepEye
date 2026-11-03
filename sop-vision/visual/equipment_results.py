@@ -54,7 +54,7 @@ class EquipmentResults:
         if not 1<=len(files)<=MAX_IMAGES: raise LabelError("每次需要1–5张设备图片")
         if any(not isinstance(data,bytes) or not 1<=len(data)<=MAX_FILE for _,data in files) or sum(len(data) for _,data in files)>MAX_TOTAL:
             raise LabelError("图片每张最多10MB，总计最多25MB",413)
-        inputs=body.model_dump(mode="json")
+        inputs=body.model_dump(mode="json",exclude_none=True)
         signature=_signature({"metadata":inputs,"images":[hashlib.sha256(data).hexdigest() for _,data in files]})
         rid="ER-"+uuid.uuid4().hex;stage=self.staging/rid;final=self.records/rid;moved=False;created_stage=False
         with self._guard:
@@ -92,7 +92,7 @@ class EquipmentResults:
         return json.loads(row[0])
 
     def list(self,device_id="",sn="",result="",limit=50,offset=0):
-        if result not in {"","OK","NG"} or type(limit) is not int or not 1<=limit<=100 or type(offset) is not int or not 0<=offset<=1000000:
+        if result not in {"","OK","NG","UNCERTAIN"} or type(limit) is not int or not 1<=limit<=100 or type(offset) is not int or not 0<=offset<=1000000:
             raise LabelError("筛选或分页参数无效")
         where="WHERE (?='' OR device=?) AND (?='' OR sn=?) AND (?='' OR verdict=?)"
         args=(device_id,device_id,sn,sn,result,result)
@@ -100,6 +100,16 @@ class EquipmentResults:
             self._active();total=self._db.execute("SELECT COUNT(*) FROM equipment_results "+where,args).fetchone()[0]
             rows=self._db.execute("SELECT body FROM equipment_results "+where+" ORDER BY observed DESC,id LIMIT ? OFFSET ?",args+(limit,offset)).fetchall()
         return {"total":total,"items":[json.loads(r[0]) for r in rows]}
+
+    def inspection_faces(self,product_id,sn,inspection_id):
+        """Exact product/SN/run binding; never merge reinspection with an old run."""
+        with self._guard:
+            self._active()
+            rows=self._db.execute("SELECT body FROM equipment_results WHERE sn=? "
+                "AND json_extract(body,'$.product_id')=? AND json_extract(body,'$.inspection_id')=? "
+                "ORDER BY observed,id LIMIT 101",(sn,product_id,inspection_id)).fetchall()
+        if len(rows)>100:raise LabelError('同次六面检查超过100条记录，请核对检测批次',409)
+        return [json.loads(row[0]) for row in rows]
 
     def image_path(self,rid,index):
         record=self.get(rid)

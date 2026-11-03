@@ -1,4 +1,4 @@
-import { $, esc, fmtTime } from "../util.js";
+import { $, esc, fmtTime, randomKey } from "../util.js";
 import { openDrawer, openLightbox } from "../ui.js";
 
 const endpoint = "/api/equipment-results";
@@ -17,7 +17,7 @@ const localNow = () => {
 /** 设备原判与复判并列保存；没有模型时仍可导入、查图和人工复核。 */
 export function openEquipmentResults({ canWrite }) {
   let closed = false, selected = null, detailGeneration = 0, listGeneration = 0, offset = 0, total = 0;
-  let uploadKey = crypto.randomUUID(), scenarios = [], reviewKey = crypto.randomUUID();
+  let uploadKey = randomKey(), scenarios = [], reviewKey = randomKey();
   const machineKeys = new Map(), submitted = new Set(), limit = 25;
   const drawer = openDrawer({ title: "设备质检结果", subtitle: "保留设备原判，单独记录人工与模型复判",
     onClose: () => { closed = true; }, html: `
@@ -71,7 +71,7 @@ export function openEquipmentResults({ canWrite }) {
   async function detail(id) {
     const generation = ++detailGeneration, r = await request(`${endpoint}/${encodeURIComponent(id)}`);
     if (closed || generation !== detailGeneration) return;
-    selected = r; reviewKey = crypto.randomUUID();
+    selected = r; reviewKey = randomKey();
     body.querySelectorAll("[data-er-id]").forEach(b => b.setAttribute("aria-current", String(b.dataset.erId === id)));
     const host = $("[data-er-detail]", body);
     host.innerHTML = `<h3>设备原判与证据</h3><div class="er-original"><div><b>${esc(r.sn)}</b><br>${esc(r.device_id)} · ${esc(r.source_kind)}</div><strong data-er-original>${esc(r.result)}</strong></div>
@@ -86,7 +86,7 @@ export function openEquipmentResults({ canWrite }) {
     $("[data-er-history-refresh]", host).onclick = () => history(id, generation).catch(error);
     if (canWrite) {
       const review = $("[data-er-review]", host);
-      review.oninput = () => { reviewKey = crypto.randomUUID(); };
+      review.oninput = () => { reviewKey = randomKey(); };
       review.onsubmit = e => { e.preventDefault(); busy($("[data-er-review-save]", host), async () => {
         const values = Object.fromEntries(new FormData(review));
         await request(`${endpoint}/${encodeURIComponent(id)}/reviews`, post({ ...values, idempotency_key: reviewKey }));
@@ -101,7 +101,7 @@ export function openEquipmentResults({ canWrite }) {
       scene.onchange = updateMachine; updateMachine();
       button.onclick = () => busy(button, async () => {
         const key = `${id}:${scene.value}`;
-        if (!machineKeys.has(key)) machineKeys.set(key, crypto.randomUUID());
+        if (!machineKeys.has(key)) machineKeys.set(key, randomKey());
         const record = await request(`${endpoint}/${encodeURIComponent(id)}/rechecks`, post({ scenario_id: scene.value, idempotency_key: machineKeys.get(key) }));
         submitted.add(key);
         if (closed || generation !== detailGeneration) return;
@@ -111,7 +111,7 @@ export function openEquipmentResults({ canWrite }) {
     }
     await history(id, generation);
   }
-  form.oninput = () => { uploadKey = crypto.randomUUID(); };
+  form.oninput = () => { uploadKey = randomKey(); };
   form.onsubmit = e => { e.preventDefault(); busy($("[data-er-save]", body), async () => {
     const files = [...form.elements.files.files], values = Object.fromEntries(new FormData(form));
     if (files.length < 1 || files.length > 5 || files.some(f => f.size > 10 * 1024 ** 2) || files.reduce((n, f) => n + f.size, 0) > 25 * 1024 ** 2) throw new Error("请选择 1–5 张图片，每张不超过 10MB，总计不超过 25MB");
@@ -119,7 +119,7 @@ export function openEquipmentResults({ canWrite }) {
     const data = new FormData(); data.append("metadata", JSON.stringify(payload)); files.forEach(f => data.append("files", f));
     const response = await request(endpoint, { method: "POST", body: data });
     if (closed) return;
-    uploadKey = crypto.randomUUID(); $("[data-er-upload]", body).open = false;
+    uploadKey = randomKey(); $("[data-er-upload]", body).open = false;
     status(response.created ? "设备原判与图片已保存。" : "相同结果已存在，未重复导入。");
     filter.reset(); offset = 0; await listing(); await detail(response.result.id);
     $("[data-er-detail]", body).scrollIntoView({ block: "start", behavior: "smooth" });

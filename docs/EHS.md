@@ -99,3 +99,9 @@ closed = shadow.close(timeout_s=.5)
 开启方式：站点配置 `ppe.enabled: true`、`ppe.helmet_probe.enabled: true`；两项默认均关闭。使用站点现有 base_dir 解析模型路径。状态 `helmet_probe` 提供原采样时间、候选状态与独立逐人样本。画质阻断/断流清缓存；stop/EOF 关闭 worker，原生调用仍在运行时报告 `closing`、`close_complete: false`。
 
 运行时测试使用真实队列与模拟检测输出：连续三个真实采样通过既有 safety listener 发出一条原时间戳未戴帽告警；当前 Context 不混入旧帽子框。另覆盖默认关闭、EOF 释放、画质清空和关闭超时。
+
+### PPE 14类的实时消费
+
+PPEMonitor已识别新权重的hardhat/no-hardhat、no-safety vest、gloves/no-gloves、goggles/no-goggles、safety shoes原标签，并按人员相对头/躯干/手/眼/脚区域关联。护目镜和劳保鞋进入gear快照；shoes_required默认2，可设1。小目标、归属歧义、正负冲突和未检出均保留unknown；只对明确负类持续证据报警。该14类模型没有no-shoes，不能靠鞋未检出判断缺鞋，也不推断ESD性能。
+
+使用新模型时，detector.class_names须为清单完整14类顺序，detector.classes须保留相关原名；max_results应覆盖人员及其用品（默认5可能截断用品）。平台未自动替换原生产模型。逐人关联的软件测试不代替护目镜/手套小目标实景评测。

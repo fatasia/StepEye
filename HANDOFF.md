@@ -167,3 +167,5 @@ YOLO ZIP 导入已接Web：名称映射、逐项问题、草稿复核、合成�
 本批全量1006 passed、2 skipped（含未提交独立品牌测试），JS语法检查通过；PPE14类/焊缝3类/增强针孔评估入口已接。新增电池焊缝6张实际样本，发现尺寸与类别潜在偏差；密封钉专用模型和六面SN关联仍未完成，见docs/BATTERY-INSPECTION.md。
 
 提交078bf1d已推送，GitHub Actions 41622571248的Windows/Linux主测试和MCP四项全部通过。PPE与焊缝评估目录专项24项及两模型实际目录试跑通过；针孔增强也经同一ModelTrials入口实推。
+
+继续批：六面证据按产品/SN/检测批次隔离，原判可UNCERTAIN；缺面、冲突、重复图不complete，任一NG不被后记录覆盖。PPE新增护目镜/安全鞋逐人消费，实时页显示五类与仓储计数、断流未知清旧值。LAN HTTP的设备/六面幂等键改为getRandomValues，不依赖secure-context randomUUID。后台相关57项、随后含下载工具53项通过；真实Web上传/切SN/重复保存/断流5秒与WS关闭恢复通过。电池数据续传进行中，未完成训练。

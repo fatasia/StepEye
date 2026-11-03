@@ -8,10 +8,28 @@ from .helmet_probe import HelmetProbeCfg
 
 ALIASES = {
     'helmet': ('helmet', False), 'with helmet': ('helmet', False),
-    'without helmet': ('helmet', True),
+    'hardhat': ('helmet', False), 'hard hat': ('helmet', False),
+    'without helmet': ('helmet', True), 'no-helmet': ('helmet', True),
+    'no-hardhat': ('helmet', True), 'no hardhat': ('helmet', True),
     'safety vest': ('vest', False), 'vest': ('vest', False),
+    'no-safety vest': ('vest', True), 'no-safety-vest': ('vest', True),
+    'no vest': ('vest', True), 'without vest': ('vest', True),
     'gloves': ('gloves', False), 'glove': ('gloves', False),
+    'no-gloves': ('gloves', True), 'no gloves': ('gloves', True),
+    'without gloves': ('gloves', True),
+    'goggles': ('goggles', False), 'safety goggles': ('goggles', False),
+    'no-goggles': ('goggles', True), 'no goggles': ('goggles', True),
+    'without goggles': ('goggles', True),
+    'safety shoes': ('shoes', False), 'safety shoe': ('shoes', False),
+    'safety_shoe': ('shoes', False), 'safety_shoes': ('shoes', False),
+    'no-safety shoes': ('shoes', True), 'no-safety-shoes': ('shoes', True),
+    'no-shoes': ('shoes', True), 'no shoes': ('shoes', True),
+    'without safety shoes': ('shoes', True),
 }
+GEAR = ('helmet', 'vest', 'gloves', 'goggles', 'shoes')
+# Relative image regions are association gates, not anatomical/ESD measurements.
+# Bare-eye/hand/foot boxes are much smaller than the complete head/torso region.
+NEGATIVE_COVERAGE = {'helmet': .4, 'vest': .4, 'gloves': .005, 'goggles': .08, 'shoes': .02}
 
 
 class PPECfg(BaseModel):
@@ -25,6 +43,7 @@ class PPECfg(BaseModel):
     min_s: float=Field(default=1.,ge=0,le=3600)
     max_gap_s: float=Field(default=.5,gt=0,le=10)
     gloves_required: int=Field(default=2,ge=1,le=2)
+    shoes_required: int=Field(default=2,ge=1,le=2)
     severity: Literal['warn','error']='warn'
 
 
@@ -39,6 +58,8 @@ def region(person,gear):
     x0,y0,x1,y1=person.xyxy;w,h=x1-x0,y1-y0
     if gear=='helmet':return (x0,y0,x1,y0+h*.3)
     if gear=='vest':return (x0+w*.1,y0+h*.2,x1-w*.1,y0+h*.72)
+    if gear=='goggles':return (x0+w*.1,y0+h*.02,x1-w*.1,y0+h*.22)
+    if gear=='shoes':return (x0,y0+h*.7,x1,y1)
     return (x0,y0+h*.25,x1,y0+h*.9)
 
 
@@ -55,7 +76,7 @@ class PPEMonitor:
     def snapshot(self):
         import copy
         return {'enabled':self.cfg.enabled,'status':self._status,'persons':copy.deepcopy(self._rows),
-                'gloves_required':self.cfg.gloves_required}
+                'gloves_required':self.cfg.gloves_required,'shoes_required':self.cfg.shoes_required}
 
     def process(self,tracks,ts,*,available=True):
         if not self.cfg.enabled or not available or not math.isfinite(ts):self.reset();return []
@@ -65,7 +86,7 @@ class PPEMonitor:
         self._last_ts=ts
         fresh=[t for t in tracks if t.last_seen==ts and t.confidence>=self.cfg.min_confidence]
         people=sorted([t for t in fresh if t.label.casefold()=='person'],key=lambda t:t.track_id)[:64]
-        assignments={(p.track_id,g):{False:[],True:[]} for p in people for g in ('helmet','vest','gloves')}
+        assignments={(p.track_id,g):{False:[],True:[]} for p in people for g in GEAR}
         ambiguous=set()
         for item in fresh[:1000]:
             alias=ALIASES.get(item.label.casefold().strip())
@@ -79,8 +100,8 @@ class PPEMonitor:
                 if person.xyxy[3]-person.xyxy[1]<self.cfg.min_person_height:continue
                 part=region(person,gear);overlap=intersection(item.xyxy,part)
                 cover=overlap/area(item.xyxy) if area(item.xyxy) else 0.
-                # 显式负类还要覆盖足够头部区域；小碎框不证明头部可见。
-                if cover>=.7 and (not negative or overlap/area(part)>=.4):
+                # 显式负类还需足够区域证据；手/眼/脚不能套用整头40%的面积门槛。
+                if cover>=.7 and (not negative or overlap/area(part)>=NEGATIVE_COVERAGE[gear]):
                     candidates.append((cover,person.track_id))
             candidates.sort(reverse=True)
             if len(candidates)>1 and candidates[0][0]-candidates[1][0]<.15:
@@ -94,7 +115,7 @@ class PPEMonitor:
                    and g.contains((person.xyxy[0]+person.xyxy[2])/2,person.xyxy[3])]
             if not zones:continue
             row={'track_id':person.track_id,'observed_at':ts,'zones':zones,'gear':{}}
-            for gear in ('helmet','vest','gloves'):
+            for gear in GEAR:
                 key=(person.track_id,gear);assigned=assignments[key]
                 positives=[]
                 for item in sorted(assigned[False],key=lambda t:-t.confidence):
@@ -119,9 +140,9 @@ class PPEMonitor:
                             'source':'ppe_tracks','message':f'{gear}缺失持续观测'})
                 elif positives:
                     evidence=[t.track_id for t in positives]
-                    required=self.cfg.gloves_required if gear=='gloves' else 1
+                    required={'gloves':self.cfg.gloves_required,'shoes':self.cfg.shoes_required}.get(gear,1)
                     distinct=True
-                    if gear=='gloves' and required==2 and len(positives)>=2:
+                    if gear in ('gloves','shoes') and required==2 and len(positives)>=2:
                         centers=[(t.xyxy[0]+t.xyxy[2])/2 for t in positives]
                         distinct=max(centers)-min(centers)>=(person.xyxy[2]-person.xyxy[0])*.15
                     status='observed' if len(positives)>=required and distinct else 'unknown'

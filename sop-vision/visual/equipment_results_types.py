@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EquipmentResultBody(BaseModel):
@@ -10,7 +10,10 @@ class EquipmentResultBody(BaseModel):
     device_id: str = Field(min_length=1,max_length=96,pattern=r"^[A-Za-z0-9_.-]+$")
     sn: str = Field(min_length=1,max_length=160)
     observed_at: datetime
-    result: Literal["OK","NG"]
+    result: Literal["OK","NG","UNCERTAIN"]
+    product_id: str | None = Field(default=None,min_length=1,max_length=100)
+    inspection_id: str | None = Field(default=None,min_length=1,max_length=100)
+    face: Literal['front','back','left','right','top','bottom'] | None = None
     defects: list[str] = Field(default_factory=list,max_length=64)
     source_kind: Literal["AOI","AXI","line_scan","xray","ct","other"] = "other"
     idempotency_key: str = Field(min_length=1,max_length=100)
@@ -34,6 +37,18 @@ class EquipmentResultBody(BaseModel):
         if len(set(values))!=len(values) or any(not v.strip() or v!=v.strip() or len(v)>100 or any(ord(c)<32 for c in v) for v in values):
             raise ValueError("缺陷类别须为不重复的1–100字名称")
         return values
+
+    @field_validator('product_id','inspection_id')
+    @classmethod
+    def group_name(cls,value):
+        return cls.clean(value) if value is not None else value
+
+    @model_validator(mode='after')
+    def complete_face_identity(self):
+        supplied=[self.product_id is not None,self.inspection_id is not None,self.face is not None]
+        if any(supplied) and not all(supplied):
+            raise ValueError('六面检查必须同时提供产品、检测批次和面别')
+        return self
 
 
 class EquipmentReviewBody(BaseModel):

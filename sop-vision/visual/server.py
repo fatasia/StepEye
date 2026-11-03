@@ -1479,6 +1479,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
     from .equipment_results_routes import router as equipment_router
     app.include_router(equipment_router(manager.equipment_results, _inspection))
+    from .battery_inspection import router as battery_inspection_router
+    app.include_router(battery_inspection_router(manager.equipment_results))
 
     @app.get("/api/inspection/scenarios")
     def inspection_scenarios() -> list[dict[str, Any]]:

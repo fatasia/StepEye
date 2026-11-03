@@ -1,7 +1,8 @@
+import { mountSafetyRecognition } from "./live-safety.js";
 import { api } from "../api.js";
 import { mountPreview } from "../preview.js";
 import { icon } from "../icons.js";
-import { store, subscribe, stationStatus } from "../store.js";
+import { store, subscribe, stationStatus, isOffline } from "../store.js";
 import { badge, emptyBlock, errorBlock, STEP_STATUS, stationBadge, violationTag } from "../ui.js";
 import { $, durHtml, esc, setHTML } from "../util.js";
 
@@ -95,14 +96,16 @@ export function render(root, params) {
           <section class="panel"><header class="panel-head"><h2>步骤轨道</h2><span class="muted num" data-r="progress"></span></header><ol class="rail" data-r="rail"></ol></section>
           <section class="panel"><header class="panel-head"><h2>违规</h2></header><div class="panel-body viol" data-r="viol"></div></section>
           <section class="panel"><header class="panel-head"><h2>区域状态</h2><span class="muted">手 / 物件</span></header><div class="panel-body zone-chips" data-r="zones"></div></section>
-          <section class="panel"><header class="panel-head"><h2>观测健康</h2><span class="muted">质量 / 融合</span></header><div class="panel-body" data-r="health"></div></section>
+          <section class="panel"><header class="panel-head"><h2>观测健康</h2><span class="muted">质量 / 融合</span></header><div class="panel-body"><div data-r="health"></div><div data-r="safety-recognition"></div></div></section>
         </aside>
       </div>`;
     $("#sel", root).onchange = (e) => (location.hash = `#/live/${encodeURIComponent(e.target.value)}`);
     stopPreview = mountPreview(root, id, cfg.preview);
     const r = (k) => root.querySelector(`[data-r="${k}"]`);
+    const paintSafety = mountSafetyRecognition(r("safety-recognition"));
     const paint = () => {
       const st = store.states.get(id);
+      paintSafety(st, store.conn === "open" && !isOffline(id));
       const c = st?.cycle;
       setHTML(r("status"), stationBadge(stationStatus(id)));
       setHTML(r("cycle"), c ? `周期 #${c.no}` : "等待工件");
