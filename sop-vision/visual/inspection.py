@@ -22,7 +22,7 @@ import cv2
 import numpy as np
 import yaml
 
-from .llm_provider import VLMProvider
+from .llm_provider import VLMProvider, extract_json
 
 MAX_IMAGES = 10
 # 注意:模板里的 JSON 示例用双花括号转义,否则 .format() 会把字段当占位符
@@ -229,24 +229,33 @@ class InspectionService:
 
         imgs = [enc(n) for n in image_names]
         if sc.mode == "first_article":
-            ok_imgs = [base64_of(p) for p in resolve_refs(sc.ok_refs, self.refs_root)]
-            ng_imgs = [base64_of(p) for p in resolve_refs(sc.ng_refs, self.refs_root)]
-            step1 = self.provider.inspect(ok_imgs + imgs[:1], DIFF_PROMPT.format(n_ok=len(ok_imgs)))
-            try:
-                diffs = json.dumps(json.loads(step1["raw"])["differences"], ensure_ascii=False) if step1["ok"] else "无明显差异"
-            except Exception:  # noqa: BLE001 —— 差异解析失败降级为无差异,第二步仍可独立判断
-                diffs = "无明显差异"
+            groups = []
+            for refs in (sc.ok_refs, sc.ng_refs):
+                paths = resolve_refs(refs, self.refs_root)
+                if not 1 <= len(paths) <= 3 or any(not resolve_refs((ref,), self.refs_root) for ref in refs):
+                    raise RuntimeError("首件OK/NG参考图缺失或数量无效，每组需1到3张有效参考图")
+                groups.append([base64_of(p) for p in paths])
+            ok_imgs, ng_imgs = groups
             # 多张待检图时逐张判定(首件场景通常一次一张;多张就串行,保证每张都有完整参考上下文)
             verdicts = []
             for img in imgs:
+                # Each view needs its own difference evidence. A failed first step is
+                # not evidence of "no differences", and must not become a PASS.
+                step1 = self.provider.inspect(ok_imgs + [img], DIFF_PROMPT.format(n_ok=len(ok_imgs)))
+                raw = step1.get("raw")
+                parsed = extract_json(raw) if step1.get("ok") and isinstance(raw, str) else None
+                differences = parsed.get("differences") if parsed else None
+                if not isinstance(differences, list) or any(not isinstance(v, str) for v in differences):
+                    raise RuntimeError("首件差异分析失败，需重新检查或人工复核")
+                diffs = json.dumps(differences, ensure_ascii=False)
                 step2 = self.provider.inspect(
                     ok_imgs + ng_imgs + [img], VERDICT_PROMPT.format(
                         n_ok=len(ok_imgs), n_ng=len(ng_imgs), differences=diffs))
                 if not step2["ok"]:
                     raise RuntimeError(step2["reason"])
                 verdicts.append(step2)
-            worst = min(verdicts, key=lambda v: (v["confidence"] if v["verdict"] == "PASS" else 2))
-            return worst["verdict"], worst["confidence"], worst["reason"]
+            from .judgements import aggregate_judgements
+            return aggregate_judgements(verdicts)
         verdicts = []
         for img in imgs:
             out = self.provider.inspect([img], sc.prompt)
@@ -254,8 +263,8 @@ class InspectionService:
                 raise RuntimeError(out["reason"])
             verdicts.append(out)
         # 多图取最坏结果:任何一张 NG 即 NG,全 PASS 才 PASS(违规判定的保守方向)
-        worst = min(verdicts, key=lambda v: (v["confidence"] if v["verdict"] == "PASS" else 2))
-        return worst["verdict"], worst["confidence"], worst["reason"]
+        from .judgements import aggregate_judgements
+        return aggregate_judgements(verdicts)
 
     def task_view(self, rec: dict[str, Any]) -> dict[str, Any]:
         out = dict(rec)
@@ -272,7 +281,7 @@ def resolve_refs(refs: tuple[str, ...], root: Path) -> list[Path]:
     """参考图条目可以是目录(取其中 jpg)或单文件路径,相对路径基于 refs_root。"""
     out: list[Path] = []
     for r in refs:
-        p = r if Path(r).is_absolute() else root / r
+        p = Path(r) if Path(r).is_absolute() else root / r
         if p.is_dir():
             out.extend(sorted(p.glob("*.jpg")))
         elif p.is_file():

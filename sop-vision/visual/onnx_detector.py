@@ -114,36 +114,52 @@ def postprocess(pred: np.ndarray, conf_th: float, class_names: list[str],
 
 class OnnxObjectDetector:
     def __init__(self, cfg: DetectorCfg, geoms: dict[str, ZoneGeom], base_dir: Path | None = None):
-        import onnxruntime
+        from .detector_registry import YoloOnnxBackend
 
         model = Path(cfg.model)
         if not model.is_absolute() and base_dir is not None:
             model = base_dir / model
         if not model.exists():
             raise FileNotFoundError(f"ONNX 检测模型不存在: {model}")
-        self.session = onnxruntime.InferenceSession(str(model), providers=["CPUExecutionProvider"])
-        self.input_size = native_input_size(self.session.get_inputs())
-        if len(self.session.get_outputs()) != 1:
-            raise ValueError("不支持多输出模型，请安装对应适配器")
-        self.input_name = self.session.get_inputs()[0].name
         self.class_names = list(cfg.class_names) or list(COCO80)
+        self.backend = YoloOnnxBackend(model, self.class_names, cfg.min_conf, cfg.max_results)
+        self.input_size = self.backend.input_size
+        from .tracking import ClassAwareIoUTracker
+        self.mot = ClassAwareIoUTracker(max_tracks=cfg.max_results)
+        self._last_frame_ts = None
         self.cfg = cfg
         self.tracker = ZoneCountTracker(geoms, cfg.enter_frames, cfg.exit_frames)
 
     def process(self, frame: np.ndarray, ts: float, ctx: Context) -> list[Event]:
-        blob, r, pad = letterbox(frame, self.input_size)
-        x = blob[:, :, ::-1].transpose(2, 0, 1)[None].astype(np.float32) / 255.0  # BGR→RGB, HWC→CHW
-        pred = self.session.run(None, {self.input_name: x})[0]
-        pred = np.squeeze(pred, axis=0) if pred.ndim == 3 else pred  # (1, 4+nc, N) → (4+nc, N)
-        hits = [(name, box) for name, box in postprocess(pred, self.cfg.min_conf, self.class_names,
-                                                          frame.shape[:2], r, pad)
-                if name in self.cfg.classes]
+        if not np.isfinite(ts):
+            raise ValueError("检测时间必须有限")
+        if self._last_frame_ts is not None:
+            if ts == self._last_frame_ts:
+                return []
+            if ts < self._last_frame_ts:
+                self.reset_observations()
+        detections = [item for item in self.detect(frame) if item.label in self.cfg.classes]
+        tracks = self.mot.update(detections, ts)
+        self._last_frame_ts = ts
+        ctx.object_tracks.extend(tracks)
+        hits = [(item.label, item.xyxy) for item in detections]
         for name, box in hits:
             ctx.object_boxes.append((name, box))
         return self.tracker.update(hits, ts)
 
+    def detect(self, frame):
+        """B0 中立检测接口，保留置信度，不更新区域事件。"""
+        return self.backend.detect(frame)
+
+    def reset_observations(self):
+        """断流/光照门禁恢复时隔离旧轨迹与区域计数。"""
+        self.mot.reset()
+        self.tracker.reset()
+        self._last_frame_ts = None
+
     def close(self) -> None:
-        pass
+        self.reset_observations()
+        self.backend.close()
 
 
 def create_detector(cfg: DetectorCfg, geoms: dict[str, ZoneGeom], base_dir: Path | None = None):
@@ -151,5 +167,7 @@ def create_detector(cfg: DetectorCfg, geoms: dict[str, ZoneGeom], base_dir: Path
     suffix = Path(cfg.model).suffix.lower()
     if suffix == ".onnx":
         return OnnxObjectDetector(cfg, geoms, base_dir)
-    from .objects import MediaPipeObjectDetector
+    if suffix not in {".tflite", ".task"}:
+        raise ValueError("不支持的检测模型格式")
+    from .perception.objects import MediaPipeObjectDetector
     return MediaPipeObjectDetector(cfg, geoms, base_dir)

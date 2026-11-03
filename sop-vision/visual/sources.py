@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import threading
 from typing import Protocol
 
 import cv2
@@ -81,3 +82,12 @@ class CvSource:
     def close(self) -> None:
         if self._cap is not None:
             self._cap.release()
+
+
+def create_source(config, stop_event=None, base_dir=None):
+    """Keep optional camera SDK outside ordinary OpenCV source imports."""
+    if config.type == "industrial":
+        from .industrial_camera import IndustrialCamera
+        return IndustrialCamera(config.industrial, config.fps, stop_event, base_dir)
+    return CvSource(config.type, config.uri, config.fps, config.realtime, config.loop,
+                    (config.width, config.height), stop_event=stop_event)

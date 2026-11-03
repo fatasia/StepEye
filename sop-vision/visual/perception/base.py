@@ -8,6 +8,7 @@ import numpy as np
 
 from ..dsl import Zone
 from ..events import Event
+from ..tracking import ObjectTrack
 
 
 class ZoneGeom:
@@ -41,6 +42,7 @@ class Context:
     hand_points: list[tuple[float, float]] = field(default_factory=list)
     person_boxes: list[tuple[float, float, float, float]] = field(default_factory=list)
     object_boxes: list[tuple[str, tuple[float, float, float, float]]] = field(default_factory=list)
+    object_tracks: list[ObjectTrack] = field(default_factory=list)
     fall_zones: list[str] = field(default_factory=list)
 
     def reset(self) -> None:
@@ -48,6 +50,7 @@ class Context:
         self.hand_points.clear()
         self.person_boxes.clear()
         self.object_boxes.clear()
+        self.object_tracks.clear()
         self.fall_zones.clear()
 
 

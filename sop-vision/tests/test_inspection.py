@@ -26,6 +26,9 @@ class CannedTransport(Transport):
 
     def post(self, url, headers, payload):
         self.calls += 1
+        prompt = payload['messages'][0]['content'][-1]['text']
+        if '"differences"' in prompt:
+            return {"choices": [{"message": {"content": '{"differences":[]}'}}]}
         return {"choices": [{"message": {"content": self.content}}]}
 
 

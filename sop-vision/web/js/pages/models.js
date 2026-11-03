@@ -1,3 +1,4 @@
+import { openQualityTools } from "./quality-tools.js";
 import { icon } from "../icons.js";
 import { $, esc } from "../util.js";
 
@@ -11,7 +12,7 @@ async function request(url, options = {}) {
 
 export function render(root) {
   root.innerHTML = `<div class="models-workspace">
-    <header class="models-head"><div><span class="models-kicker">视觉应用 / 从现有模型开始</span><h2>试效果、建项目，在一个入口开始。</h2><p>选择模型 → 试一张 → 建立标注项目 → 补充场景样本。模型与类别自动带入。</p></div><button class="btn" data-model-refresh>${icon("refresh", 14)}刷新模型</button></header>
+    <header class="models-head"><div><span class="models-kicker">视觉应用 / 从现有模型开始</span><h2>试效果、建项目，在一个入口开始。</h2><p>选择模型 → 试一张 → 建立标注项目 → 补充场景样本。模型与类别自动带入。</p></div><div><button class="btn" data-quality-tools>评测与质量工具</button> <button class="btn" data-model-refresh>${icon("refresh", 14)}刷新模型</button></div></header>
     <div class="models-layout"><aside class="models-list" aria-label="从现有模型开始" data-model-list><p>正在读取模型…</p></aside>
       <section class="models-detail"><header data-model-heading></header>
         <div class="models-alert" role="alert" data-model-error hidden></div>
@@ -214,6 +215,7 @@ export function render(root) {
     if (id)
       location.hash = `#/labeling?project=${encodeURIComponent(id)}&engine=${encodeURIComponent(selected.id)}`;
   };
+  $("[data-quality-tools]", root).onclick = () => openQualityTools({ canWrite });
   $("[data-model-refresh]", root).onclick = load;
   load();
   return () => {

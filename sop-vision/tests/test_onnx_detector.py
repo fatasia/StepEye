@@ -125,3 +125,39 @@ def test_native_320_realtime_and_label_predict(tmp_path):
     result=predict({'model_path':str(model),'image_path':str(image),'threshold':.25,'classes':classes,'project_classes':classes})
     assert result[0]['xyxy_norm']==pytest.approx([.25,.25,.75,.75])
     detector.close()
+
+
+def test_tracking_context_reset_duplicate_and_close(tmp_path):
+    model = _synthetic_model(tmp_path, [(320.,320.,100.,100.,0,.9)])
+    cfg = DetectorCfg(enabled=True, model=str(model), classes=['person'])
+    geoms = build_geoms([ZONE],640,640)
+    ctx = Context(geoms)
+    detector = OnnxObjectDetector(cfg,geoms)
+    frame = np.zeros((640,640,3),np.uint8)
+    detector.process(frame, 0., ctx)
+    first = ctx.object_tracks[0].track_id
+    ctx.reset()
+    assert detector.process(frame,0.,ctx)==[] and ctx.object_tracks==[]
+    detector.process(frame,.1,ctx)
+    assert ctx.object_tracks[0].track_id==first
+    ctx.reset()
+    detector.reset_observations()
+    detector.process(frame,.2,ctx)
+    assert ctx.object_tracks[0].track_id!=first
+    assert ctx.object_tracks[0].observations==1
+    detector.close()
+    with pytest.raises(RuntimeError): detector.detect(frame)
+
+
+def test_backend_bound_and_input_contract(tmp_path):
+    from visual.detector_registry import YoloOnnxBackend
+    model = _synthetic_model(tmp_path, [(100.,100.,50.,50.,0,.9),(500.,500.,50.,50.,0,.8)])
+    backend = YoloOnnxBackend(model, ['person']+[f'c{i}' for i in range(79)], max_results=1)
+    assert len(backend.detect(np.zeros((640,640,3),np.uint8)))==1
+    for frame in [np.zeros((0,10,3),np.uint8),np.zeros((10,10),np.uint8),np.zeros((10,10,3),np.float32)]:
+        with pytest.raises(ValueError): backend.detect(frame)
+    backend.close()
+
+
+def test_unknown_model_extension_rejected():
+    with pytest.raises(ValueError): create_detector(DetectorCfg(model='bad.pt'),{})

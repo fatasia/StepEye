@@ -50,8 +50,8 @@ class AlertStore:
         with self._lock:
             if ref_id:
                 row = self._db.execute(
-                    "SELECT id FROM alerts WHERE source=? AND kind=? AND ref_id=? AND status IN ('pending','processing')",
-                    (source, kind, ref_id)).fetchone()
+                    "SELECT id FROM alerts WHERE station=? AND source=? AND kind=? AND ref_id=? AND status IN ('pending','processing')",
+                    (station, source, kind, ref_id)).fetchone()
                 if row:
                     self._db.execute("UPDATE alerts SET updated=? WHERE id=?", (now, row[0]))
                     self._db.commit()

@@ -1,2 +1,3 @@
--r requirements.txt
-onvif-zeep-async==4.3.0  # 已核对传输层固定IP与禁重定向包装；升级须重新核查
+# Optional only; install in the same Python used by the camera worker/service.
+# A matching vendor GenTL producer (.cti and its DLL/SO dependencies) is also required.
+harvesters>=1.4.3,<2

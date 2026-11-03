@@ -26,8 +26,9 @@ from .perception.persons import MediaPipePosePersons
 from .perception.quality import QualityPerceiver
 from .perception.roi_state import RoiStatePerceiver
 from .safety import SafetyMonitor, SafetyRule
+from .ehs import EhsMonitor
 from .sim import SimHands, SimSource
-from .sources import CvSource
+from .sources import create_source
 
 STATUS_COLOR = {"pending": (150, 150, 150), "active": (193, 198, 62), "done": (141, 197, 89)}
 # 与界面令牌同色系（BGR）：主色青、成功绿、预警琥珀、空闲灰蓝
@@ -81,8 +82,7 @@ class StationRuntime:
             for zid in self.roi.trackers:
                 self.roi.trackers[zid].set_reference(self.source.scene.reference(zid))
         else:
-            self.source = CvSource(src.type, src.uri, src.fps, src.realtime, src.loop, (src.width, src.height),
-                                   stop_event=self.stop_event)
+            self.source = create_source(src, stop_event=self.stop_event, base_dir=self.base_dir)
             if cfg.hands.enabled:
                 self.hands = hands_override or MediaPipeHands(cfg.hands, self.geoms, self.base_dir)
         # 人员感知(安全规则/vlm 无关,仅真实源;sim 无人员真值)
@@ -97,6 +97,7 @@ class StationRuntime:
         rules = [SafetyRule(id=r.id, kind=r.kind, zone=r.zone, min_s=r.min_s, count_ge=r.count_ge,
                             severity=r.severity, name=r.name, target=r.target) for r in cfg.safety.rules]
         self.safety = SafetyMonitor(rules) if cfg.safety.enabled and rules else None
+        self.ehs = EhsMonitor(cfg.ehs, self.geoms) if cfg.ehs.enabled else None
         # vlm_check:后台线程判帧,不阻塞视频循环;结果以 OBJ_STATE(伪区域)进引擎
         self._vlm_conds = {}
         for st in self.program.steps:
@@ -243,6 +244,8 @@ class StationRuntime:
 
     def _reset_visual_observations(self) -> None:
         """只清观测/去抖缓存，保留模型、标定参考和原始帧。"""
+        if self.ehs is not None:
+            self.ehs.reset()
         for perceiver in (self.hands, self.persons, self.detector, self.roi):
             if perceiver is None:
                 continue
@@ -307,6 +310,11 @@ class StationRuntime:
                     safety_alerts += self.safety.process(ev)
         if self.safety is not None and not blocked:
             safety_alerts += self.safety.tick(ts)
+        if self.ehs is not None and not blocked:
+            safety_alerts += self.ehs.process(self.ctx.object_tracks, ts,
+                available=self.detector is not None and hasattr(self.detector, "mot"),
+                available_labels=set(self.cfg.detector.classes) & set(getattr(self.detector, "class_names", [])))
+        if not blocked:
             for alert in safety_alerts:
                 self.alerts.insert(0, {"station": self.cfg.station, "cycle_id": None,
                                        "at": int(time.time() * 1000), **alert})
@@ -338,7 +346,7 @@ class StationRuntime:
                 break
             ts, frame = item
             now = time.monotonic()
-            gap = self.cfg.source.type in ("rtsp", "camera") and self._last_frame_wall is not None and now - self._last_frame_wall > max(1.0, 3 / max(self.cfg.source.fps, 1))
+            gap = self.cfg.source.type in ("rtsp", "camera", "industrial") and self._last_frame_wall is not None and now - self._last_frame_wall > max(1.0, 3 / max(self.cfg.source.fps, 1))
             if gap or frame.shape[1] < 16:
                 self.engine.process(Event(ts, "quality", state="unknown", value="stream_gap", source="source"))
                 self._vision_generation += 1
@@ -386,6 +394,7 @@ class StationRuntime:
 
     def state(self) -> dict[str, Any]:
         snap = self.engine.snapshot()
+        snap["ehs"] = self.ehs.snapshot() if self.ehs is not None else {"enabled": False, "rules": {}}
         snap["quality"] = {**self.quality.snapshot(), "confirmed_degraded": self.quality.degraded,
                            "confirmed_reason": self.quality.reason, "degraded": self.engine.world.quality_bad,
                            "reason": self.engine.world.quality_reason}

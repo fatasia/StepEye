@@ -97,6 +97,13 @@ class StationManager:
         self.signal_store = SignalAuditStore(data_dir / "signals.db")
         self.signal_store.recover_abandoned()
         self.labels = LabelStore(data_dir / "labeling")
+        from .calibration import CalibrationStore
+        self.calibrations = CalibrationStore(data_dir / "calibrations.db")
+        from .quality_routes import QualityReports
+        self.quality_reports = QualityReports(data_dir / "quality_reports.db")
+        from .recipes import RecipeStore, RecipeService
+        self.recipe_store = RecipeStore(data_dir / "recipes.db")
+        self.recipes = RecipeService(self.recipe_store, self)
         self.label_engines = LabelEngines()
         # 只登记已验证布局/来源的现有权重；不启用被淘汰的烟火模型。
         self.label_engines.register("community-helmet", ROOT / "models/community/helmet.onnx",
@@ -228,14 +235,22 @@ class StationManager:
         old = self.runtimes.get(sid)
         if old is None:
             raise HTTPException(404, f"工位不存在:{sid}")
+        if old.engine.cycle is not None:
+            raise HTTPException(409, "工位周期进行中，不能重载配置")
+        cfg: StationConfig = load_config(self.paths[sid])
+        if cfg.station != sid:
+            raise HTTPException(400, "配置 station id 与工位不一致")
+        from .dsl import Program
+        Program.from_config(cfg)
         old.stop()
         t = self._threads.get(sid)
         if t is not None:
             t.join(timeout=5)
+            if t.is_alive():
+                raise HTTPException(409, "旧工位线程未退出，拒绝启动第二个运行时")
+        if old.engine.cycle is not None:
+            raise HTTPException(409, "停机前新周期已启动，拒绝切换配方")
         old.signal_inbox.close()
-        cfg: StationConfig = load_config(self.paths[sid])
-        if cfg.station != sid:
-            raise HTTPException(400, f"配置中的 station id({cfg.station})与工位({sid})不一致,不能重载")
         rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
         rt.frame_observers.append(self.patrol.observe_runtime)
         rt.signal_inbox = SignalInbox(self.signal_store, scope=cfg.station)
@@ -252,6 +267,9 @@ class StationManager:
         self.training.close()
         self.label_jobs.close()
         self.labels.close()
+        self.calibrations.close()
+        self.quality_reports.close()
+        self.recipe_store.close()
         for rt in self.runtimes.values():
             rt.stop()
         for t in self.threads:
@@ -434,6 +452,18 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(model_router(manager.labels, manager.label_engines))
     from .training_routes import router as training_router
     app.include_router(training_router(manager.training))
+    from .calibration_routes import router as calibration_router
+    from .evaluation_routes import router as evaluation_router
+    app.include_router(calibration_router(manager.calibrations))
+    app.include_router(evaluation_router())
+    from .quality_routes import router as quality_router
+    app.include_router(quality_router(manager.quality_reports))
+    from .recipe_routes import router as recipe_router
+    app.include_router(recipe_router(manager.recipes))
+    from .camera_routes import router as camera_router
+    app.include_router(camera_router(manager))
+    from .reader_routes import router as reader_router
+    app.include_router(reader_router())
 
     @app.exception_handler(LabelError)
     async def label_error(request: Request, e: LabelError):

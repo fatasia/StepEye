@@ -47,6 +47,16 @@ def test_auth_check_roles_ranked():
 
 
 # ---------------- AlertStore 纯逻辑 ----------------
+def test_alert_dedup_never_merges_different_stations(tmp_path):
+    store = AlertStore(tmp_path / 'alerts.db')
+    try:
+        first, _ = store.create('station-a', 'sop', 'missing_step', 'error', '缺件', ref_id='same-cycle')
+        second, created = store.create('station-b', 'sop', 'missing_step', 'error', '缺件', ref_id='same-cycle')
+        assert created and first['id'] != second['id']
+    finally:
+        store.close()
+
+
 def test_alert_create_dedup_and_update_flow(tmp_path):
     s = AlertStore(tmp_path / "alerts.db")
     rec1, new1 = s.create("ST", "sop", "missing_step", "error", "漏步", ref_id="C1:missing_step")

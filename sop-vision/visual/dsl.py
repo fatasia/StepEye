@@ -11,6 +11,8 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .ehs import EhsCfg
+
 
 class Zone(BaseModel):
     id: str
@@ -258,9 +260,19 @@ class QualityCfg(BaseModel):
     max_drifted_tile_fraction: float = Field(default=0.15, ge=0, le=1)
 
 
+class IndustrialCameraCfg(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    cti: str = Field(min_length=1, max_length=1000)
+    serial_number: str = Field(min_length=1, max_length=200)
+    exposure_us: float | None = Field(default=None, gt=0, le=100000000)
+    gain: float | None = Field(default=None, ge=0, le=1000)
+    trigger: Literal["off", "software"] = "off"
+
+
 class SourceCfg(BaseModel):
-    type: Literal["sim", "file", "rtsp", "camera"] = "sim"
+    type: Literal["sim", "file", "rtsp", "camera", "industrial"] = "sim"
     uri: str | int | None = None
+    industrial: IndustrialCameraCfg | None = None
     preview_stream: str | None = Field(default=None, max_length=160,
                                        pattern=r"^[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*$")
     fps: float = 25.0
@@ -270,6 +282,14 @@ class SourceCfg(BaseModel):
     height: int = 480
     shadow: bool = False  # 影子模式:判定照跑,结果只进影子库不进正式统计(上线验收用)
     scenarios: list[Literal["ok", "missing", "wrong_order"]] = ["ok", "missing", "wrong_order"]  # 仅 sim
+
+    @model_validator(mode="after")
+    def _industrial_config(self):
+        if self.type == "industrial" and self.industrial is None:
+            raise ValueError("industrial source requires industrial config")
+        if self.type != "industrial" and self.industrial is not None:
+            raise ValueError("industrial config requires industrial source")
+        return self
 
 
 class ActionShadowCfg(BaseModel):
@@ -311,6 +331,7 @@ class StationConfig(BaseModel):
     persons: PersonsCfg = PersonsCfg()
     detector: DetectorCfg = DetectorCfg()
     safety: SafetyCfg = SafetyCfg()
+    ehs: EhsCfg = Field(default_factory=EhsCfg)
     roi_states: list[RoiStateCfg] = []
     quality: QualityCfg = QualityCfg()
     action_shadow: ActionShadowCfg = Field(default_factory=ActionShadowCfg)
@@ -320,7 +341,7 @@ class StationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_refs(self) -> "StationConfig":
-        if not self.steps and not self.safety.rules:
+        if not self.steps and not self.safety.rules and not (self.ehs.enabled and self.ehs.rules):
             raise ValueError("工位至少要有 SOP 步骤或常驻安全规则之一")
         if self.steps and self.cycle is None:
             raise ValueError("有 SOP 步骤就必须定义 cycle(周期开始/结束条件)")
@@ -328,6 +349,8 @@ class StationConfig(BaseModel):
         if len(set(ids)) != len(ids):
             raise ValueError("zone id 重复")
         known = set(ids)
+        if any(r.zone not in known for r in self.ehs.rules):
+            raise ValueError("ehs 引用了未定义的 zone")
         if self.action_shadow.trigger_zone and self.action_shadow.trigger_zone not in known:
             raise ValueError("action_shadow.trigger_zone 引用了未定义的 zone")
         if any(sid not in {s.id for s in self.steps} for sid in self.action_shadow.active_steps):
