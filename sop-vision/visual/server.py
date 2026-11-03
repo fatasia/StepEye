@@ -244,8 +244,7 @@ class StationManager:
         for rt in self.runtimes.values():
             rt.signal_inbox.close()
         if self.inspection is not None:
-            self.inspection.stop()
-            self.inspection.store.close()
+            self.inspection.stop(close_store=True)
         self.store.close()
         self.patrol.close()
         self.signal_store.close()
@@ -386,20 +385,13 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         hub.loop = asyncio.get_running_loop()
         manager.start()
         task = asyncio.create_task(_push_states())
-        sweep = asyncio.create_task(_sweep_previews())
         try:
             yield
         finally:
             task.cancel()
-            sweep.cancel()
-            await asyncio.gather(task, sweep, return_exceptions=True)
+            await asyncio.gather(task, return_exceptions=True)
             await asyncio.to_thread(app.state.media.close)
             manager.stop()
-
-    async def _sweep_previews() -> None:
-        while True:
-            await asyncio.sleep(30)
-            app.state.media.expire_sessions()
 
     async def _push_states() -> None:
         while True:

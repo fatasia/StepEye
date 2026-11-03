@@ -29,14 +29,36 @@ class MediaBridge:
             raise ValueError("MONIBUCA_WHEP_PREFIX 仅支持 /webrtc/whep(v6) 或 /webrtc/play(v5)")
         self.transport = transport
         self.lease_s, self.clock = lease_s, clock
-        self._lock = threading.Lock()
+        self._lock = threading.Condition()
+        self._sweeper: threading.Thread | None = None
+        self._closed = False
         self._sessions: dict[str, tuple[str, str, str, float]] = {}
         self._pending = 0
+
+    def _wake_sweeper_locked(self) -> None:
+        # Session insertion and worker retirement use the same lock.
+        if self._sweeper is None:
+            self._sweeper = threading.Thread(target=self._sweep, name="preview-leases", daemon=True)
+            self._sweeper.start()
+        self._lock.notify_all()
+
+    def _sweep(self) -> None:
+        while True:
+            with self._lock:
+                if self._closed or not self._sessions:
+                    self._sweeper = None
+                    return
+                remaining = min(s[3] for s in self._sessions.values()) - self.clock()
+                if remaining > 0:
+                    self._lock.wait(timeout=remaining)
+                    continue
+            self.expire_sessions()
 
     def expire_sessions(self) -> None:
         with self._lock:
             expired = [token for token, s in self._sessions.items() if s[3] <= self.clock()]
             paths = [self._sessions.pop(token)[2] for token in expired]
+            self._lock.notify_all()
         if paths:
             def cleanup():
                 for path in paths:
@@ -71,6 +93,8 @@ class MediaBridge:
     def offer(self, stream: str, sdp: bytes, station: str, owner: str) -> tuple[bytes, str | None]:
         self.expire_sessions()
         with self._lock:
+            if self._closed:
+                raise MediaError("预览服务已停止", 503)
             if len(self._sessions) + self._pending >= 128:
                 raise MediaError("预览会话已满，请关闭不用的预览后重试", 429)
             self._pending += 1
@@ -99,7 +123,16 @@ class MediaBridge:
                 raise MediaError("Monibuca 返回了不允许的会话地址")
             token = secrets.token_urlsafe(24)
             with self._lock:
-                self._sessions[token] = (station, owner, url[len(self.base):], self.clock() + self.lease_s)
+                closed = self._closed
+                if not closed:
+                    self._sessions[token] = (station, owner, url[len(self.base):], self.clock() + self.lease_s)
+                    self._wake_sweeper_locked()
+            if closed:
+                try:
+                    self.request("DELETE", url[len(self.base):], timeout=2)
+                except MediaError:
+                    pass
+                raise MediaError("预览服务已停止", 503)
         return res.content, token
 
     def release(self, token: str, station: str, owner: str) -> None:
@@ -114,6 +147,7 @@ class MediaBridge:
         finally:
             with self._lock:
                 self._sessions.pop(token, None)
+                self._lock.notify_all()
 
     def renew(self, token: str, station: str, owner: str) -> None:
         self.expire_sessions()
@@ -124,11 +158,17 @@ class MediaBridge:
             if session[:2] != (station, owner):
                 raise MediaError("该预览会话不属于当前用户或工位", 403)
             self._sessions[token] = (*session[:3], self.clock() + self.lease_s)
+            self._lock.notify_all()
 
     def close(self) -> None:
         with self._lock:
+            self._closed = True
             paths = [s[2] for s in self._sessions.values()]
             self._sessions.clear()
+            sweeper = self._sweeper
+            self._lock.notify_all()
+        if sweeper is not None:
+            sweeper.join(timeout=1)
         jobs = queue.SimpleQueue()
         for path in paths:
             jobs.put(path)

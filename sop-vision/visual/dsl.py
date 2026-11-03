@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Zone(BaseModel):
@@ -271,6 +272,34 @@ class SourceCfg(BaseModel):
     scenarios: list[Literal["ok", "missing", "wrong_order"]] = ["ok", "missing", "wrong_order"]  # 仅 sim
 
 
+class ActionShadowCfg(BaseModel):
+    """本机管理员配置的动作旁路；不产生 SOP 条件或生产事件。"""
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, protected_namespaces=())
+    enabled: bool = False
+    model: str = ""
+    class_names: list[str] = Field(default_factory=list, max_length=2000)
+    model_sha256: str = Field(default="", pattern=r"^(?:[a-fA-F0-9]{64})?$")
+    roi: tuple[float, float, float, float] = (0., 0., 1., 1.)
+    trigger_zone: str = ""
+    active_steps: list[str] = Field(default_factory=list, max_length=128)
+    min_conf: float = Field(default=.7, ge=0, le=1)
+    ttl_ms: int = Field(default=1000, ge=100, le=10000)
+    max_gap_ms: int = Field(default=300, ge=125, le=1000)
+    timeout_s: float = Field(default=10., gt=0, le=60)
+    idle_s: float = Field(default=60., ge=.05, le=3600)
+    providers: list[Literal["CPUExecutionProvider", "CUDAExecutionProvider"]] = Field(
+        default_factory=lambda: ["CPUExecutionProvider"], min_length=1, max_length=2)
+
+    @model_validator(mode="after")
+    def _validate_action(self) -> "ActionShadowCfg":
+        x0, y0, x1, y1 = self.roi
+        if not all(math.isfinite(v) for v in self.roi) or not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+            raise ValueError("action_shadow.roi 必须为有限归一化 xyxy")
+        if any(not c.strip() or c != c.strip() or len(c) > 100 for c in self.class_names) or len(set(self.class_names)) != len(self.class_names):
+            raise ValueError("action_shadow.class_names 必须非空且不重复")
+        return self
+
+
 class StationConfig(BaseModel):
     station: str
     name: str = ""
@@ -284,6 +313,7 @@ class StationConfig(BaseModel):
     safety: SafetyCfg = SafetyCfg()
     roi_states: list[RoiStateCfg] = []
     quality: QualityCfg = QualityCfg()
+    action_shadow: ActionShadowCfg = Field(default_factory=ActionShadowCfg)
     cycle: CycleDef | None = None  # 纯安全岗(仅常驻规则)可不定义周期
     steps: list[Step] = []
     violations: dict[str, Literal["error", "warn"]] = {}
@@ -298,6 +328,10 @@ class StationConfig(BaseModel):
         if len(set(ids)) != len(ids):
             raise ValueError("zone id 重复")
         known = set(ids)
+        if self.action_shadow.trigger_zone and self.action_shadow.trigger_zone not in known:
+            raise ValueError("action_shadow.trigger_zone 引用了未定义的 zone")
+        if any(sid not in {s.id for s in self.steps} for sid in self.action_shadow.active_steps):
+            raise ValueError("action_shadow.active_steps 引用了未定义的 step")
         conds: list[Cond] = []
         if self.cycle is not None:
             conds += [self.cycle.start, self.cycle.end]

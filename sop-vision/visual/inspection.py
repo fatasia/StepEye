@@ -142,6 +142,7 @@ class InspectionService:
         self._guard = threading.Lock()
         self._started = False
         self._stopped = False
+        self._close_store = False
         self._thread: threading.Thread | None = None
 
     # ---- 生命周期 ----
@@ -155,9 +156,12 @@ class InspectionService:
             self._thread = threading.Thread(target=self._worker, name="inspection", daemon=True)
             self._thread.start()
 
-    def stop(self) -> None:
+    def stop(self, *, close_store: bool = False) -> None:
         with self._guard:
             self._stopped = True
+            self._close_store = self._close_store or close_store
+            if self._close_store and self._thread is None:
+                self.store.close()
             thread = self._thread
         if thread is not None:
             thread.join(timeout=3)
@@ -186,10 +190,10 @@ class InspectionService:
             name = f"{i:02d}.jpg"
             cv2.imwrite(str(task_dir / name), arr, [cv2.IMWRITE_JPEG_QUALITY, 90])
             rec["images"].append(name)
-        self.store.save(rec)
         with self._guard:
             if self._stopped:
                 raise ValueError("拍照即检正在停止")
+            self.store.save(rec)
             self._q.put({"id": rec["id"], "scenario": sc})
             self._wake()
         return rec
@@ -201,6 +205,8 @@ class InspectionService:
                 try:
                     job = self._q.get_nowait()
                 except queue.Empty:
+                    if self._close_store:
+                        self.store.close()
                     self._thread = None
                     return
             rec = self.store.get(job["id"])

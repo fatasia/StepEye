@@ -173,3 +173,57 @@ def test_load_scenarios_rejects_bad_config(tmp_path):
     fa.write_text("scenarios:\n  - {id: a, prompt: p, mode: first_article}\n", encoding="utf-8")
     with pytest.raises(ValueError, match="ok_refs"):
         load_scenarios(fa)
+
+def test_inspection_worker_starts_on_demand_and_retires(env):
+    client, transport, _ = env
+    service = client.app.state.manager.inspection
+    assert service._thread is None
+    for _ in range(2):
+        job = client.post("/api/inspection/tasks", data={"scenario_id":"glove_check"},
+                          files=[("files", ("frame.jpg", jpeg_bytes(), "image/jpeg"))]).json()
+        assert _wait_done(client, job["id"])["status"] == "done"
+        end = time.monotonic() + 2
+        while service._thread is not None and time.monotonic() < end:
+            time.sleep(.01)
+        assert service._thread is None
+    assert transport.calls == 2
+
+
+def test_inspection_shutdown_finishes_job_before_closing_store(tmp_path):
+    import threading
+    from visual.inspection import InspectionService, Scenario
+
+    entered, release, closed = threading.Event(), threading.Event(), threading.Event()
+    store = InspectionStore(tmp_path / "inspection.sqlite")
+    original_close = store.close
+    def close():
+        original_close()
+        closed.set()
+    store.close = close
+    service = InspectionService([Scenario("test", "test", prompt="test", enabled=True)],
+                                store, tmp_path / "images", None)
+    def judge(*args):
+        entered.set()
+        assert release.wait(5)
+        return "PASS", 1., "ok"
+    service._judge = judge
+    service.start()
+    job = service.submit("test", [jpeg_bytes()])
+    assert entered.wait(2)
+    worker = service._thread
+    stopping = threading.Thread(target=lambda: service.stop(close_store=True))
+    stopping.start()
+    try:
+        assert not closed.wait(.05)
+        assert store.get(job["id"])["status"] == "running"
+    finally:
+        release.set()
+        stopping.join(5)
+        worker.join(5)
+    assert closed.is_set()
+    assert service._thread is None
+    reopened = InspectionStore(tmp_path / "inspection.sqlite")
+    try:
+        assert reopened.get(job["id"])["status"] == "done"
+    finally:
+        reopened.close()

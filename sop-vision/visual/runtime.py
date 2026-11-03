@@ -13,6 +13,7 @@ from typing import Any, Callable
 import cv2
 import numpy as np
 
+from .action_shadow import ActionShadow
 from .dsl import Program, StationConfig
 from .engine import Engine
 from .events import OBJ_STATE, QUALITY, Event
@@ -69,6 +70,9 @@ class StationRuntime:
         self.quality = QualityPerceiver(cfg.quality)
         self._quality_blocked = False
         self._vision_generation = 0
+        self.action_shadow = ActionShadow(cfg.action_shadow, cfg.station, self.base_dir)
+        self._action_box = None
+        self._action_token = 0
         self.source: Any
         self.hands: Any = None
         if src.type == "sim":
@@ -105,10 +109,10 @@ class StationRuntime:
         self._vlm_last: dict[str, float] = {}
         self._vlm_ok: set[str] = set()
         self._vlm_thread: threading.Thread | None = None
+        self._vlm_guard = threading.Lock()
         if self._vlm_conds and ProviderConfig.from_env().api_key:
             self._vlm_provider = VLMProvider(ProviderConfig.from_env())
-            self._vlm_thread = threading.Thread(target=self._vlm_worker, name=f"vlm-{cfg.station}", daemon=True)
-            self._vlm_thread.start()
+
         self.recorder = EvidenceRecorder(data_dir / "evidence", self.store, lambda: self.annotated,
                                          {"hands": "mediapipe-hand-landmarker" if src.type != "sim" else "sim",
                                           "roi_state": "opencv-roi@1"})
@@ -150,19 +154,28 @@ class StationRuntime:
                 '{"verdict":"yes|no|unclear","confidence":0到1的小数,"reason":"不超过20字"}')
 
     def _vlm_worker(self) -> None:
-        while not self.stop_event.is_set():
-            try:
-                item = self._vlm_q.get(timeout=0.5)
-            except queue.Empty:
-                continue
+        while True:
+            with self._vlm_guard:
+                if self.stop_event.is_set():
+                    self._vlm_thread = None
+                    return
+                try:
+                    item = self._vlm_q.get_nowait()
+                except queue.Empty:
+                    self._vlm_thread = None
+                    return
             if item is None:
-                return
+                continue
             generation, key, prompt, jpeg = item
             if generation != self._vision_generation:
                 continue
-            b64 = base64.b64encode(jpeg).decode()
-            out = self._vlm_provider.inspect([b64], self._vlm_prompt(prompt))
-            self._vlm_results.append((generation, key, bool(out["ok"] and str(out["verdict"]).lower() in ("yes", "true", "pass"))))
+            try:
+                b64 = base64.b64encode(jpeg).decode()
+                out = self._vlm_provider.inspect([b64], self._vlm_prompt(prompt))
+                yes = bool(out["ok"] and str(out["verdict"]).lower() in ("yes", "true", "pass"))
+            except Exception:
+                yes = False
+            self._vlm_results.append((generation, key, yes))
 
     def _vlm_drain(self, ts: float, frame: np.ndarray) -> None:
         """收判定结果(真→写伪区域状态),并按抽帧间隔把激活步骤的 vlm 条件送判。"""
@@ -175,16 +188,56 @@ class StationRuntime:
             return
         active_keys = {c.vlm_check.key for st in self.engine.cycle.steps if st.status == "active"
                        for c in st.spec.evidence.conds if c.kind == "vlm_check"}
-        ok, buf = cv2.imencode(".jpg", self.raw, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        due = [(key, vc) for key, vc in self._vlm_conds.items()
+               if key in active_keys and key not in self._vlm_ok
+               and ts - self._vlm_last.get(key, -1e9) >= vc.every_s]
+        if not due or self._vlm_q.qsize() >= 4 or self.stop_event.is_set():
+            return
+        ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not ok:
             return
-        for key, vc in self._vlm_conds.items():
-            if key not in active_keys or key in self._vlm_ok or self._vlm_q.qsize() > 4:
-                continue
-            if ts - self._vlm_last.get(key, -1e9) < vc.every_s:
-                continue
-            self._vlm_last[key] = ts
-            self._vlm_q.put((self._vision_generation, key, vc.prompt, buf.tobytes()))
+        with self._vlm_guard:
+            if self.stop_event.is_set():
+                return
+            for key, vc in due:
+                if self._vlm_q.qsize() >= 4:
+                    break
+                self._vlm_last[key] = ts
+                self._vlm_q.put((self._vision_generation, key, vc.prompt, buf.tobytes()))
+            if self._vlm_thread is None and not self._vlm_q.empty():
+                self._vlm_thread = threading.Thread(target=self._vlm_worker, name=f"vlm-{self.cfg.station}", daemon=True)
+                self._vlm_thread.start()
+
+    def _action_observe(self, ts: float, frame: np.ndarray, blocked: bool) -> None:
+        cfg = self.cfg.action_shadow
+        if not cfg.enabled:
+            return
+        boxes = self.ctx.person_boxes
+        zone = self.geoms.get(cfg.trigger_zone)
+        if zone:
+            boxes = [b for b in boxes if zone.contains((b[0]+b[2])/2, (b[1]+b[3])/2)]
+        # 仅单人框连续性令牌，不是持久身份识别；多人、遮挡或跳变均清窗。
+        if blocked or len(boxes) != 1:
+            self._action_box = None
+            token = None
+        else:
+            box = tuple(boxes[0])
+            prev = self._action_box
+            overlap = 0.
+            if prev is not None:
+                area = max(0., min(box[2], prev[2])-max(box[0], prev[0])) * max(0., min(box[3], prev[3])-max(box[1], prev[1]))
+                union = (box[2]-box[0])*(box[3]-box[1]) + (prev[2]-prev[0])*(prev[3]-prev[1]) - area
+                overlap = area / union if union > 0 else 0.
+            if overlap < .5:
+                self._action_token += 1
+            self._action_box = box
+            token = f"single-person-{self._action_token}"
+        cycle = self.engine.cycle
+        active = {st.spec.id for st in cycle.steps if st.status == "active"} if cycle else set()
+        trigger = not cfg.active_steps or bool(active.intersection(cfg.active_steps))
+        self.action_shadow.observe(frame, ts, generation=self._vision_generation,
+                                   cycle_id=cycle.id if cycle else None, object_id=token,
+                                   quality_ok=not blocked, visible=token is not None, trigger=trigger)
 
     def _reset_visual_observations(self) -> None:
         """只清观测/去抖缓存，保留模型、标定参考和原始帧。"""
@@ -198,6 +251,8 @@ class StationRuntime:
                 reset()
         self._vlm_results.clear()
         self._vlm_ok.clear()
+        self._action_box = None
+        self.action_shadow.invalidate("observations_reset")
 
     def _quality_gate(self, ts: float) -> tuple[bool, Event | None]:
         observation = self.quality.snapshot()
@@ -258,6 +313,7 @@ class StationRuntime:
                     fn("safety", alert)
         if not blocked:
             self._vlm_drain(ts, frame)
+        self._action_observe(ts, frame, blocked)
         self.annotated = self._draw(frame, hud=True)
         self.stream = self._draw(frame, hud=False)
         self.recorder.flush()
@@ -304,15 +360,18 @@ class StationRuntime:
             if max_frames and self.frame_idx >= max_frames:
                 break
         self.source.close()
+        self.action_shadow.close()
 
     def stop(self) -> None:
         self.stop_event.set()
-        if self._vlm_thread is not None:
-            self._vlm_q.put(None)
-            self._vlm_thread.join(timeout=2)
+        self.action_shadow.close()
+        with self._vlm_guard:
+            worker = self._vlm_thread
+        if worker is not None:
+            worker.join(timeout=2)
 
     def close(self) -> None:
-        self.stop_event.set()
+        self.stop()
         if self._owns_store:
             self.store.close()
 
@@ -328,6 +387,7 @@ class StationRuntime:
         snap["quality"] = {**self.quality.snapshot(), "confirmed_degraded": self.quality.degraded,
                            "confirmed_reason": self.quality.reason, "degraded": self.engine.world.quality_bad,
                            "reason": self.engine.world.quality_reason}
+        snap["action_shadow"] = self.action_shadow.snapshot()
         snap["roi"] = self.roi.states()
         snap["alerts"] = self.alerts[:20]
         now = time.monotonic()
