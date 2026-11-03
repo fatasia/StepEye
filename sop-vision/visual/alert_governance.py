@@ -23,6 +23,7 @@ AlertStore 的表结构(无新字段,旧库天然兼容):
 """
 from __future__ import annotations
 
+import math
 import threading
 import time
 from collections import deque
@@ -145,6 +146,34 @@ class RuleBudget:
             return sum(self._dropped.values())
 
 
+class RuleCooldown:
+    """同键最小入库间隔(B3 统一冷却;默认 0=关闭,经 STEPEYE_ALERT_COOLDOWN_S 开启)。
+
+    与 ref_id 回写防重互补:防重只挡同 ref 的未决告警,本类挡"同键高频重复",
+    间隔内重复触发只计 dropped 不入库。风暴摘要不经过本闸门。
+    """
+
+    def __init__(self, min_interval_s: float = 0.0):
+        self.min_interval_s = max(0.0, float(min_interval_s))
+        self._lock = threading.Lock()
+        self._last: dict[tuple, float] = {}
+        self._dropped = 0
+
+    def admit(self, key: tuple, now: float) -> bool:
+        if self.min_interval_s <= 0:
+            return True
+        with self._lock:
+            if now - self._last.get(key, -math.inf) < self.min_interval_s:
+                self._dropped += 1
+                return False
+            self._last[key] = now
+            return True
+
+    def dropped_total(self) -> int:
+        with self._lock:
+            return self._dropped
+
+
 class GovernedAlerts:
     """AlertStore 治理门面:create 叠加风暴/预算闸门,其余方法透传给 store。
 
@@ -153,10 +182,11 @@ class GovernedAlerts:
     """
 
     def __init__(self, store: Any, storm: StormSuppressor | None = None,
-                 budget: RuleBudget | None = None):
+                 budget: RuleBudget | None = None, cooldown: RuleCooldown | None = None):
         self.store = store
         self.storm = storm or StormSuppressor()
         self.budget = budget or RuleBudget()
+        self.cooldown = cooldown or RuleCooldown(0)
         self._clock = time.time  # 测试注入用,业务代码不要改
 
     def create(self, station: str, source: str, kind: str, severity: str, message: str,
@@ -177,14 +207,18 @@ class GovernedAlerts:
             return rec, True
         if action == "suppressed":
             return None, False
+        if not self.cooldown.admit(key, now):
+            return None, False
         if not self.budget.admit(key, now):
             return None, False
         return self.store.create(station, source, kind, severity, message, ref_id=ref_id)
 
     def stats(self) -> dict[str, Any]:
-        """store.stats() 基础上如实追加治理计数:dropped(预算拒绝)与 storm_suppressed。"""
+        """store.stats() 基础上如实追加治理计数:dropped(预算拒绝)、cooldown_dropped
+        (冷却拦截)与 storm_suppressed。"""
         base = self.store.stats()
         base["dropped"] = self.budget.dropped_total()
+        base["cooldown_dropped"] = self.cooldown.dropped_total()
         base["storm_suppressed"] = self.storm.storm_stats()["suppressed_total"]
         return base
 

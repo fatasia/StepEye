@@ -11,6 +11,7 @@ from pathlib import Path
 from visual.alert_governance import (
     GovernedAlerts,
     RuleBudget,
+    RuleCooldown,
     StormSuppressor,
     false_positive_report,
 )
@@ -259,3 +260,36 @@ def test_governed_facade_delegates(tmp_path):
     st = gov.stats()
     assert {"total", "pending", "processing", "done", "false_alarm",
             "dropped", "storm_suppressed"} <= set(st)
+
+
+def test_rule_cooldown_blocks_repeats_until_interval_passes(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    gov = GovernedAlerts(store, cooldown=RuleCooldown(60))
+    gov._clock = lambda: 1000.0
+    first, new1 = gov.create("ST", "safety", "person_absent", "warn", "第 1 条")
+    again, new2 = gov.create("ST", "safety", "person_absent", "warn", "间隔内重复")
+    gov._clock = lambda: 1061.0  # type: ignore[assignment]
+    later, new3 = gov.create("ST", "safety", "person_absent", "warn", "间隔后")
+    assert new1 is True and new2 is False and new3 is True
+    stats = gov.stats()
+    assert stats["cooldown_dropped"] == 1 and stats["storm_suppressed"] == 0
+
+
+def test_rule_cooldown_disabled_by_default_passthrough(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    gov = GovernedAlerts(store)  # 默认 RuleCooldown(0)
+    for i in range(5):
+        rec, new = gov.create("ST", "safety", "person_absent", "warn", f"第 {i} 条")
+        assert new is True
+    assert gov.stats()["cooldown_dropped"] == 0
+
+
+def test_cooldown_does_not_block_storm_summary(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    gov = GovernedAlerts(store, storm=StormSuppressor(threshold=3, summary_interval_s=0),
+                         cooldown=RuleCooldown(3600))
+    gov._clock = lambda: 500.0
+    for i in range(3):
+        gov.create("ST", "safety", "person_absent", "warn", f"触发 {i}")
+    summary, new = gov.create("ST", "safety", "person_absent", "warn", "风暴延续")
+    assert summary is not None and new is True and summary["message"].startswith("[风暴摘要]")
