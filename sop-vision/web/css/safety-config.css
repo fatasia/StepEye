@@ -81,3 +81,6 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* 场景预设:预填入口,不替代人工确认 */
+.safety-presets { display: flex; align-items: center; gap: var(--s-2, 8px); flex-wrap: wrap; margin-bottom: 10px; }
