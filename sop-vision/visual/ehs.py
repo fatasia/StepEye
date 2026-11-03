@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class EhsRuleCfg(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
     id: str = Field(min_length=1, max_length=64)
-    kind: Literal['intrusion', 'fire_smoke', 'object_count', 'aisle_occupied']
+    kind: Literal['intrusion', 'fire_smoke', 'object_count', 'aisle_occupied', 'sleep_on_post']
     zone: str
     labels: list[str] = Field(default_factory=lambda: ['person'], min_length=1, max_length=32)
     min_s: float = Field(default=1., ge=0, le=3600)
@@ -18,6 +18,8 @@ class EhsRuleCfg(BaseModel):
     severity: Literal['warn', 'error'] = 'warn'
     min_count: int | None = Field(default=None, ge=0, le=256, strict=True)
     max_count: int | None = Field(default=None, ge=0, le=256, strict=True)
+    # 睡岗专用:中心点位移阈值(像素,与轨迹框同一像素坐标系,按机位分辨率整定)。
+    max_shift_px: float = Field(default=8., gt=0, le=10000)
 
     @model_validator(mode='after')
     def count_limits(self):
@@ -52,6 +54,14 @@ class Hold:
     area: float
 
 
+@dataclass
+class Still:
+    x: float
+    y: float
+    since: float
+    frames: int
+
+
 class EhsMonitor:
     def __init__(self, cfg: EhsCfg, geoms):
         self.cfg, self.geoms = cfg, geoms
@@ -60,6 +70,7 @@ class EhsMonitor:
     def reset(self):
         self._last_ts = None
         self._holds = {}
+        self._sleeps = {}
         self._fired = set()
         self._counts = {}
         self._states = {r.id: {'status': 'unknown', 'track_ids': []} for r in self.cfg.rules}
@@ -102,6 +113,10 @@ class EhsMonitor:
                 y = y1 if rule.kind == 'intrusion' else (y0+y1)/2
                 if geom.contains((x0+x1)/2, y):
                     matches.append(track)
+            if rule.kind == 'sleep_on_post':
+                alert = self._sleep_state(rule, matches, ts)
+                if alert is not None:alerts.append(alert)
+                continue
             matched_ids, durations, growth = [], [], []
             for track in matches:
                 key = (rule.id, track.track_id)
@@ -132,7 +147,8 @@ class EhsMonitor:
                                'duration_s': round(max(durations),3), 'track_ids': matched_ids,
                                'area_change_ratio': max(growth) if rule.kind == 'fire_smoke' else None,
                                'message': {'intrusion':'区域入侵持续观测', 'fire_smoke':'烟火持续观测',
-                                           'aisle_occupied':'通道指定物品持续占用'}[rule.kind],
+                                           'aisle_occupied':'通道指定物品持续占用',
+                                           'sleep_on_post':'人员持续静止超过时长(疑似睡岗)'}[rule.kind],
                                'source': 'ehs_tracks'})
         self._holds = {k:v for k,v in self._holds.items() if k in active_keys}
         return alerts
@@ -177,3 +193,37 @@ class EhsMonitor:
                 'max_count':rule.max_count, 'reason':side, 'scope':snap['scope'],
                 'message':'区域可见物数量低于下限' if side=='below' else '区域可见物数量超过上限',
                 'source':'ehs_tracks'}
+
+    def _sleep_state(self, rule, matches, ts):
+        # 睡岗:同一人员 ID 的框中心相对静止锚点的位移持续低于阈值;大幅移动或离开区域重置。
+        import math
+        state = self._sleeps.setdefault(rule.id, {})
+        live_ids = {t.track_id for t in matches}
+        for gone in set(state) - live_ids:
+            del state[gone]  # 离开区域即重置,返回后重新累积
+        confirmed, durations = [], []
+        for track in matches:
+            x, y = (track.xyxy[0]+track.xyxy[2])/2, (track.xyxy[1]+track.xyxy[3])/2
+            still = state.get(track.track_id)
+            if still is None:
+                state[track.track_id] = Still(x, y, ts, 1)
+                continue
+            still.frames += 1
+            if math.hypot(x-still.x, y-still.y) > rule.max_shift_px:
+                # 大幅移动:锚点与静止计时重置;帧数保留,时间条件兜底重新计满。
+                still.x, still.y, still.since = x, y, ts
+            elif still.frames >= rule.min_frames and ts-still.since >= rule.min_s:
+                confirmed.append(track.track_id)
+                durations.append(ts-still.since)
+        self._states[rule.id] = {'status': 'alert' if confirmed else ('pending' if matches else 'clear'),
+                                 'track_ids': [t.track_id for t in matches], 'observed_at': ts}
+        if not matches:
+            self._fired.discard(rule.id)
+        if confirmed and rule.id not in self._fired:
+            self._fired.add(rule.id)
+            return {'rule': rule.id, 'name': rule.id, 'kind': rule.kind,
+                    'zone': rule.zone, 'severity': rule.severity, 'ts': ts,
+                    'duration_s': round(max(durations), 3), 'track_ids': confirmed,
+                    'area_change_ratio': None,
+                    'message': '人员持续静止超过时长(疑似睡岗)', 'source': 'ehs_tracks'}
+        return None
