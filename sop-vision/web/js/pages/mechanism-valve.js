@@ -26,11 +26,11 @@ export function valveReport(report) {
     return `<li>${esc(description||reasons[code]||code||'证据未满足')}${reason.channel?` · ${esc(reason.channel)}`:''}<small> ${esc(code||'')}</small></li>`;
   }).join('');
   return `<header class="ml-report-head"><div><span class="ml-kicker">${esc(fmtTime(report.created_at*1000))}</span><h3>${esc(report.title||'阀门双证据分析')}</h3></div><span class="ml-state">${supported?'仅影子证据':'证据不足 · 不支持分析'}</span></header>
-    <p class="ml-help">校验的是上传时标声明，不是设备来源认证。本报告不触发告警、控制、SOP 或产品放行。</p>
-    ${supported?`<div class="ml-metrics"><div><span>历史域评分（非健康概率）</span><strong>${num(result.score)}</strong></div><div><span>历史参考阈值</span><strong>${num(result.historical_threshold)}</strong></div><div><span>阈值比较</span><strong style="font-size:20px">${result.threshold_exceeded?'超过历史阈值':'未超过历史阈值'}</strong></div></div><p>仅用于既有参考包适用域内的影子评估；未超阈值不等于设备健康或检验合格。</p>`:
+    <p class="ml-help">上传时标一致性校验 · 仅影子证据，非设备认证。</p>
+    ${supported?`<div class="ml-metrics"><div><span>历史域评分（非健康概率）</span><strong>${num(result.score)}</strong></div><div><span>历史参考阈值</span><strong>${num(result.historical_threshold)}</strong></div><div><span>阈值比较</span><strong style="font-size:20px">${result.threshold_exceeded?'超过历史阈值':'未超过历史阈值'}</strong></div></div><p>历史域阈值比较，不作设备健康或产品放行判定。</p>`:
       `<section class="ml-empty" style="padding:24px;text-align:left"><h3>补齐实际采集证据后再分析</h3><ul>${missing||'<li>当前输入未满足模型证据要求，请查看完整报告。</li>'}</ul><p>没有生成评分，不以缺少数据推断正常。</p></section>`}
-    <dl class="ml-facts"><div><dt>验证范围</dt><dd>${result.validation_scope==='replay_fixture'?'参考包回放数据':result.validation_scope==='uploaded_timestamp_claims'?'上传时间戳声明':esc(result.validation_scope||'尚未满足')}</dd></div><div><dt>距命令后 8 秒窗口的偏移（采样点）</dt><dd>${esc(offsetText)}</dd></div><div><dt>最大通道时间差（采样点）</dt><dd>${num(quality.max_channel_skew_samples)}</dd></div><div><dt>使用状态</dt><dd>仅评估 · 非放行</dd></div></dl>
-    <details><summary>适用范围与追溯</summary><p>当前入口使用 PS1 / PS2 压力通道、bar 单位、100 Hz 与 400 点输入；窗口从命令后 8 秒开始，长度 4 秒；命令偏移与通道时间差容差均为 1 个采样点。命令边沿和各通道时标必须来自实际采集；参考包回放须显式声明。不能把不明来源的信号补成“同步”数据。</p><p class="ml-hash">输入 SHA-256：${esc(report.input_sha256||'未提供')}</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify(quality,null,2))}</pre></details>
+    <details><summary>适用范围、时标与追溯</summary><dl class="ml-facts"><div><dt>验证范围</dt><dd>${result.validation_scope==='replay_fixture'?'参考包回放数据':result.validation_scope==='uploaded_timestamp_claims'?'上传时间戳声明':esc(result.validation_scope||'尚未满足')}</dd></div><div><dt>距命令后 8 秒窗口的偏移（采样点）</dt><dd>${esc(offsetText)}</dd></div><div><dt>最大通道时间差（采样点）</dt><dd>${num(quality.max_channel_skew_samples)}</dd></div><div><dt>使用状态</dt><dd>仅评估 · 非放行</dd></div></dl>
+    <p>当前入口使用 PS1 / PS2 压力通道、bar 单位、100 Hz 与 400 点输入；窗口从命令后 8 秒开始，长度 4 秒；命令偏移与通道时间差容差均为 1 个采样点。命令边沿和各通道时标必须来自实际采集；参考包回放须显式声明。不能把不明来源的信号补成“同步”数据。</p><p class="ml-hash">输入 SHA-256：${esc(report.input_sha256||'未提供')}</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify(quality,null,2))}</pre></details>
     <a class="btn" href="/api/mechanism/analyses/${encodeURIComponent(report.id)}/export" download>导出完整报告 JSON</a>`;
 }
 
