@@ -315,3 +315,20 @@ weihu 执行器四类575 KB ONNX接机理实验室，四条真实留出记录CPU
 **C3/C4/C5/C6**：C5 配方 status 加 unsynced（区分"从未切换"与"中断/外部改动不一致"）；C4 设备接入底座盘点（幂等/时区/六面分组已齐，厂商专有格式与扭矩缺样本登记 docs/EQUIPMENT-INGEST-GAPS-2026-11-05.md）；C3 MOT17 跟踪评测方案记录（docs/CROSS-CAMERA-TRACK-GAPS-2026-11-05.md）；C6 许可状态在 B4 总表齐备，无新开发。
 
 **待办**：CoatingVision 训练方向（多标签分类 vs 检测扩充）；动作头两段推理接入实时旁路；MOT17 跟踪评测；servo-dc 实验结论；Kitchen 数据落地评估。所有本轮训练/下载进程结束时自查退出。
+
+### 2026-11-05 续：CoatingVision 双路线证伪、MOT 评测、Kitchen 落地
+
+提交 2960574/8d6fe7e/bacb91e 已推送。
+
+**CoatingVision 极片缺陷：两条监督路线都已实测并如实登记（均不达标）**：
+- 框路线（2960574）：掩码连通域→YOLO 框，444 图固定 test P 0.732/R 0.512，delamination R 0.031 基本失败（仅 203 图/714 框），crack R 0.518（53,907 个连通域碎片框，框 IoU 对细长曲线天然吃亏）。登记 `experimental-coating-three-class-v1` rejected。
+- 分割路线（bacb91e）：掩码→多边形，YOLOv8n-seg 30 轮，mask mAP50 0.276/R 0.330——640 分辨率下细裂缝只有几个像素宽。登记 `experimental-coating-seg-v1` rejected。
+- 结论：下一步杠杆是更高输入分辨率或更多数据，不是继续调参；两种路线的失败分析均已入登记，后续不再重复框路线。
+
+**MOT16 跟踪器评测完成**（docs/MOT-EVAL-2026-11-05.md）：ClassAwareIoUTracker 纯关联上限 IDF1 94.4/MOTA 98.8（GT 输入轮），静态相机近满分，退化集中在交叉人流/相机运动/夜间密集且主因是静默 id 碎片化；min_iou=0.3 默认参数全面优于 0.5；检测输入轮瓶颈是检测供给（FN 占 97%）。改进路径已记录：轻量运动外推/匹配门控。评测脚本与 48 组结果在 .v0/mot-eval/，平台代码零改动。
+
+**Kitchen Hygiene Gear 落地**（8d6fe7e）：1.94GB CRC 全过，31,371 图 7 类正负对（glove/hairnet/mask 及 no_* 反类+incorrect_mask）88,788 框，CC BY 4.0。域差显著（厨房≠工业洁净室，无鞋套/连体服）如实标注。七类穿戴训练已排队（.v0/kitchen-hygiene/train_v1.py，平台成功参数 workers=0/amp=False），完成后按固定 test 评测登记。
+
+**踩坑新增**：ultralytics dataset.yaml 的相对 path 是相对进程 cwd 而非 yaml 所在目录（写绝对路径）；Windows 下 ultralytics workers 默认>0 会死锁（必须 workers=0，与平台 training_worker 一致）；掩码转框的亚像素舍入会写出 >1 的框坐标（评测端钳制）。
+
+**待办**：Kitchen 训练完成评测登记；动作头两段推理接入；MOT 建议的运动外推门控（有数据支撑，值得做）。
