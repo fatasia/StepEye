@@ -7,7 +7,7 @@ import sys
 
 WORKERS = frozenset({
     'visual.action_predict', 'visual.label_predict', 'visual.classification_predict',
-    'visual.gauge_worker', 'visual.holdout_worker', 'visual.mechanism_valve_worker',
+    'visual.gauge_worker', 'visual.holdout_worker', 'visual.mechanism_valve_worker', 'visual.pin_predict',
     'visual.mechanism_rul_worker', 'visual.notifications', 'visual.code_reader',
     'visual.training_worker', 'visual.documents_parse', 'visual.mcp_server',
 })

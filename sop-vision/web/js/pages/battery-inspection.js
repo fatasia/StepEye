@@ -118,8 +118,8 @@ export function openBatteryInspection({canWrite}) {
     }catch(e){error(e.message);}finally{if(!closed)setBusy(false);}
   };
   if(canWrite)request('/api/models').then(data=>{
-    if(closed)return;models=data;
-    find('[data-bi-model]').innerHTML='<option value="">选择适用于当前表面的模型</option>'+data.map(m=>`<option value="${esc(m.id)}" ${m.available?'':'disabled'}>${esc(m.name)} · ${m.task==='classify'?'分类':'检测'}${m.available?'':' · 不可用'}</option>`).join('');
+    if(closed)return;models=data.filter(m=>!m.task||["detect","classify"].includes(m.task));
+    find('[data-bi-model]').innerHTML='<option value="">选择适用于当前表面的模型</option>'+models.map(m=>`<option value="${esc(m.id)}" ${m.available?'':'disabled'}>${esc(m.name)} · ${m.task==='classify'?'分类':'检测'}${m.available?'':' · 不可用'}</option>`).join('');
   }).catch(e=>{if(!closed){find('[data-bi-model]').innerHTML='<option value="">模型列表不可用</option>';error(e.message);}});
   return drawer;
 }

@@ -1,12 +1,11 @@
 """数据范围权限:按用户 project_ids 过滤普通读接口的行。
 
-语义与 label_routes.check_mcp_read / projects() 既有模式完全对齐:
+浏览器与旧MCP令牌分别保留明确语义:
 - admin:不限制,原样放行;
-- 其他角色:project_ids 为空 = 不限制;非空 = 白名单(行携带的 station/project 标识命中才保留)。
+- 浏览器:project_ids=null 为全局，[] 为无项目；非空为项目白名单。
+- 旧MCP令牌:project_ids 为空 = 不限制；非空为白名单。
 
-注意:users 表不存 project_ids,浏览器会话(verify_session)恒为不限制;
-project_ids 目前只出现在 MCP 令牌(verify_mcp_token → role="viewer" + project_ids)。
-本模块是"按 user dict 过滤"的纯函数库,真正的接线由 server.py(主会话)完成。
+浏览器scope_type区分空数组与全局，项目关联工位由browser_scope解析。
 """
 from __future__ import annotations
 
@@ -19,10 +18,12 @@ _UNRESTRICTED = object()
 
 
 def scope_ids(user: dict | None) -> set[str] | None:
-    """返回用户的可见标识集合;None 表示不限制(admin 或 project_ids 为空)。"""
+    """返回项目白名单；None 表示全局，空集合表示无项目。"""
     if user is not None and user.get("role") == "admin":
         return None
     raw = (user or {}).get(SCOPE_FIELD)
+    if (user or {}).get("scope_type") == "projects":
+        return set(raw or [])
     if not raw:
         return None
     if isinstance(raw, (list, tuple, set)):

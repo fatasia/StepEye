@@ -21,6 +21,7 @@ PBKDF2_ROUNDS = 200_000
 SESSION_TTL_S = 12 * 3600
 ROLES = ("viewer", "operator", "admin")
 _ROLE_RANK = {r: i for i, r in enumerate(ROLES)}
+_KEEP_SCOPE = object()
 
 
 def _hash_pw(password: str, salt: bytes) -> bytes:
@@ -41,6 +42,8 @@ class AuthStore:
         self._db.execute("PRAGMA journal_mode=WAL")
         self._db.execute("CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY,"
                          " pw_salt BLOB, pw_hash BLOB, role TEXT, created TEXT)")
+        if "projects" not in {r[1] for r in self._db.execute("PRAGMA table_info(users)")}:
+            self._db.execute("ALTER TABLE users ADD COLUMN projects TEXT NOT NULL DEFAULT 'null'")
         self._db.execute("CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY,"
                          " username TEXT, expires REAL)")
         self._db.execute("CREATE TABLE IF NOT EXISTS mcp_tokens (id TEXT PRIMARY KEY, token_hash TEXT UNIQUE,"
@@ -79,7 +82,8 @@ class AuthStore:
                 raise AuthError("至少保留一个管理员，先创建其他管理员再操作", 409)
 
     # ---- 用户 ----
-    def set_user(self, username: str, password: str, role: str = "operator") -> None:
+    def set_user(self, username: str, password: str, role: str = "operator",
+                 project_ids=_KEEP_SCOPE) -> None:
         self._username(username)
         if role not in ROLES:
             raise ValueError(f"角色必须是 {ROLES} 之一")
@@ -87,15 +91,43 @@ class AuthStore:
             raise ValueError("密码至少 8 位")
         if len(password) > 256:
             raise ValueError("密码最多256位")
+        if project_ids is not _KEEP_SCOPE:
+            project_ids = self._projects(project_ids, role)
         salt = secrets.token_bytes(16)
         hashed = _hash_pw(password, salt)
         with self._user_write():
             if role != "admin":
                 self._keep_admin(username)
-            self._db.execute("INSERT INTO users VALUES (?,?,?,?,?) ON CONFLICT(username) DO UPDATE SET "
-                             "pw_salt=excluded.pw_salt,pw_hash=excluded.pw_hash,role=excluded.role",
-                             (username, salt, hashed, role, time.strftime("%Y-%m-%dT%H:%M:%S")))
+            previous = self._db.execute("SELECT projects FROM users WHERE username=?", (username,)).fetchone()
+            projects = project_ids if project_ids is not _KEEP_SCOPE else json.loads(previous[0]) if previous else None
+            if role == "admin": projects = None
+            self._db.execute("INSERT INTO users(username,pw_salt,pw_hash,role,created,projects) VALUES (?,?,?,?,?,?) "
+                             "ON CONFLICT(username) DO UPDATE SET pw_salt=excluded.pw_salt,"
+                             "pw_hash=excluded.pw_hash,role=excluded.role,projects=excluded.projects",
+                             (username, salt, hashed, role, time.strftime("%Y-%m-%dT%H:%M:%S"), json.dumps(projects)))
             # Password/role changes revoke both browser sessions and delegated tokens.
+            self._db.execute("DELETE FROM sessions WHERE username=?", (username,))
+            self._db.execute("UPDATE mcp_tokens SET revoked=1 WHERE username=?", (username,))
+
+    @staticmethod
+    def _projects(project_ids: list[str] | None, role: str) -> list[str] | None:
+        if project_ids is None: return None
+        if (not isinstance(project_ids, list) or len(project_ids) > 100
+                or any(not isinstance(p, str) or not p or len(p) > 100
+                       or any(not (c.isalnum() or c in "._-") for c in p) for p in project_ids)):
+            raise ValueError("项目范围须为最多100个有效项目ID")
+        if role == "admin":
+            raise ValueError("管理员使用全局数据范围")
+        return sorted(set(project_ids))
+
+    def set_scope(self, username: str, project_ids: list[str] | None) -> None:
+        """管理员修改范围不重设密码；撤销既有会话，含已建立的WS会话。"""
+        self._username(username)
+        with self._user_write():
+            row = self._db.execute("SELECT role FROM users WHERE username=?", (username,)).fetchone()
+            if row is None: raise AuthError("用户不存在", 404)
+            projects = self._projects(project_ids, row[0])
+            self._db.execute("UPDATE users SET projects=? WHERE username=?", (json.dumps(projects), username))
             self._db.execute("DELETE FROM sessions WHERE username=?", (username,))
             self._db.execute("UPDATE mcp_tokens SET revoked=1 WHERE username=?", (username,))
 
@@ -110,8 +142,8 @@ class AuthStore:
 
     def list_users(self) -> list[dict]:
         with self._lock:
-            rows = self._db.execute("SELECT username, role, created FROM users ORDER BY username").fetchall()
-        return [{"username": r[0], "role": r[1], "created": r[2]} for r in rows]
+            rows = self._db.execute("SELECT username, role, created, projects FROM users ORDER BY username").fetchall()
+        return [{"username": r[0], "role": r[1], "created": r[2], "project_ids": json.loads(r[3])} for r in rows]
 
     def count(self) -> int:
         with self._lock:
@@ -142,10 +174,12 @@ class AuthStore:
             row = self._db.execute("SELECT username, expires FROM sessions WHERE token_hash=?", (th,)).fetchone()
             if row is None or row[1] < time.time():
                 return None
-            u = self._db.execute("SELECT role FROM users WHERE username=?", (row[0],)).fetchone()
+            u = self._db.execute("SELECT role, projects FROM users WHERE username=?", (row[0],)).fetchone()
         if u is None:
             return None
-        return {"username": row[0], "role": u[0]}
+        projects = None if u[0] == "admin" else json.loads(u[1])
+        return {"username": row[0], "role": u[0], "project_ids": projects,
+                "scope_type": "all" if projects is None else "projects"}
 
     def logout(self, token: str) -> None:
         with self._lock:

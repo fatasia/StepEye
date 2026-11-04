@@ -57,8 +57,9 @@ def router(labels: LabelStore, jobs: LabelJobs, engines: LabelEngines) -> APIRou
     def projects(request: Request) -> list[dict]:
         rows = labels.list_projects()
         user = request.state.user or {}
-        allowed = user.get("project_ids", [])
-        return [r for r in rows if not allowed or r["id"] in allowed]
+        from .data_scope import scope_ids
+        allowed = scope_ids(user)
+        return [r for r in rows if allowed is None or r["id"] in allowed]
 
     @api.post("/api/label-projects", status_code=201)
     def project_add(body: LabelProjectBody) -> dict:

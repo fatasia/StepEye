@@ -73,7 +73,7 @@ python -m pytest tests/test_gauge.py -q
 - 固定 float32 `images[1,3,512,512]` → `logits[1,2,512,512]`。原尺度灰度切块、右下反射补齐、复制三通道、ImageNet 归一化；不拉伸整图。
 - 作者固定版本测试图 `pcb_0006_jpg.rf.3643e486b19e08c1dd189e7ac8bd3bbb.jpg`，1024×221，SHA256 `f802112c4a33d62eab8741582a0f6f63c4124c1b799c6f135a9cde293efa5556`。两块共524,288像素，PT/ORT最大 logit 误差0.0001831，argmax差异0像素；裁回原图前景9,148像素。此处验证导出一致性，不是准确率评测。
 - CPU两线程两块推理2,425.755ms；独立无Torch试跑2,547.867ms，含载入/校验/保存3,142.424ms。适合离线按需试跑，不进实时检测链；不新增常驻服务。
-- 仅背景/针脚掩膜，`defect_verdict=null`，不判弯针、压接深度或3D针高。登记为 `evaluation_only`；尚未接统一分割页面，也未纳入现有运行ZIP。
+- 仅背景/针脚掩膜，`defect_verdict=null`，不判弯针、压接深度或3D针高。登记为 `evaluation_only`；已接现有视觉应用试跑页，支持原图/掩膜切换与PNG下载；尚未纳入现有运行ZIP。
 
 本机模型位于 `sop-vision/models/public/paine-pin-segmentation.onnx`，登记 `pin-models.json`，权重不入Git。复现无需Torch/FastAI：
 
@@ -87,3 +87,5 @@ python -m pytest tests/test_pin_checkpoint.py tests/test_pin_segmentation.py -q
 导出工具 `tools/export_pin_segmentation.py` 需要独立 FastAI 2.8.6 / FastCore 1.12.11 / FastProgress 1.0.5；本机隔离依赖位于 `.v0/quality-gaps/paine2026/vendor`，未加入运行依赖。Conda导出进程设置 `MKL_THREADING_LAYER=SEQUENTIAL`，无需允许重复OpenMP。
 
 原始树、模型metadata、API响应和实推结果保存在 `.v0/quality-gaps/`；未训练、未替换其他模型。
+
+Web接线：GET /api/models 中 task=segment；POST /api/models/{id}/trial 复用原试跑入口，返回原尺寸二值PNG，不返回检测框或缺陷结论。单次最多400万像素/16块，30秒超时，任务结束释放CPU子进程；停服终止自有任务。框标注项目明确拒绝分割模型，电池六面检测列表不混入PCB针脚分割。真实Web公开图9148前景像素、切换/下载/只读权限已检查，记录位于.v0/output/playwright/pin-scope/。

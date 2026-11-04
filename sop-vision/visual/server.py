@@ -154,6 +154,8 @@ class StationManager:
         from .classification import ClassifierRegistry, register_public_classifiers
         self.classifiers = ClassifierRegistry()
         register_public_classifiers(self.classifiers, ROOT)
+        from .pin_trials import PinTrials
+        self.pin_trials = PinTrials(ROOT)
         self.label_jobs = LabelJobs(data_dir / "labeling/jobs.db", self.labels, self.label_engines)
         from .training_jobs import TrainingJobs
         self.training = TrainingJobs.from_env(data_dir / "training", self.labels, self.label_engines)
@@ -363,6 +365,7 @@ class StationManager:
             self._stop()
 
     def _stop(self) -> None:
+        self.pin_trials.close()
         self.notifications.close()
         self.documents.close()
         self.gauge.close()
@@ -430,6 +433,11 @@ class UserBody(BaseModel):
     username: str
     password: str
     role: str = "operator"
+    project_ids: list[str] | None = Field(default=None, max_length=100)
+
+
+class UserScopeBody(BaseModel):
+    project_ids: list[str] | None = Field(..., max_length=100)
 
 
 class AlertPatchBody(BaseModel):
@@ -567,7 +575,7 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .audit import router as audit_router
     app.include_router(audit_router(manager.audit))
     from .model_routes import router as model_router
-    app.include_router(model_router(manager.labels, manager.label_engines, manager.classifiers))
+    app.include_router(model_router(manager.labels, manager.label_engines, manager.classifiers, manager.pin_trials))
     from .training_routes import router as training_router
     app.include_router(training_router(manager.training))
     from .calibration_routes import router as calibration_router
@@ -665,9 +673,15 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
                 need = "admin" if path.startswith(("/api/users", "/api/mcp/tokens", "/api/mcp/audit", "/api/notifications", "/api/operations", "/api/ai/")) else \
                     ("viewer" if request.method == "GET" or preview_read or path == "/api/assistant/chat" else "operator")
                 AuthStore.check(current_user(request), need)
+                from .browser_scope import check_request
+                await check_request(request, user, manager)
             except AuthError as e:
                 from fastapi.responses import JSONResponse
                 return JSONResponse({"detail": str(e)}, status_code=e.status)
+            except (HTTPException, LabelError) as e:
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"detail": e.detail if isinstance(e, HTTPException) else str(e)},
+                                    status_code=e.status_code if isinstance(e, HTTPException) else e.status)
         return await call_next(request)
 
     @app.middleware("http")
@@ -790,12 +804,31 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         if auth is None:
             raise HTTPException(400, "认证未启用")
         try:
-            auth.set_user(body.username, body.password, body.role)
+            if 'project_ids' in body.model_fields_set:
+                from .browser_scope import validate_projects
+                validate_projects(body.project_ids, manager.labels)
+                auth.set_user(body.username, body.password, body.role, body.project_ids)
+            else:
+                auth.set_user(body.username, body.password, body.role)
         except AuthError as e:
             raise HTTPException(e.status, str(e)) from e
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
         return {"ok": True}
+
+    @app.patch("/api/users/{username}/scope")
+    def users_scope(username: str, body: UserScopeBody) -> dict:
+        if auth is None:
+            raise HTTPException(400, "认证未启用")
+        from .browser_scope import validate_projects
+        validate_projects(body.project_ids, manager.labels)
+        try:
+            auth.set_scope(username, body.project_ids)
+        except AuthError as e:
+            raise HTTPException(e.status, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "project_ids": body.project_ids}
 
     @app.delete("/api/users/{username}")
     def users_del(username: str) -> dict[str, Any]:
@@ -815,19 +848,22 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     @app.get("/api/alerts")
     def alerts_list(request: Request, status: str | None = None, source: str | None = None,
                     limit: int = Query(100, ge=1, le=500)) -> list[dict[str, Any]]:
-        # 数据范围权限:浏览器会话无 project_ids 恒放行;带范围白名单的 MCP 令牌按 station 过滤
-        from .data_scope import scope_filter
-        return scope_filter(current_user(request),
-                            manager.alerts.list(status=status, source=source, limit=limit))
+        from .browser_scope import station_ids
+        return manager.alerts.list(status=status, source=source, limit=limit,
+                                   stations=station_ids(current_user(request), manager.labels))
 
     @app.get("/api/alerts/stats")
-    def alerts_stats() -> dict[str, Any]:
-        return manager.alerts.stats()
+    def alerts_stats(request: Request) -> dict[str, Any]:
+        from .browser_scope import station_ids
+        return manager.alerts.stats(stations=station_ids(current_user(request), manager.labels))
 
     @app.get("/api/alerts/false-positives")
-    def alerts_false_positives(hours: float = Query(24, ge=1, le=720)) -> dict[str, Any]:
+    def alerts_false_positives(request: Request, hours: float = Query(24, ge=1, le=720)) -> dict[str, Any]:
         from .alert_governance import false_positive_report
-        return false_positive_report(manager.alerts, hours)
+        from .browser_scope import filter_stations, station_ids
+        report = false_positive_report(manager.alerts, hours)
+        report['rules'] = filter_stations(report['rules'], station_ids(current_user(request), manager.labels))
+        return report
 
     @app.patch("/api/alerts/{aid}")
     def alerts_patch(aid: int, body: AlertPatchBody, request: Request) -> dict[str, Any]:
@@ -841,8 +877,10 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         return rec
 
     @app.get("/api/stations")
-    def stations() -> list[dict[str, Any]]:
-        return [rt.public_state() for rt in manager.runtimes.values()]
+    def stations(request: Request) -> list[dict[str, Any]]:
+        from .browser_scope import station_ids
+        allowed = station_ids(current_user(request), manager.labels)
+        return [rt.public_state() for sid, rt in manager.runtimes.items() if allowed is None or sid in allowed]
 
     @app.get("/api/stations/{sid}/state")
     def station_state(sid: str) -> dict[str, Any]:
@@ -1628,11 +1666,15 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
     @app.websocket("/ws")
     async def ws(sock: WebSocket) -> None:
+        from .browser_scope import station_ids
+        user = {"username": "local", "role": "admin"}
         if auth is not None:  # 流量含画面与数据,未认证直接拒绝
             token = sock.query_params.get("token") or sock.cookies.get("vsession", "")
-            if auth.verify_session(token) is None:
+            user = auth.verify_session(token)
+            if user is None:
                 await sock.close(code=4401)
                 return
+        allowed = station_ids(user, manager.labels)
         await sock.accept()
         q: asyncio.Queue = asyncio.Queue(maxsize=500)
         hub.clients.add(q)
@@ -1640,7 +1682,16 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
         async def send_events() -> None:
             while True:
-                await sock.send_json(await q.get())
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=5)
+                except asyncio.TimeoutError:
+                    event = None
+                # Scope/password changes revoke existing sockets, including idle ones.
+                if auth is not None and auth.verify_session(token) is None:
+                    await sock.close(code=4401)
+                    return
+                if event is not None and (allowed is None or event.get('station') in allowed):
+                    await sock.send_json(event)
 
         async def watch_disconnect() -> None:
             # Read even when no station emits events: an idle q.get cannot see a closed socket.
@@ -1651,7 +1702,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
                     return
 
         try:
-            await sock.send_json({"type": "hello", "stations": [rt.meta() for rt in manager.runtimes.values()]})
+            await sock.send_json({"type": "hello", "stations": [rt.meta() for sid, rt in manager.runtimes.items()
+                                                                 if allowed is None or sid in allowed]})
             tasks = [asyncio.create_task(send_events(), name="stepeye-ws-send"),
                      asyncio.create_task(watch_disconnect(), name="stepeye-ws-receive")]
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)

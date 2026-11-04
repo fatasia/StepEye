@@ -121,35 +121,37 @@ class ModelTrials:
             self._slot.release()
 
 
-def router(labels: LabelStore, engines: LabelEngines, classifiers=None) -> APIRouter:
+def router(labels: LabelStore, engines: LabelEngines, classifiers=None, segmentation=None) -> APIRouter:
     api = APIRouter()
     trials = ModelTrials(engines)
     classification = None
     if classifiers is not None:
         from .classification import ClassifierTrials
         classification = ClassifierTrials(classifiers, slot=trials._slot)
+    if segmentation is not None:
+        segmentation._slot = trials._slot
 
-    def classifier(engine_id):
-        found = classification is not None and any(m['id']==engine_id for m in classification.catalog())
-        if found and any(m['id']==engine_id for m in trials.catalog()):
-            raise LabelError('分类与检测模型ID冲突，请管理员修正登记',409)
-        return found
+    def task(engine_id):
+        return next((m['task'] for m in catalog() if m['id'] == engine_id), 'detect')
 
     @api.get('/api/models')
     def catalog() -> list[dict]:
-        detectors=trials.catalog(); classified=classification.catalog() if classification else []
-        if {m['id'] for m in detectors} & {m['id'] for m in classified}:
-            raise LabelError('分类与检测模型ID冲突，请管理员修正登记',409)
-        return detectors + classified
+        rows = trials.catalog() + (classification.catalog() if classification else [])
+        rows += segmentation.catalog() if segmentation else []
+        if len({m['id'] for m in rows}) != len(rows):
+            raise LabelError('模型ID冲突，请管理员修正登记',409)
+        return rows
 
     @api.post('/api/models/{engine_id}/trial')
     def trial(engine_id: str, file: UploadFile = File(...), threshold: float = Form(.4)) -> dict:
-        if classifier(engine_id):return classification.trial(engine_id,file.file)
+        kind = task(engine_id)
+        if kind == 'classify':return classification.trial(engine_id,file.file)
+        if kind == 'segment':return segmentation.trial(engine_id,file.file)
         return trials.trial(engine_id, file.file, threshold)
 
     @api.post('/api/models/{engine_id}/project', status_code=201)
     def project(engine_id: str, body: ModelProjectBody) -> dict:
-        if classifier(engine_id):raise LabelError('分类模型不支持框标注项目或检测训练',409)
+        if task(engine_id) != 'detect':raise LabelError('分类或分割模型不支持框标注项目或检测训练',409)
         model = trials.registered(engine_id)
         return labels.create_project(body.name.strip() or model['name'][:100], model['classes'])
 

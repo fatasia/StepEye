@@ -213,10 +213,12 @@ class GovernedAlerts:
             return None, False
         return self.store.create(station, source, kind, severity, message, ref_id=ref_id)
 
-    def stats(self) -> dict[str, Any]:
+    def stats(self, stations: set[str] | None = None) -> dict[str, Any]:
         """store.stats() 基础上如实追加治理计数:dropped(预算拒绝)、cooldown_dropped
         (冷却拦截)与 storm_suppressed。"""
-        base = self.store.stats()
+        base = self.store.stats(stations=stations)
+        if stations is not None:
+            return base  # 治理计数尚为全局内存态，不向受限用户返回。
         base["dropped"] = self.budget.dropped_total()
         base["cooldown_dropped"] = self.cooldown.dropped_total()
         base["storm_suppressed"] = self.storm.storm_stats()["suppressed_total"]

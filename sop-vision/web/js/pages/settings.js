@@ -1,3 +1,4 @@
+import { openUserScope } from "./user-scope.js";
 import { mountAIServices } from "./ai-services.js";
 import { icon } from "../icons.js";
 import { $, esc } from "../util.js";
@@ -79,13 +80,19 @@ export function render(root) {
     if (dead) return;
     users = rows;
     $("[data-settings-users]", root).innerHTML =
-      `<div class="settings-table-wrap"><table class="settings-table"><thead><tr><th>用户名</th><th>角色</th><th>创建 / 更新</th><th>操作</th></tr></thead><tbody>${rows.map((user) => `<tr data-user-row="${esc(user.username)}"><td><b>${esc(user.username)}</b>${user.username === me.username ? "<small>当前账号</small>" : ""}</td><td>${ROLES[user.role] || esc(user.role)}</td><td>${esc(user.created || "—")}</td><td><button class="settings-link" data-user-edit="${esc(user.username)}">编辑 / 重设密码</button><button class="settings-link danger" data-user-delete="${esc(user.username)}">删除</button></td></tr>`).join("")}</tbody></table></div>`;
+      `<div class="settings-table-wrap"><table class="settings-table"><thead><tr><th>用户名</th><th>角色</th><th>数据范围</th><th>创建 / 更新</th><th>操作</th></tr></thead><tbody>${rows.map((user) => `<tr data-user-row="${esc(user.username)}"><td><b>${esc(user.username)}</b>${user.username === me.username ? "<small>当前账号</small>" : ""}</td><td>${ROLES[user.role] || esc(user.role)}</td><td>${user.project_ids == null ? "全部数据" : user.project_ids.length ? `${user.project_ids.length} 个项目` : "无数据权限"}</td><td>${esc(user.created || "—")}</td><td><button class="settings-link" data-user-edit="${esc(user.username)}">编辑 / 重设密码</button>${user.role !== "admin" ? `<button class="settings-link" data-user-scope="${esc(user.username)}">数据范围</button>` : ""}<button class="settings-link danger" data-user-delete="${esc(user.username)}">删除</button></td></tr>`).join("")}</tbody></table></div>`;
     root
       .querySelectorAll("[data-user-edit]")
       .forEach(
         (button) =>
           (button.onclick = () => userForm(users.find((u) => u.username === button.dataset.userEdit))),
       );
+    root.querySelectorAll("[data-user-scope]").forEach(button => {
+      button.onclick = () => {
+        drawer?.close();
+        drawer = openUserScope(users.find(u => u.username === button.dataset.userScope), request, userList);
+      };
+    });
     root
       .querySelectorAll("[data-user-delete]")
       .forEach((button) => (button.onclick = () => deleteUser(button.dataset.userDelete, button)));

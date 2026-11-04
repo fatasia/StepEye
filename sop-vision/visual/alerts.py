@@ -80,7 +80,8 @@ class AlertStore:
                 "handler", "comment", "created", "updated", "pushed")
         return dict(zip(keys, row))
 
-    def list(self, status: str | None = None, source: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    def list(self, status: str | None = None, source: str | None = None, limit: int = 100,
+             stations: set[str] | None = None) -> list[dict[str, Any]]:
         q = "SELECT id, station, source, kind, severity, message, ref_id, status, handler, comment, created, updated, pushed FROM alerts"
         conds, args = [], []
         if status:
@@ -89,6 +90,10 @@ class AlertStore:
         if source:
             conds.append("source=?")
             args.append(source)
+        if stations is not None:
+            if not stations: return []
+            conds.append("station IN (" + ",".join("?" for _ in stations) + ")")
+            args.extend(sorted(stations))
         if conds:
             q += " WHERE " + " AND ".join(conds)
         q += " ORDER BY id DESC LIMIT ?"
@@ -131,9 +136,13 @@ class AlertStore:
             self._db.execute("UPDATE alerts SET pushed=1 WHERE id=?", (alert_id,))
             self._db.commit()
 
-    def stats(self) -> dict[str, Any]:
+    def stats(self, stations: set[str] | None = None) -> dict[str, Any]:
+        where, args = "", []
+        if stations is not None:
+            where = " WHERE station IN (" + ",".join("?" for _ in stations) + ")" if stations else " WHERE 0"
+            args = sorted(stations)
         with self._lock:
-            rows = self._db.execute("SELECT status, COUNT(*) FROM alerts GROUP BY status").fetchall()
+            rows = self._db.execute("SELECT status, COUNT(*) FROM alerts" + where + " GROUP BY status", args).fetchall()
         by = {s: n for s, n in rows}
         return {"total": sum(by.values()), "pending": by.get("pending", 0),
                 "processing": by.get("processing", 0), "done": by.get("done", 0),
