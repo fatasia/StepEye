@@ -5,6 +5,7 @@ import base64
 import queue
 import threading
 import time
+import uuid
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +58,10 @@ class StationRuntime:
         self.annotated: np.ndarray | None = None
         self.stream: np.ndarray | None = None
         self.frame_idx = 0
+        self._health_epoch = uuid.uuid4().hex
+        self._health_running = False
+        self._health_errors = 0
+        self._health_last_frame = None
         self.alerts: list[dict[str, Any]] = []
         self._alerts_lock = threading.Lock()
         self.listeners: list[Callable[[str, dict[str, Any]], None]] = []
@@ -408,6 +413,7 @@ class StationRuntime:
         self.stream = self._draw(frame, hud=False)
         self.recorder.flush()
         self.frame_idx += 1
+        self._health_last_frame = time.time()
         for observer in self.frame_observers:
             observer(self)
         if time.monotonic() - self._state_wall > 0.25:  # 状态快照在本线程生成，API 线程只读缓存，避免读写竞争
@@ -420,6 +426,7 @@ class StationRuntime:
             self.signal_inbox.bind_consumer()
         pace = self.cfg.source.type == "sim" and self.cfg.source.realtime
         t0 = time.monotonic()
+        self._health_running = True
         try:
             while not self.stop_event.is_set():
                 item = self.source.read()
@@ -450,7 +457,11 @@ class StationRuntime:
                         self.stop_event.wait(delay)
                 if max_frames and self.frame_idx >= max_frames:
                     break
+        except Exception:
+            self._health_errors += 1
+            raise
         finally:
+            self._health_running = False
             try:
                 self.source.close()
             finally:
@@ -484,6 +495,11 @@ class StationRuntime:
             self.store.close()
 
     # ------------------------------------------------------------ 状态 / 画面
+    def health_snapshot(self) -> dict[str, Any]:
+        """Successful-frame timing and worker failures; not accuracy metrics."""
+        return {"epoch": self._health_epoch, "running": self._health_running,
+                "error_total": self._health_errors, "last_frame_at": self._health_last_frame}
+
     def meta(self) -> dict[str, Any]:
         c = self.cfg
         return {"id": c.station, "name": c.name or c.station, "line": c.line, "source": c.source.type,

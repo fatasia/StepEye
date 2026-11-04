@@ -137,6 +137,9 @@ class StationManager:
         self.stock_recon = StockReconStore(data_dir / "stock_reconciliation.db")
         from .model_release import ModelReleases
         self.model_releases = ModelReleases(data_dir / "model_releases.db")
+        from .release_monitor import ReleaseMonitor
+        self.release_monitor = ReleaseMonitor(data_dir / "release_monitor.db", self.model_releases, self.holdout_evaluations)
+        self._runtime_change_lock = threading.RLock()
         from .recipes import RecipeStore, RecipeService
         self.recipe_store = RecipeStore(data_dir / "recipes.db")
         self.recipes = RecipeService(self.recipe_store, self)
@@ -178,6 +181,8 @@ class StationManager:
             if cfg.station in self.runtimes:
                 raise ValueError(f"工位 id 重复: {cfg.station}")
             rt = StationRuntime(cfg, data_dir, base_dir=ROOT, store=self.store)
+            from .release_runtime import bind_release
+            bind_release(rt, self.model_releases)
             rt.bind_calibrations(self.calibrations)
             rt.bind_ai_services(self.ai_services)
             rt.frame_observers.append(self.patrol.observe_runtime)
@@ -275,6 +280,8 @@ class StationManager:
         if cfg.station in self.runtimes:
             raise ValueError(f"工位 id 已存在:{cfg.station}")
         rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        from .release_runtime import bind_release
+        bind_release(rt, self.model_releases)
         rt.bind_calibrations(self.calibrations)
         rt.bind_ai_services(self.ai_services)
         rt.frame_observers.append(self.patrol.observe_runtime)
@@ -304,7 +311,16 @@ class StationManager:
             self.threads.append(t)
             self._threads[sid] = t
 
+    def monitor_releases(self):
+        from .release_runtime import sample_releases
+        with self._runtime_change_lock:
+            sample_releases(self)
+
     def reload(self, sid: str) -> None:
+        with self._runtime_change_lock:
+            return self._reload(sid)
+
+    def _reload(self, sid: str) -> None:
         """配置变更后热重载:停旧线程,按 YAML 重建运行时(证据与库共享)。"""
         old = self.runtimes.get(sid)
         if old is None:
@@ -327,6 +343,8 @@ class StationManager:
             raise HTTPException(409, "停机前新周期已启动，拒绝切换配方")
         old.signal_inbox.close()
         rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        from .release_runtime import bind_release
+        bind_release(rt, self.model_releases)
         rt.bind_calibrations(self.calibrations)
         rt.bind_ai_services(self.ai_services)
         rt.frame_observers.append(self.patrol.observe_runtime)
@@ -340,6 +358,11 @@ class StationManager:
         self.hub.publish({"type": "event", "station": sid, "kind": "reloaded", "data": {"ok": True}})
 
     def stop(self) -> None:
+        # Wait for an in-flight heartbeat rollback before closing its stores.
+        with self._runtime_change_lock:
+            self._stop()
+
+    def _stop(self) -> None:
         self.notifications.close()
         self.documents.close()
         self.gauge.close()
@@ -357,6 +380,7 @@ class StationManager:
         self.quality_reports.close()
         self.holdout_evaluations.close()
         self.stock_recon.close()
+        self.release_monitor.close()
         self.model_releases.close()
         self.recipe_store.close()
         for rt in self.runtimes.values():
@@ -524,6 +548,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     async def _push_states() -> None:
         while True:
             await asyncio.sleep(0.5)
+            if manager.release_monitor.active_scenes():
+                await asyncio.to_thread(manager.monitor_releases)
             for sid, rt in manager.runtimes.items():
                 if rt.state_cache or rt.thermal_service is not None:
                     hub.publish({"type": "state", "station": sid, "data": rt.public_state()})
@@ -560,6 +586,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(stock_recon_router(manager.stock_recon))
     from .model_release_routes import router as model_release_router
     app.include_router(model_release_router(manager.model_releases, manager.holdout_evaluations, manager))
+    from .release_monitor_routes import router as release_monitor_router
+    app.include_router(release_monitor_router(manager.release_monitor))
     from .project_docs import router as project_docs_router
     app.include_router(project_docs_router())
     from .quality_routes import router as quality_router

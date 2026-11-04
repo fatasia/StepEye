@@ -1,7 +1,7 @@
 """模型发布账本:审批→激活→回滚;append-only 修订,不触 yaml、不改引擎注册。
 
 账本只记录"某 scene 应使用哪个 engine+sha"。激活/回滚是账本状态变化;
-真实生效路径(工位重载读取账本)待接入,本模块不做任何半吊子接线。
+工位重载由服务层读取账本；本模块只管理版本状态和模型完整性校验。
 评测不等于审批:candidate 必须绑定一份 publication=not_requested 的 HE 检测验证报告,
 且 model_sha256/engine_id/adapter/classes 与报告一致;审批是独立的 admin 动作。
 """
@@ -30,6 +30,17 @@ def _validated_fields(engine_id, model_sha256, evaluation_id, adapter, classes):
     if adapter not in ("yolo_raw", "yolo_e2e", "kairos_rtdetr"):
         raise ValueError("adapter 不受支持")
     return validated_classes(classes)
+
+
+def validate_release_model(record):
+    """Check the approved artifact before changing the active ledger version."""
+    from .label_jobs import fingerprint
+    path = Path(record.get("model_path") or "")
+    if not path.is_file():
+        raise ValueError("发布模型文件不存在")
+    if fingerprint(path) != record["model_sha256"]:
+        raise ValueError("发布模型 SHA 与审批记录不一致")
+    return path
 
 
 def create_candidate(releases, evaluations, *, engine_id, model_sha256, evaluation_id,

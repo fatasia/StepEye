@@ -1,3 +1,4 @@
+import { mountReleaseMonitor } from "./release-monitor-ui.js";
 import { openDrawer, toast } from "../ui.js";
 import { $, esc, fmtTime } from "../util.js";
 
@@ -20,15 +21,15 @@ const STATUS = {
 const short = (sha) => (sha ? String(sha).slice(0, 10) + "…" : "—");
 
 /** 模型发布管理：评测报告 → 候选 → 审批 → 激活到场景 → 可回滚，一屏完成。
- * 账本只记录"场景应使用哪个引擎+SHA"；工位重载真实生效待接入。 */
+ * 运行监控由管理员显式启用，精度仍以独立评测为准。 */
 export function openReleaseManagement({ canWrite }) {
-  let closed = false, reports = [];
+  let closed = false, reports = [], isAdmin = false;
   const drawer = openDrawer({
     title: "模型发布管理",
     subtitle: "评测报告 → 候选 → 审批 → 激活到场景 → 回滚",
     html: `<style>.rel-man label{display:block;margin:14px 0 8px}.rel-man select,.rel-man input{max-width:100%;width:100%;box-sizing:border-box;padding:9px;background:transparent;color:inherit;border:1px solid #364348;border-radius:5px}.rel-man table{width:100%;max-width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;margin:10px 0}.rel-man th,.rel-man td{border-bottom:1px solid #2a3438;padding:7px 6px;text-align:left;vertical-align:top;overflow-wrap:anywhere}.rel-man .rm-error{color:#ff9890}.rel-man .rm-actions{display:flex;gap:8px;flex-wrap:wrap}.rel-man p{line-height:1.7}</style>
       <div class="rel-man">
-        <p>发布是独立动作：评测报告只证明"这份 SHA 在这份冻结数据上的表现"，审批人确认后才可激活到场景。评测报告一旦进入发布流程不可重复使用。激活/回滚目前只更新账本，工位重载读取生效路径尚未接入。</p>
+        <p>发布是独立动作：评测报告只证明"这份 SHA 在这份冻结数据上的表现"，审批人确认后才可激活到场景。评测报告一旦进入发布流程不可重复使用。运行自动回滚默认关闭，仅监测运行错误与成功帧，不监测识别精度。</p>
         ${canWrite ? `<details open><summary>① 从固定评测报告创建候选</summary>
           <label>评测报告（HE-）<select data-rm-report></select></label>
           <div class="rm-actions"><button class="btn" data-rm-create ${canWrite ? "" : "disabled"}>创建候选</button></div>
@@ -50,8 +51,8 @@ export function openReleaseManagement({ canWrite }) {
     return `<tr><td><span class="badge tone-${st.tone}">${st.text}</span><br><span class="mono faint">${esc(r.id)}</span></td>
       <td>${esc(r.engine_id)}<br><span class="mono faint" title="${esc(r.model_sha256)}">${short(r.model_sha256)}</span></td>
       <td class="mono">${esc(String(r.evaluation_id || ""))}</td>
-      <td>${esc(r.scene || "—")}${r.replaced_release_id ? `<br><span class="faint">替代 ${short(r.replaced_release_id)}</span>` : ""}<br><span class="faint">${fmtTime(r.created * 1000)} · ${esc(r.actor || "")}</span></td>
-      <td><div class="rm-actions">${actions.join("") || '<span class="faint">—</span>'}</div></td></tr>`;
+      <td>${esc(r.scene || "—")}${r.replaced_release_id ? `<br><span class="faint">替代 ${short(r.replaced_release_id)}</span>` : ""}<br><span class="faint">${fmtTime(r.created_at * 1000)} · ${esc(r.created_by || "")}</span></td>
+      <td><div class="rm-actions">${actions.join("") || '<span class="faint">—</span>'}</div>${r.status === "active" ? `<div data-rm-monitor-host="${esc(r.id)}"></div>` : ""}</td></tr>`;
   }
 
   async function load() {
@@ -71,9 +72,13 @@ export function openReleaseManagement({ canWrite }) {
           : `<option value="">还没有固定评测报告——先跑一次固定模型评测</option>`;
       }
       $("[data-rm-list]", body).innerHTML = listed.items.length
-        ? `<table><colgroup><col style="width:88px"><col style="width:26%"><col style="width:30%"><col style="width:auto"><col style="width:118px"></colgroup><thead><tr><th>状态</th><th>引擎 / SHA</th><th>评测</th><th>场景 / 时间</th><th>操作</th></tr></thead><tbody>${listed.items.map(row).join("")}</tbody></table>`
+        ? `<table><colgroup><col style="width:18%"><col style="width:20%"><col style="width:19%"><col style="width:21%"><col style="width:22%"></colgroup><thead><tr><th>状态</th><th>引擎 / SHA</th><th>评测</th><th>场景 / 时间</th><th>操作</th></tr></thead><tbody>${listed.items.map(row).join("")}</tbody></table>`
         : "还没有发布记录——从上方评测报告创建候选。";
       bindActions();
+      for (const release of listed.items.filter(r=>r.status === "active")) {
+        const host = Array.from(body.querySelectorAll("[data-rm-monitor-host]")).find(node=>node.dataset.rmMonitorHost===release.id);
+        mountReleaseMonitor(host, release, {isAdmin,isClosed:()=>closed,onError:showError});
+      }
     } catch (e) { showError(e); }
   }
 
@@ -115,6 +120,11 @@ export function openReleaseManagement({ canWrite }) {
     } catch (e) { showError(e); }
   };
 
-  load();
+  request("/api/auth/me").then(me=>{
+    if(closed)return;
+    if(!["viewer","operator","admin"].includes(me.role))throw new Error("无法确认访问权限");
+    isAdmin=me.role === "admin";
+    load();
+  }).catch(showError);
   return drawer;
 }

@@ -9,7 +9,7 @@ server.py 接线(主会话执行,此处不改 server.py):
 
 权限双保险(同 ops_routes):auth_guard 中间件把 GET 判为 viewer、POST 判为 operator;
 审批/激活/回滚是发布动作,路由内再强制 admin,保证单独挂载时也不越权。
-账本只记录"某 scene 应使用哪个 engine+sha";工位真实生效路径(重载读取)待接入。
+账本只记录"某 scene 应使用哪个 engine+sha";服务层通过工位重载应用，响应区分账本状态与实际生效状态。
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from .model_release import ModelReleases, create_candidate
+from .model_release import ModelReleases, create_candidate, validate_release_model
 
 
 class CandidateBody(BaseModel):
@@ -69,7 +69,8 @@ def router(releases: ModelReleases, evaluations, manager=None) -> APIRouter:
         if manager is not None and manager.runtimes.get(scene) is not None:
             try:
                 manager.reload(scene)
-                applied = True
+                active = releases.active_for(scene)
+                applied = bool(active and getattr(manager.runtimes[scene], 'release_id', None) == active['id'])
             except HTTPException as exc:
                 if exc.status_code != 409:
                     raise
@@ -104,12 +105,21 @@ def router(releases: ModelReleases, evaluations, manager=None) -> APIRouter:
     @api.post("/api/model-releases/{release_id}/activate")
     def activate(release_id: str, body: ActivateBody, request: Request) -> dict:
         _require(request, ("admin",))
+        if manager is not None:
+            candidate = dispatch(releases.get, release_id)
+            if candidate['status'] != 'approved':
+                raise HTTPException(400, 'Only approved releases can be activated')
+            dispatch(validate_release_model, candidate)
         record = dispatch(releases.activate, release_id, body.scene, _actor(request))
         return apply_to_station(body.scene, record)
 
     @api.post("/api/model-releases/{release_id}/rollback")
     def rollback(release_id: str, request: Request) -> dict:
         _require(request, ("admin",))
+        if manager is not None:
+            current = dispatch(releases.get, release_id)
+            if current.get("replaced_release_id"):
+                dispatch(validate_release_model, dispatch(releases.get, current["replaced_release_id"]))
         record = dispatch(releases.rollback, release_id, _actor(request))
         return apply_to_station(record["scene"], record)
 

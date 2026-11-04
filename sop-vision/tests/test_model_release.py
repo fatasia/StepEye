@@ -15,7 +15,8 @@ from visual.model_release import ModelReleases
 from visual.model_release_routes import router as model_release_router
 from visual.server import build_app
 
-MODEL_SHA = "a" * 64
+import hashlib
+MODEL_SHA = hashlib.sha256(b"dummy").hexdigest()
 
 
 def holdout_report(manager, **changes):
