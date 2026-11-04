@@ -46,3 +46,20 @@
 v2数据版本 `EDGE129799-V2-PARTIAL177-GROUPED`，平台训练指纹 `25c95c4509dcbd3bf0b2a96680785c9d988d712b4b49780880e34abda8f8a4ce`。规格 `edge-wrist/train-spec-v2.json` 固定40轮、batch8、GPU0、640，118训练/24验证，初始化原批准YOLOv8n基座（SHA `f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36`），不用旧候选或test数据选参数。未修改v1数据，v2新增metadata后已重新固定训练指纹。
 
 一次性脚本 `.v0/safety-model-audit/edge-wrist/train-v2-after-pcb.ps1` 已完成PowerShell语法检查，**尚未执行**。启动后先等待PCB进程64844退出且产生成功result，再调用原training_worker；随后复用原评测工具分别产生 `test-evaluation-v2-original31.json`（可比31张）和 `test-evaluation-v2-added4.json`（新增4张）。不重复评测整35张、不自动发布、结束即退出。新增4张测试视图位于 `test-v2-added4`，不进入训练YAML。
+
+## 腕带v2训练已完成
+
+新增数据后只进行一次40轮GPU训练，耗时179.38秒，原141张图的split与SHA变化均为0。原test31与新增test4分开评测，原v1保持不动。
+
+| 原test31 | v1 Recall | v2 Recall | v2 Precision |
+|---|---:|---:|---:|
+| 总体 | 0.2069 | 0.5000 | 0.9355 |
+| 腕带 | 0.4000 | 0.8500 | 0.8947 |
+| 手表 | 0.2222 | 0.6667 | 1.0000 |
+| 戒指 | 0.0000 | 0.0000 | — |
+
+新增4图共9个标注框，TP5/FP0/FN4；腕带4/4、手表1/2、戒指0/3。这个小集合不单独用于可用性结论。
+
+ONNX SHA `4348fa1b251c6b6a308c920a45bb98375883cc68904a0bfcc472ae942b408c7c`，已以 `experimental-visible-wrist-v2` 登记为近景腕带/手表评估候选，界面标题明确「戒指未达标」。没有部署到工位，不判断未佩戴或电气ESD合规。原31图仍有同源近重复风险，不是独立厂区验证。
+
+完整结果：`.v0/safety-model-audit/edge-wrist/test-evaluation-v2-original31.json` 与 `test-evaluation-v2-added4.json`。现有模型中心实际试跑和检测框显示通过，截图 `.v0/output/playwright/pcb-wrist-live/experimental-visible-wrist-v2_1920.png`。训练与两项评测进程均已结束。

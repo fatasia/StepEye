@@ -73,3 +73,12 @@ def test_export_refuses_different_source(tmp_path):
     with pytest.raises(ValueError, match='SHA'):
         module.export(cfg, weights, tmp_path/'model.onnx')
     assert not (tmp_path/'model.onnx').exists()
+
+
+def test_glue_score_equal_to_threshold_is_kept():
+    rows = prediction()
+    rows[0, 0, 5] = .25
+    direct = decode(rows, 200, 100, threshold=.25)
+    low_score = decode(rows, 200, 100, threshold=.001)
+    assert len(direct) == 1 and direct[0].confidence == .25
+    assert direct == [hit for hit in low_score if hit.confidence >= .25]

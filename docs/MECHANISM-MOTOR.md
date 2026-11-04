@@ -33,4 +33,4 @@ python sop-vision/tools/motor_feature_request.py record-1.npz record-2.npz --out
 
 数据来自 [Mendeley MCC5-THU v1](https://data.mendeley.com/datasets/6s3dggj9mw/1)，发布方声明CC BY4.0；作者Shijin Chen、Zeyi Liu、Chenyang Li、Dongliang Zou、Xiao He、Donghua Zhou。代码MIT、原数据和模型用途分开登记，模型保持 `evaluation_only`。
 
-10项专项检查覆盖完整记录均值、空窗、维度/有限值/特征版本、重复记录、缺资产、单并发与失败释放、共享报告API；JS语法通过。页面集成由主线浏览器验收。
+10项专项检查覆盖完整记录均值、空窗、维度/有限值/特征版本、重复记录、缺资产、单并发与失败释放、共享报告API；JS语法通过。主线已通过真实Web上传原2条记录、CPU推理、历史报告和下载验收，页面错误0；截图 `.v0/output/playwright/motor-rf/report_1920.png`。

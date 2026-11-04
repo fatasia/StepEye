@@ -85,6 +85,85 @@
         "Only visible items; no missing-PPE inference or ESD electrical compliance",
         "Public dataset incomplete; no independent factory test"
       ]
+    },
+    {
+      "id": "experimental-visible-wrist-v2",
+      "name": "近景腕带 / 手表（评估，戒指未达标）",
+      "model_path": "models/public/wrist-visible-v2.onnx",
+      "classes": [
+        "ring",
+        "watch",
+        "wrist-strap"
+      ],
+      "sha256": "4348fa1b251c6b6a308c920a45bb98375883cc68904a0bfcc472ae942b408c7c",
+      "bytes": 12240411,
+      "adapter": "yolo_raw",
+      "adapter_compatible": true,
+      "license_status": "weights_AGPL-3.0_derivative; public_project_data_Apache-2.0; not_release_approved",
+      "source": {
+        "dataset": "https://studio.edgeimpulse.com/public/129799/latest",
+        "dataset_version": "EDGE129799-V2-PARTIAL177-GROUPED",
+        "dataset_sha256": "25c95c4509dcbd3bf0b2a96680785c9d988d712b4b49780880e34abda8f8a4ce",
+        "training": "YOLOv8n GPU40 epochs; 118 train /24 validation; previous test31 unchanged"
+      },
+      "test": {
+        "images": 31,
+        "confidence": 0.25,
+        "iou": 0.5,
+        "summary": {
+          "tp": 29,
+          "fp": 2,
+          "fn": 29,
+          "precision": 0.9354838709677419,
+          "recall": 0.5,
+          "f1": 0.651685393258427
+        },
+        "classes": {
+          "ring": {
+            "tp": 0,
+            "fp": 0,
+            "fn": 20,
+            "precision": null,
+            "recall": 0.0,
+            "f1": 0.0
+          },
+          "watch": {
+            "tp": 12,
+            "fp": 0,
+            "fn": 6,
+            "precision": 1.0,
+            "recall": 0.6666666666666666,
+            "f1": 0.8
+          },
+          "wrist-strap": {
+            "tp": 17,
+            "fp": 2,
+            "fn": 3,
+            "precision": 0.8947368421052632,
+            "recall": 0.85,
+            "f1": 0.8717948717948718
+          }
+        },
+        "added4_summary": {
+          "tp": 5,
+          "fp": 0,
+          "fn": 4,
+          "precision": 1.0,
+          "recall": 0.5555555555555556,
+          "f1": 0.7142857142857143
+        },
+        "scope": "author same-session test; near-duplicate training/test candidates exist"
+      },
+      "limitations": [
+        "ring recall 0; not a working ring detector",
+        "Visible near-field wrist straps only; no absent-PPE or ESD electrical compliance inference",
+        "No independent factory validation"
+      ],
+      "production_ready": false,
+      "status": "partial_candidate_not_for_deployment",
+      "registered_as": "experimental-visible-wrist-v2",
+      "usage": "evaluation_only",
+      "production_approval": false
     }
   ]
 }

@@ -161,3 +161,15 @@ def test_backend_bound_and_input_contract(tmp_path):
 
 def test_unknown_model_extension_rejected():
     with pytest.raises(ValueError): create_detector(DetectorCfg(model='bad.pt'),{})
+
+
+@pytest.mark.parametrize('threshold', [.25, .5, 1.0])
+def test_inclusive_threshold_matches_low_score_evaluation(threshold):
+    from visual.onnx_detector import postprocess_detections
+    # Binary-exact scores reproduce OpenCV's former strict-threshold discrepancy.
+    pred = _pred_v8([(50, 50, 20, 20, 0, threshold),
+                     (90, 90, 10, 10, 0, threshold/2)], nc=1)
+    direct = postprocess_detections(pred, threshold, ['part'], (100,100), 1., (0,0))
+    low_score = postprocess_detections(pred, .001, ['part'], (100,100), 1., (0,0))
+    assert len(direct) == 1 and direct[0][2] == threshold
+    assert direct == [row for row in low_score if row[2] >= threshold]

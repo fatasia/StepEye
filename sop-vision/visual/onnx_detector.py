@@ -90,7 +90,8 @@ def postprocess_detections(pred: np.ndarray, conf_th: float, class_names: list[s
     idx = []
     for cls in np.unique(ids):
         members = np.flatnonzero(ids == cls)
-        selected = cv2.dnn.NMSBoxes(xywh[members].tolist(), confs[members].tolist(), conf_th, NMS_IOU)
+        # Confidence was already filtered inclusively; OpenCV uses a strict > cutoff.
+        selected = cv2.dnn.NMSBoxes(xywh[members].tolist(), confs[members].tolist(), 0.0, NMS_IOU)
         idx.extend(members[np.asarray(selected, dtype=int).reshape(-1)].tolist())
     idx.sort(key=lambda i: -float(confs[i]))
     out = []
