@@ -158,3 +158,11 @@ curl -L -o screw_candidate_detection.tar "https://zenodo.org/records/17173803/fi
 4. 针孔已另有专用候选（coating-pinhole-enhanced，选模集 R 0.810）。
 
 后续：不重复框路线；分层类等更多样本；分割训练路线待资源窗口评估。
+
+## Kitchen Hygiene Gear 落地（2026-11-05 续记）
+
+已下载校验：`.v0/kitchen-hygiene/kitchen-hygiene-gear.zip` 1,944,884,945 字节，ZIP CRC 全过，62,742 文件 / 31,371 图（Roboflow v5 导出，YOLOv8 格式，640×640，CC BY 4.0 声明于 data.yaml）。
+
+类别与规模：7 类正负对（glove/no_glove、hairnet/no_hairnet、mask/no_mask、incorrect_mask），88,788 框、每类 11.7k–19.8k 均衡，train/valid/test 官方三分，仅 3 张空标签。
+
+匹配度评估（诚实）：**部分匹配**——覆盖 A3 缺口中的"帽/发网"与"手套"两类正负样本；**域差显著**（厨房后厨场景 vs 工业洁净室），无鞋套/连体服/洁净服；incorrect_mask 与"未按规定穿戴"语义部分对应。作为穿戴检测数据底座可用，作为工业洁净室最终数据不可替代。训练候选排队（seg 训练后 GPU 空闲即启动），域差如实标注不冒充洁净室模型。
