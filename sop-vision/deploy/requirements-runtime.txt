@@ -1,0 +1,23 @@
+# Complete inference/web integrations; training uses STEPEYE_TRAIN_PYTHON.
+pyinstaller==6.22.3
+fastapi==0.124.0
+uvicorn==0.38.0
+pydantic>=2.11,<3
+PyYAML>=6
+httpx>=0.28,<1
+python-multipart>=0.0.18
+Pillow==12.2.0
+numpy==2.3.5
+mediapipe==1.2.0
+opencv-contrib-python==5.0.0.93
+opencv-python==5.0.0.93
+onnxruntime==1.27.0
+scipy==1.16.3
+cryptography>=50
+psutil>=5.9
+pypdf>=5,<7
+rapidocr-onnxruntime==1.2.3
+zxing-cpp==3.1.1
+mcp[cli]==1.30.0
+apprise>=1.9,<2
+harvesters>=1.4,<2

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "source_trees": ["web", "configs", "docs", "visual"],
+  "core_models": ["models/hand_landmarker.task", "models/pose_landmarker_lite.task", "models/efficientdet_lite0.tflite"],
+  "catalogs": ["safety-models.json", "quality-models.json", "specialized-detection-models.json", "classification-models.json", "water-models.json", "gauge-models.json"],
+  "extra_models": ["models/community/helmet.onnx", "models/action/videomaev2-small-k710.onnx", "models/action/videomaev2-small-k710.classes.json", "models/action/videomaev2-small-k710.manifest.json", "models/action/videomaev2-small-k710.export.json"],
+  "mechanism_bundles": ["models/mechanism/valve-fusion", "models/mechanism/cmapss-rul"],
+  "forbidden_parts": [".git", ".v0", ".venv", ".venv-export", "site-packages", "__pycache__", "node_modules"],
+  "forbidden_suffixes": [".pyc", ".pkl", ".pickle", ".db", ".sqlite", ".sqlite3", ".pem", ".key"],
+  "external_components": ["STEPEYE_TRAIN_PYTHON and training/checkpoint environment", "vendor camera CTI/SDK and actual device drivers", "local Qwen GGUF/mmproj/llama-server (optional --include-local-vlm)"],
+  "license_policy": "Runtime catalog models and Monibuca redistribution need review; --allow-evaluation-assets is local evaluation, not commercial distribution authorization."
+}

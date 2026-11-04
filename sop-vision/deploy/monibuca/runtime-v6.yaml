@@ -1,0 +1,17 @@
+# v6 beta Rust build 2026-09-21; schema used by the verified local WHEP run.
+# Bind management to loopback. Start explicitly; StepEye does not own this process.
+global:
+  loglevel: info
+  http:
+    listenaddr: "127.0.0.1:18773"
+  cors: true
+rtmp:
+  enable: true
+  tcp:
+    listenaddr: "127.0.0.1:19360"
+webrtc:
+  enable: true
+  portrange: "udp:9000-9100"
+mp4:
+  enable: true
+  record_path: "./recordings"
