@@ -627,6 +627,9 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(valve_router(manager.mechanism, manager.valve_shadow))
     from .mechanism_rul_routes import rul_router
     app.include_router(rul_router(manager.mechanism, manager.rul))
+    from .mechanism_degradation import DegradationService
+    from .mechanism_degradation_routes import degradation_router
+    app.include_router(degradation_router(manager.mechanism, DegradationService(ROOT)))
     from .mechanism_actuator_routes import actuator_router
     app.include_router(actuator_router(manager.mechanism, manager.actuator))
     from .mechanism_motor import MotorService

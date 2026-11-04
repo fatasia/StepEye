@@ -1,0 +1,26 @@
+{
+ "schema_version": 1,
+ "id": "femto-degradation-similarity-v1",
+ "name": "FEMTO 轴承退化相似性 RUL（趋势级）",
+ "task": "rul_similarity_trend",
+ "reference_sha256": "d82ece89984b9c736029b2579a79c4c04ac10f27b03c004f39d613ec9f5c3dfc",
+ "baseline_report_sha256": "391181898608c63aac641295d66f0c5a4adfbf345d95bf0a41a651d688fa6936",
+ "baseline_report_source": ".v0/degradation-rul/results/baseline_report.json (docs/DEGRADATION-RUL-2026-11-05.md)",
+ "evaluation": {
+  "holdout_bearings": [
+   "Bearing1_2",
+   "Bearing2_2",
+   "Bearing3_2"
+  ],
+  "similarity_mae_min": 35.2,
+  "similarity_rmse_min": 66.7,
+  "within_50pct": 0.8,
+  "note": "3 holdout trials x 5 prediction points; extrapolation fails on abrupt failures (MAE 220.9)"
+ },
+ "limitations": [
+  "failure-threshold HI varies 4.7x across trials; single-threshold transfer is weak",
+  "trend-level baseline, not a precision RUL model",
+  "FEMTO is an accelerated bearing testbed; factory motors need condition-specific data"
+ ],
+ "scope": "research similarity RUL on bearing vibration RMS trends"
+}
