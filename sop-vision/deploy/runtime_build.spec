@@ -17,10 +17,11 @@ datas = [(str(STAGE / name), name) for name in
 datas += collect_data_files('rapidocr_onnxruntime')
 hidden = []
 for package in ('visual', 'mediapipe.tasks', 'rapidocr_onnxruntime',
-                'mcp', 'apprise', 'harvesters'):
+                'mcp', 'apprise', 'harvesters', 'websockets'):
     hidden += collect_submodules(package)
 hidden += ['uvicorn.logging', 'uvicorn.loops.auto',
            'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets.auto',
+           'uvicorn.protocols.websockets.websockets_impl',
            'uvicorn.lifespan.on', 'scipy', 'onnxruntime', 'cryptography', 'PIL',
            'zxingcpp', 'matplotlib.backends.backend_agg']
 

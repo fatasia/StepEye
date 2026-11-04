@@ -3,6 +3,8 @@ import argparse
 import json
 import os
 from pathlib import Path
+import queue
+import threading
 import socket
 import sys
 import secrets
@@ -20,6 +22,67 @@ def command(exe,args,cwd,env,timeout=30):
     return p.returncode,p.stdout.decode('utf-8',errors='replace')
 
 
+MCP_TOOLS={'stepeye_list_scenes','stepeye_list_label_projects','stepeye_list_assets',
+           'stepeye_get_annotations','stepeye_get_label_job','stepeye_get_quality_report'}
+
+
+def mcp_probe(exe,cwd,env,timeout=15):
+    """Only initialize + list schemas; fake token, no tool/business invocation."""
+    with socket.socket() as endpoint:
+        endpoint.bind(('127.0.0.1',0));endpoint.listen(1);endpoint.setblocking(False)
+        child_env=dict(env,STEPEYE_MCP_API_URL=f'http://127.0.0.1:{endpoint.getsockname()[1]}',
+                       STEPEYE_MCP_TOKEN='se_mcp_'+secrets.token_urlsafe(32),
+                       STEPEYE_MCP_ENABLE_IMAGES='0',STEPEYE_MCP_ENABLE_DRAFTS='0')
+        child=subprocess.Popen([str(exe),'-m','visual.mcp_server','--transport','stdio'],cwd=cwd,env=child_env,
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        lines=queue.Queue(maxsize=16)
+        def read():
+            try:
+                while True:
+                    line=child.stdout.readline(128*1024+1)
+                    lines.put_nowait(line)
+                    if not line or len(line)>128*1024:break
+            except (OSError,ValueError,queue.Full):pass
+        reader=threading.Thread(target=read,daemon=True);reader.start()
+        def send(obj):
+            child.stdin.write((json.dumps(obj)+'\n').encode());child.stdin.flush()
+        def response(expected):
+            deadline=time.monotonic()+timeout
+            while True:
+                try:line=lines.get(timeout=max(.01,deadline-time.monotonic()))
+                except queue.Empty:raise RuntimeError('MCP stdio response timeout') from None
+                if not line or len(line)>128*1024:raise RuntimeError('MCP stdio closed or oversized response')
+                message=json.loads(line)
+                if message.get('id')==expected:
+                    if 'error' in message:raise RuntimeError('MCP handshake returned protocol error')
+                    return message['result']
+                if time.monotonic()>deadline:raise RuntimeError('MCP response deadline exceeded')
+        try:
+            send({'jsonrpc':'2.0','id':1,'method':'initialize','params':{'protocolVersion':'2024-11-05',
+                  'capabilities':{},'clientInfo':{'name':'bundle-smoke','version':'1'}}})
+            initialized=response(1)
+            if not initialized.get('protocolVersion'):raise RuntimeError('MCP initialize missing version')
+            send({'jsonrpc':'2.0','method':'notifications/initialized'})
+            send({'jsonrpc':'2.0','id':2,'method':'tools/list','params':{}})
+            tools=response(2).get('tools',[])
+            if len(tools)!=6 or {t.get('name') for t in tools}!=MCP_TOOLS:
+                raise RuntimeError('MCP read-only tool inventory mismatch')
+            if any(t.get('annotations',{}).get('readOnlyHint') is not True for t in tools):
+                raise RuntimeError('MCP tool is not marked read-only')
+            try:
+                unexpected,_=endpoint.accept();unexpected.close()
+                raise RuntimeError('MCP schema handshake attempted a business request')
+            except BlockingIOError:pass
+            return {'protocol':initialized['protocolVersion'],'tools':sorted(MCP_TOOLS),'business_requests':0}
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                try:child.wait(timeout=5)
+                except subprocess.TimeoutExpired:child.kill();child.wait(timeout=5)
+            child.stdin.close();child.stdout.close();reader.join(timeout=2)
+
+
 def verify(exe,assets,*,rul_fixture=None,gauge_fixture=None,timeout=45):
     exe=Path(exe).resolve();assets=Path(assets).resolve()
     if not exe.is_file():raise ValueError('Executable missing')
@@ -33,6 +96,10 @@ def verify(exe,assets,*,rul_fixture=None,gauge_fixture=None,timeout=45):
         rc,out=command(exe,['--help'],root,env)
         if rc or 'serve' not in out:raise RuntimeError('Executable --help failed')
         results['checks']['help']='passed'
+        rc,out=command(exe,['-m','visual.mcp_server','--help'],root,env)
+        if rc or '--transport' not in out:raise RuntimeError('MCP --help dispatch failed')
+        results['checks']['mcp_help']='passed'
+        results['checks']['mcp_stdio']=mcp_probe(exe,root,env)
         doc=root/'probe.txt';doc.write_text('runtime smoke document',encoding='utf8')
         rc,out=command(exe,['-m','visual.documents_parse',str(doc)],root,env)
         if rc or json.loads(out).get('text')!='runtime smoke document':raise RuntimeError('Document module dispatch failed')
@@ -78,7 +145,8 @@ def verify(exe,assets,*,rul_fixture=None,gauge_fixture=None,timeout=45):
                                    stdout=log,stderr=log,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             try:
                 deadline=time.monotonic()+timeout
-                opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+                cookies=http.cookiejar.CookieJar()
+                opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),urllib.request.HTTPCookieProcessor(cookies))
                 while True:
                     if child.poll() is not None:raise RuntimeError('Owned server exited before health check')
                     try:
@@ -100,6 +168,14 @@ def verify(exe,assets,*,rul_fixture=None,gauge_fixture=None,timeout=45):
                 with opener.open(f'http://127.0.0.1:{port}/api/stations',timeout=3) as response:
                     if b'bundle-smoke-owned' not in response.read():raise RuntimeError('Owned station missing after login')
                 results['checks']['auth_login']='passed'
+                from websockets.sync.client import connect
+                cookie='; '.join(f'{item.name}={item.value}' for item in cookies)
+                with connect(f'ws://127.0.0.1:{port}/ws',additional_headers={'Cookie':cookie},
+                             open_timeout=5,close_timeout=3,max_size=1024*1024) as websocket:
+                    hello=json.loads(websocket.recv(timeout=5))
+                    if hello.get('type')!='hello' or 'bundle-smoke-owned' not in json.dumps(hello.get('stations',[])):
+                        raise RuntimeError('Authenticated WebSocket missing owned station hello')
+                results['checks']['authenticated_websocket']='passed'
                 with opener.open(f'http://127.0.0.1:{port}/',timeout=3) as response:
                     if b'<html' not in response.read(2*1024*1024).lower():raise RuntimeError('Web assets not served')
                 results['checks']['owned_health_web']='passed'

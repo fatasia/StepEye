@@ -17,7 +17,7 @@ def entry():
     'visual.action_predict','visual.label_predict','visual.classification_predict',
     'visual.gauge_worker','visual.holdout_worker','visual.mechanism_valve_worker',
     'visual.mechanism_rul_worker','visual.notifications','visual.code_reader',
-    'visual.training_worker','visual.documents_parse'])
+    'visual.training_worker','visual.documents_parse','visual.mcp_server'])
 def test_allowlisted_worker_arguments_and_restore(entry,monkeypatch,name):
     original=sys.argv;calls=[]
     def run(module,**kwargs):calls.append((module,kwargs,list(sys.argv)))

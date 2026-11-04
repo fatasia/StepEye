@@ -25,6 +25,16 @@ $env:M7S_ADMIN_DEV_MODE = '1'
 此模式只供本机评估，管理/RTMP端口绑定loopback；对外部署另行配置访问认证，不沿用开发模式。
 启动StepEye的终端中配置 `MONIBUCA_URL=http://127.0.0.1:18773`、`MONIBUCA_WHEP_PREFIX=/webrtc/whep` 后重启StepEye；还需给工位绑定实际存在的流。没有流或没启动媒体服务时不会得到原生预览。
 
+## MCP原生入口
+
+无需另外安装Python，MCP客户端可直接以本EXE启动stdio服务：
+
+```powershell
+.\stepeye-runtime.exe -m visual.mcp_server --transport stdio
+```
+
+在MCP客户端的本机环境配置 `STEPEYE_MCP_API_URL`（本机StepEye地址）和 `STEPEYE_MCP_TOKEN`（管理员签发的专用令牌）。不要把令牌放进命令参数；此入口不会读取浏览器Cookie或替代用户生成令牌。
+
 ## 外部组件
 
 训练仍使用管理员配置的 `STEPEYE_TRAIN_PYTHON` 隔离环境；包里不带torch/CUDA训练库。工业相机需要设备厂商的CTI/驱动。
