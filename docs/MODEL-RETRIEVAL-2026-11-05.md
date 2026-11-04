@@ -146,3 +146,15 @@ curl -L -o screw_candidate_detection.tar "https://zenodo.org/records/17173803/fi
 - segmentation：PNG 二值掩码配套
 
 结论：数据资产登记价值成立（CC BY 4.0 已核实）；极片"裂纹/分层"两类首次有真实样本，分层仅 203 图需谨慎评估；训练方向（多标签分类 vs 扩充检测）待定，未启动训练，不重复已有针孔能力。
+
+## CoatingVision 三类检测训练完成（2026-11-05 续记）
+
+**结果：不达标，登记 `experimental-coating-three-class-v1`（rejected_for_deployment）**。固定 444 图 test（conf 0.25/IoU 0.5）：整体 P 0.732 / R 0.512 / F1 0.603；逐类 crack P 0.734/R 0.518、pinhole P 0.701/R 0.500、**delamination P 0.211/R 0.031（基本失败）**；误报帧 412/444。
+
+失败分析（真实数据依据，已入登记）：
+1. 分层仅 203 图/714 框——框检测样本量不足。
+2. crack 是细长曲线，掩码连通域切段产生 53,907 碎片框，框 IoU 匹配天然吃亏。
+3. **正确路线是分割训练**（掩码即监督），框检测路线对此数据证伪。
+4. 针孔已另有专用候选（coating-pinhole-enhanced，选模集 R 0.810）。
+
+后续：不重复框路线；分层类等更多样本；分割训练路线待资源窗口评估。

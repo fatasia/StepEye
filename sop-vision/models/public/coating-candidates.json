@@ -1,0 +1,93 @@
+{
+ "schema_version": 1,
+ "automatic_registration": false,
+ "models": [
+  {
+   "id": "experimental-coating-three-class-v1",
+   "name": "极片涂布三类（掩码转框）——不达标",
+   "task": "detect",
+   "adapter": "yolo_raw",
+   "adapter_compatible": true,
+   "model_path": "models/public/coating-three-class-v1.onnx",
+   "sha256": "5bffbf382743a9c7f0abbf835a9de669a08d339cf35bc2b3253d1289e4d10a2e",
+   "bytes": 12240398,
+   "classes": [
+    "crack",
+    "delamination",
+    "pinhole"
+   ],
+   "status": "rejected_for_deployment",
+   "usage": "offline_evidence_only",
+   "production_approval": false,
+   "license_status": {
+    "dataset": "CC BY 4.0 (CoatingVision, Figshare 29260121)",
+    "base": "Ultralytics YOLOv8n AGPL-3.0 or commercial license"
+   },
+   "source": {
+    "dataset": "CoatingVision RGBA segmentation masks → YOLO boxes",
+    "channel_map": "R=crack G=delamination B=pinhole (verified against classification labels; README color text contradicts files)",
+    "split": "block split (10-image groups 7/1/2), same-batch leakage prevented",
+    "train_images": 1492,
+    "val_images": 215,
+    "test_images": 444,
+    "empty_mask_images_excluded": 93
+   },
+   "training": {
+    "epochs": 30,
+    "batch": 8,
+    "device": "0",
+    "imgsz": 640,
+    "elapsed_s": 934.9,
+    "base_sha256": "f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36",
+    "dataset_sha256": "120dd01e9256623f75b535ae18e0d1f53504c70d18994764e0e0a2c5b4164179"
+   },
+   "test": {
+    "images": 444,
+    "confidence": 0.25,
+    "iou": 0.5,
+    "summary": {
+     "tp": 5546,
+     "fp": 2029,
+     "fn": 5285,
+     "precision": 0.7321452145214521,
+     "recall": 0.5120487489613147,
+     "f1": 0.6026295773117462
+    },
+    "classes": {
+     "crack": {
+      "tp": 5495,
+      "fp": 1994,
+      "fn": 5111,
+      "precision": 0.7337428228067833,
+      "recall": 0.5181029605883463,
+      "f1": 0.6073500967117988
+     },
+     "delamination": {
+      "tp": 4,
+      "fp": 15,
+      "fn": 127,
+      "precision": 0.21052631578947367,
+      "recall": 0.030534351145038167,
+      "f1": 0.05333333333333334
+     },
+     "pinhole": {
+      "tp": 47,
+      "fp": 20,
+      "fn": 47,
+      "precision": 0.7014925373134329,
+      "recall": 0.5,
+      "f1": 0.5838509316770186
+     }
+    },
+    "false_positive_frames": 412
+   },
+   "failure_analysis": [
+    "delamination effectively fails (R 0.031, 714 boxes from 203 images) - sample volume insufficient for box detection",
+    "crack boxes are connected-component fragments of long thin curves (53907 boxes); box-IoU 0.5 matching inherently punishes fragmentation (R 0.518)",
+    "masks are the right supervision for this data: segmentation training (YOLO-seg or similar) is the correct route, box detection is not",
+    "false-positive frames 412/444 partly from fragment boundary effects"
+   ],
+   "evidence_dir": ".v0/coatingvision (make_detection.py, test-eval-v1.json, train-gpu-v1)"
+  }
+ ]
+}
