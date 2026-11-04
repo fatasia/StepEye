@@ -56,3 +56,6 @@ VideoMAEv2 ONNX CUDA链已完成（热态往返P50/P95 44.59/74.22ms）；工业
 ### 新增复用模型
 
 weihu 执行器四分类已接机理实验室：正常/间隙/缺润滑/剥落，575 KB ONNX，完整 80 秒三通道信号。四条真实留出记录已运行并通过真实 Web 导入/报告/导出；无需重训。覆盖原已知六工况，不补齐跨设备、跨工况和真实退化 RUL 缺口。见[执行器分类](MECHANISM-ACTUATOR-CLASSIFIER.md)。
+
+
+工业SOP已有可用公开数据路径：IndustReal（Apache-2.0），本机已下载5条137.8MB、提取41段冻结特征。剩余5条含全部val/test未下载完成，连续TLS EOF后停止；尚无新动作头。固定划分、实际缓存和续接命令见[工业装配动作子集](INDUSTREAL-ACTION-SUBSET.md)。
