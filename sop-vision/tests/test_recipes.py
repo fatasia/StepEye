@@ -119,6 +119,7 @@ def test_persistence(service, tmp_path):
 
 @pytest.mark.parametrize("active", [True, False])
 def test_manager_reload_refuses_active_cycle_or_live_old_thread(service, active):
+    import threading
     from visual.server import StationManager
     from fastapi import HTTPException
     svc, _ = service
@@ -126,7 +127,10 @@ def test_manager_reload_refuses_active_cycle_or_live_old_thread(service, active)
     old = svc.manager.runtimes["a"]
     old.stop = lambda: stopped.append(True)
     old.engine.cycle = object() if active else None
-    manager = SimpleNamespace(runtimes={"a": old}, paths=svc.manager.paths,
+    # Keep real reload method dispatch and its lock, without starting a service.
+    manager = StationManager.__new__(StationManager)
+    manager.__dict__.update(_runtime_change_lock=threading.RLock(),
+                              runtimes={"a": old}, paths=svc.manager.paths,
                               _threads={"a": SimpleNamespace(join=lambda timeout: None, is_alive=lambda: True)},
                               _apply_active_release=lambda cfg: cfg,
                               hub=SimpleNamespace(publish=lambda *a, **k: None))

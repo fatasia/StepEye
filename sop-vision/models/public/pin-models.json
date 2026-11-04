@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-04",
+  "automatic_registration": false,
+  "models": [{
+    "id": "public-paine-pin-segmentation",
+    "name": "PAINE2026 PCB pin U-Net ResNet34",
+    "task": "pin_segmentation",
+    "adapter": "independent_pin_segmentation",
+    "model_path": "models/public/paine-pin-segmentation.onnx",
+    "bytes": 164893241,
+    "sha256": "5f69ff521211fed4f14a2743bf94df4e888e468bf299f62378fc76e31d1f5e4e",
+    "source": {
+      "repository": "https://github.com/lfd/paine2026",
+      "revision": "8e3084fafa246a494bbeb191c44ea2412e4fffe5",
+      "weights": "https://zenodo.org/records/21887282",
+      "checkpoint_sha256": "5d45d71d311e3d4d95e01bf6beced419b95df435cd649fbbd28fd3a589534d2e"
+    },
+    "input": {"name": "images", "dtype": "float32", "shape": [1, 3, 512, 512]},
+    "output": {"name": "logits", "dtype": "float32", "shape": [1, 2, 512, 512]},
+    "classes": ["background", "pin"],
+    "preprocessing": "grayscale; native-scale 512 tiles; right/bottom reflect padding; replicate three channels; /255; ImageNet mean/std",
+    "license_status": {
+      "weights_record": "CC-BY-4.0",
+      "source_code": "No root LICENSE; author implementation not copied",
+      "architecture": "FastAI Apache-2.0 / torchvision BSD-3-Clause",
+      "training_data": "Author industrial data confidential; public Roboflow subset described as CC-BY-4.0"
+    },
+    "usage": "evaluation_only",
+    "production_approval": false,
+    "limitations": [
+      "Binary pin mask only; no defect/OK/NG classifier",
+      "No 3D height, press-fit depth or six-face inspection",
+      "No independent accuracy evaluation",
+      "CPU reference is seconds per image; not the real-time detector"
+    ]
+  }]
+}
