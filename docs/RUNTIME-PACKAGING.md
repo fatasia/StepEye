@@ -2,7 +2,7 @@
 
 这是StepEye当前Web与CPU推理功能的Windows x64便携包，不是安装器。
 
-- 实际ZIP **567,555,113字节（567.56MB）**；解压 **998,355,022字节**，1423个文件。
+- 最终v2 ZIP **567,844,000字节（567.84MB）**；解压 **998,660,260字节**，1432个文件。
 - 原本机目录6,619,214,515字节；本轮不带训练torch/CUDA、嵌套导出venv、缓存、退役模型和凭据，解压体积减少约84.9%。
 - 保留MediaPipe、ORT、OpenCV/FFmpeg、SciPy、OCR/读码、MCP、通知和机理入口；当前注册的本机模型按白名单保留。
 - **未达到100MB**：模型文件在同一ZIP内就占335,715,960字节，不含Python、页面或推理库。
@@ -11,20 +11,21 @@
 
 ## 本次产物与证据
 
-产物：`.v0/runtime-build-v1/stepeye-runtime-windows.zip`。
+产物：`.v0/runtime-build-v2/stepeye-runtime-windows.zip`。v1保留供追踪，不作最终交付。
 
 ```text
-SHA256 16b1fae029ccaa6de537d1fd36bb946b23ae037094bf7bc432843a820ffe095d
+SHA256 cb6b3c4b345d8741a9f617f19aaaa223c0d4328a43107b62bd32159ec6162f61
 ```
 
-仅做一次ZIP/Deflate level9压缩，85.51秒；完整CRC通过、重复归档路径0。
+v2做一次ZIP/Deflate level9压缩，含CRC核验89.31秒；完整CRC通过、重复归档路径0。
+v1发现MCP stdio入口和WebSocket依赖缺项后，必要重建为v2；没有反复调压缩参数试压。
 未用联网安装器体积替代运行包体积，没有用UPX或重导出模型追求100MB。
 
 | 组成 | 解压字节 | 同一ZIP中压缩字节 |
 |---|---:|---:|
 | 当前模型与模型元数据 | 441,201,637 | 335,715,960 |
 | OpenCV与FFmpeg | 143,789,497 | 53,377,527 |
-| Monibuca及配置/说明 | 74,178,915 | 29,992,331 |
+| Monibuca及配置/说明 | 74,179,343 | 约30MB |
 | MediaPipe原生库 | 66,744,832 | 见归档分组报告 |
 | SciPy模块，不含其BLAS DLL | 60,187,136 | 见归档分组报告 |
 | ORT | 35,319,248 | 见归档分组报告 |
@@ -34,9 +35,9 @@ SHA256 16b1fae029ccaa6de537d1fd36bb946b23ae037094bf7bc432843a820ffe095d
 OpenCV两种distribution使用同一命名空间，最终归档只保留一份cv2.pyd和一份FFmpeg DLL，没有叠放两套。
 
 检查记录位于同一构建目录：
-`assets-before.json`、`assets-after.json`、`assets-supplement-before/after.json`、
-`size-report.json`、`archive-verification.json`、`installed-runtime.txt`、`build.log`。
-259项运行资产SHA一致；其中2项补充为已核v6配置和便携使用说明，保留独立前后记录。
+`assets-before.json`、`assets-after.json`、`size-report.json`、`installed-runtime.txt`、
+`smoke-result.json`、`build-final.log`。v2的259项运行资产SHA一致，包含已核v6配置和便携使用说明；
+v1的数据补充前后记录仍保留在v1目录。
 
 ## 构建与启动
 
@@ -62,6 +63,15 @@ $Data = Join-Path $env:LOCALAPPDATA 'StepEye/data'
 
 浏览器打开 `http://127.0.0.1:8000`。不要只移动EXE；`_internal`含Python运行库、页面和模型。
 包里包含只读visual源码，配置了外部训练/读码Python时仍可通过 `-m visual.*` 导入；主EXE走冻结模块。
+
+MCP stdio无需另装Python，可直接运行：
+
+```powershell
+.\stepeye-runtime.exe -m visual.mcp_server --transport stdio
+```
+
+在本机MCP客户端环境中配置 `STEPEYE_MCP_API_URL` 和管理员签发的 `STEPEYE_MCP_TOKEN`。
+令牌不放进命令参数。v2已完成真实stdio initialize/tools/list，返回6个只读工具，验证期间业务请求数为0。
 
 ## 原生媒体另行启动
 
@@ -94,8 +104,9 @@ $env:M7S_ADMIN_DEV_MODE = '1'
 
 ## 已验证
 
-21项入口/资源清单测试通过。真实冻结EXE验证：help、文档解析的module与legacy脚本派发、
-gauge/RUL真实模型子进程、匿名401、随机本机管理员登录、health和静态HTML全部通过。
+24项入口/资源清单/MCP验包工具测试通过。真实v2冻结EXE验证：help、MCP help与stdio握手、
+文档解析的module与legacy脚本派发、gauge/RUL真实模型子进程、匿名401、随机本机管理员登录、
+登录Cookie建立 `/ws` 并收到hello、health和静态HTML全部通过。运行包显式保留websockets 15.0.1。
 另用3帧协议视频加载手/姿态/通用目标三个MediaPipe模型并正常退出；不属于识别准确率测试。
 仿真配置的loop已在有限视频验证中明确关闭；首次保留loop导致的超时记录在报告中。
 所有测试只停止自己启动的进程，未接管已有媒体服务。
