@@ -232,3 +232,5 @@ ESD/洁净穿戴本轮未取得公开导出包：页面匿名访问403，洁净�
 整合一次全量1330 passed / 2 skipped，219.08秒；新增前端语法检查、实际页面与下载验收通过，截图/记录在.v0/output/playwright/pin-scope。未改用户既有品牌工作区文件。
 
 新增公开DsPCBSD+九类PCB标注：两份COCO标注完整CRC核验，共10259图/20276框；ZIP仅41943040/128541608B，剩余续传TLS失败，进程已停止。保留断点，不计完整训练数据；无新增训练权重。详见docs/PUBLIC-MODEL-NEXT.md。
+
+推送已恢复：使用 git -c http.sslBackend=schannel -c http.version=HTTP/1.1 push origin HEAD，12c1226/fc87598/65cfca9均已同步。DsPCBSD原生TLS续传到53462500/128541608B后180秒超时停止，新断点.v0/dspcbsd/DsPCBSD.resume.part，下一段从53462500开始，原断点保留；尚未整包校验或训练。
