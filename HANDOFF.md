@@ -289,3 +289,29 @@ weihu 执行器四类575 KB ONNX接机理实验室，四条真实留出记录CPU
 核心提交5fe6cb5已推送，Windows/Ubuntu pytest及MCP四个CI job全部成功。本轮新增IndustReal Apache-2.0公开数据：固定10条子集已取得5条137,804,832字节，CRC/SHA和实际解码通过；已提41段VideoMAEv2 CUDA冻结特征。val/test视频均未齐，未训练动作头、未登记模型。剩余请求连续TLS EOF后停止；保留完整视频、特征缓存及实际落盘3,188,888字节Range缓存，不声称第六条内存中的33MB已保留。
 
 新增可续接下载、特征缓存与固定跨人训练工具，5项专项通过；完整命令及证据见docs/INDUSTREAL-ACTION-SUBSET.md。所有自有下载/提取进程已退出。下一步先续接缺失5条视频，再按固定协议训练一次，不能从头下载或拿训练片段报测试精度。用户品牌工作区仍保持原样，打包与真实通知继续暂缓。
+
+### 2026-11-05：专用模型与平台缺口批次（续）
+
+提交 a22bf28/2c878bc/d89456e/409b517/7db8a4a/001ffa1 已推送。原品牌六文件与未跟踪资产保持未提交。
+
+**A1 工业动作头全链完成**：IndustReal 10/10 视频齐（287,964,080 字节，CRC/SHA 全过，本次下载用原工具重跑即成功，此前 TLS EOF 为临时故障）；特征缓存 79 段（41 复用 + 38 新提）；固定协议训练 test acc 0.5625（随机 0.25，val 选点 epoch 8，44 短段剔除），混淆集中 tighten↔fit；登记 `experimental-industrial-action-v1`（research_candidate，linear-head.npz 含 mean/std/weight/bias/classes）。未做两段推理实时接入；不替换 K710。
+
+**C1 SOP 文档-步骤草稿**：sop_links 模块——段落关键词生成骨架步骤（占位区域"待映射:"前缀）、人工映射区域后确认（校验 zone 存在于工位）、文档新版本段落漂移检测（词集相似度 <0.6 提示，不改规则）、确认草稿导出配方 patch 走既有 recipe add_version。API /api/sop/links/*。documents.js 加草稿卡片区。25 新测试 + 82 整合回归 + 真实浏览器验收 11 项全过（截图 .v0/output/playwright/sop-links/）。
+
+**C2 动作对账**：action_ledger SQLite（窗口唯一去重），ActionShadowCfg 新增 step_actions 人工映射；runtime 影子 ready 时对账（未知/低置信不入账），失败不阻塞采集；API /api/action/ledger{,/summary} 出每工位一致率。动作证据未接入规则引擎——升级需对账数据支持后人工决策。
+
+**B2 PCB 错误分析**（.v0/dspcbsd/error-analysis-v1.{py,json}，docs/PCB-ERROR-ANALYSIS-2026-11-05.md）：CFO 召回 0.501 主因类间混淆（46/46 近邻预测全是 MB/OP/BMFO；训练框仅 1242），纠正后召回上限 0.6596；CS 双弱是框回归/去重（72 定位偏差 IoU 中位 0.22 + 66 重复占用），非样本不足。conf 0.25→0.30 两难（去 FP 也掉 TP）。改进走数据，不改测试阈值。
+
+**B1 烟火泄漏排查**（docs/FIRE-SMOKE-LEAKAGE-AUDIT-2026-11-05.md）：zyazyz008（AP50 .800）训练来源无法核验（PT 内嵌 merged_fire_smoke 路径、数据集卡已下架、自报与实测近重合）→ 不可单独采信；D-Fire 自训 0.730 图像级已排除泄漏（21527 图全普查零重叠），但 D-Fire 官方切分存在场景级近重复（2612/4306 test 有 train 伙伴，数据集固有）。判据已预登记：独立新集上 zyazyz008 <0.60 即坐实。蒸汽/弧光负样本方案在报告内，未采集。
+
+**B4 候选整理**（docs/QUALITY-CANDIDATES-INDEX-2026-11-05.md）：21 行总表；quality-models.json 补 task/usage/validation/limitations（针孔 21 图为选模集非独立测试已标明）；无一候选可进审批发布。
+
+**D1 weihu 核查**（docs/WEIHU-CROSS-CONDITION-AUDIT-2026-11-05.md）：weihu 跨工况方法全部未证实有效（跨转速 RF F1 0.52-0.55、角域 CNN 0.02-0.09、条件基线/CORAL 优势区间重叠）；无白拿资产。本机 servo-dc（14 档转速）跨转速留出实验进行中。
+
+**D3 退化 RUL**（docs/DEGRADATION-RUL-2026-11-05.md）：FEMTO Learning_set 565MB 下载三层校验过（许可=公开+引用 Nectoux2012）；相似性 RUL 基线 MAE 35.2 分钟（寿命 15.7%）、±50% 命中 80%；外推法对突发失效原理性失效（MAE 220.9）如实记录；阈值跨试验 HI 跨度 4.7 倍。已接平台：mechanism_degradation 服务（pinned-SHA bundle models/mechanism/femto-degradation/、严格契约、子进程 worker、/api/mechanism/degradation/*），真实留出端到端与基线一致（<2 分钟差）。趋势级定位，非精密 RUL。
+
+**A2/A3 检索与落地**（docs/MODEL-RETRIEVAL-2026-11-05.md）：4 项可获取资源（CC BY 4.0 经 API 核实）。CoatingVision 94MB 已落地（2227 图：crack 1947/delamination 203/pinhole 519；检测子集仅 581 文件 649 框待定用途）；Kitchen Hygiene Gear 1.94GB 下载中；密封钉/六面结构/洁净行为时序/干净地面负样本确认无公开资源。厨房域帽类与工业洁净服有域差，落地时须评估。
+
+**C3/C4/C5/C6**：C5 配方 status 加 unsynced（区分"从未切换"与"中断/外部改动不一致"）；C4 设备接入底座盘点（幂等/时区/六面分组已齐，厂商专有格式与扭矩缺样本登记 docs/EQUIPMENT-INGEST-GAPS-2026-11-05.md）；C3 MOT17 跟踪评测方案记录（docs/CROSS-CAMERA-TRACK-GAPS-2026-11-05.md）；C6 许可状态在 B4 总表齐备，无新开发。
+
+**待办**：CoatingVision 训练方向（多标签分类 vs 检测扩充）；动作头两段推理接入实时旁路；MOT17 跟踪评测；servo-dc 实验结论；Kitchen 数据落地评估。所有本轮训练/下载进程结束时自查退出。
