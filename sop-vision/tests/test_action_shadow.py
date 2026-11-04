@@ -253,3 +253,16 @@ def test_leaving_trigger_window_cancels_pending_and_invalidates_inflight(tmp_pat
         assert owner.snapshot()["metrics"]["discarded"] == 1
     finally:
         release.set(); owner.close(); until(lambda: scheduler._thread is None)
+
+def test_scheduler_passes_isolated_python(tmp_path, monkeypatch):
+    monkeypatch.setenv('STEPEYE_ACTION_PYTHON', '/isolated/python')
+    options = []
+    def factory(*a, **kw):
+        options.append(kw)
+        return Runner()
+    owner, scheduler, clock = make(tmp_path, factory)
+    feed(owner, clock)
+    until(lambda: owner._completion is not None)
+    assert options[0]['python_executable'] == '/isolated/python'
+    owner.close()
+    until(lambda: scheduler._thread is None)

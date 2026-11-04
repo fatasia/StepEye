@@ -80,3 +80,8 @@ python tools/bench_action.py --model models/action.onnx --classes models/action-
 已下载 [HF 官方文档贡献者的公开动作片段](https://huggingface.co/datasets/nielsr/video-demo/tree/main) eating_spaghetti.mp4（300 帧、30 FPS、1013655 字节，SHA256 `252f63d13748f08acf56765c295506bfdb8bb73b822e93a33a57d73988814a71`）。均匀选取16个不同帧并生成 `.v0/action-base/clip.npy`，采样证据 `clip.json`。片段仅用于本地动作接线评估，不作工业工步数据；视频仓库未声明独立许可证，不进入发行包。
 
 `tools/bench_action.py` 现在将首次预测类别、置信度、top_k 一并写入性能报告，避免只有耗时而看不到输出内容。
+
+
+### 2026-11-04：ONNX CUDA部署链已验证
+
+复用原模型与固定公开片段，独立ORT GPU1.27环境实际profile为319个CUDA节点、CPU节点0。已有worker热态往返P50/P95为44.59/74.22ms，纯推理26.22/26.98ms（5次）；签名、隔离Python配置和按需释放已接。详见[ACTION-CUDA](ACTION-CUDA.md)。上文“ORT CUDA尚未验证”为历史状态；工业动作头、多路容量与Linux GPU实机仍未验证。

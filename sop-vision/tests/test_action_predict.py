@@ -91,3 +91,9 @@ def test_inference_failure_releases_process(model, monkeypatch):
     assert predictor._process.poll() is not None
     assert not predictor._reader.is_alive()
     assert not Path(predictor._temp.name).exists()
+
+def test_signature_policy_checked_before_action_worker(model, monkeypatch):
+    monkeypatch.setenv('STEPEYE_MODEL_TRUST_KEYS', '[]')
+    monkeypatch.setattr('visual.action_predict.subprocess.Popen', lambda *a, **kw: pytest.fail('Unsigned model started worker'))
+    with pytest.raises(ValueError, match='1至8'):
+        ActionPredictor(model, ['a', 'b', 'c'])

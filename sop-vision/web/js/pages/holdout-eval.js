@@ -1,3 +1,4 @@
+import { mountAccuracyWatch } from "./holdout-watch.js";
 import { mountHoldoutCompare } from "./holdout-compare.js";
 import { renderEvaluationMetrics } from "./holdout-metrics.js";
 import { openDrawer } from "../ui.js";
@@ -78,11 +79,13 @@ export function openHoldoutEvaluation({ canWrite }) {
       </div>
       <p class="muted">误检帧 ${number(ev.false_positive_frames)} · 漏检帧 ${number(ev.missed_frames)} · 工作点 IoU ${ev.iou_threshold} / 置信度 ${ev.confidence_threshold} · 耗时 ${number(record.elapsed_ms)} ms · ${esc(record.adapter)}</p>
       ${renderEvaluationMetrics(record)}
+      <div data-he-watch></div>
       <div data-he-compare></div>
       ${Object.keys(classes).length ? `<table><thead><tr><th>类别</th><th>TP</th><th>FP</th><th>FN</th><th>Precision</th><th>Recall</th></tr></thead><tbody>${Object.entries(classes).map(([name, c]) => `<tr><td>${esc(name)}</td><td>${c.tp}</td><td>${c.fp}</td><td>${c.fn}</td><td>${pct(c.precision)}</td><td>${pct(c.recall)}</td></tr>`).join("")}</tbody></table>` : ""}
       <p class="muted">排除（合成/未确认）${number((record.excluded || []).length)} 张；完整逐图 FP/FN 明细见导出 JSON。</p>
       <details><summary>逐图 FP/FN（前 80 行）</summary><table><thead><tr><th>图片</th><th>误检框</th><th>漏检框</th><th>低置信忽略</th></tr></thead><tbody>${(ev.details || []).slice(0, 80).map((d) => `<tr><td>${esc(d.id)}</td><td>${d.false_positives.length}</td><td>${d.missed.length}</td><td>${d.ignored_low_confidence}</td></tr>`).join("")}</tbody></table><pre>逐图数据来源与排除原因已随报告记录（sources / excluded）。</pre></details>
       <details><summary>边界声明</summary><pre>${esc(JSON.stringify({ scope: record.scope, model_training_overlap: record.model_training_overlap, model_sha256: record.model_sha256, dataset_sha256: record.dataset_sha256, manifest_sha256: record.manifest_sha256, publication: record.publication }, null, 2))}</pre></details>`;
+    mountAccuracyWatch($("[data-he-watch]", body), record, { canWrite });
     mountHoldoutCompare($("[data-he-compare]", body), record, { canWrite });
     $("[data-he-export]", body).hidden = false;
   }
@@ -161,7 +164,7 @@ export function openHoldoutEvaluation({ canWrite }) {
       const rows = await request("/api/evaluations/holdout");
       if (closed) return;
       $("[data-he-history]", body).innerHTML = rows.items.length
-        ? rows.items.map((r) => `<button class="btn" style="display:block;width:100%;text-align:left;margin:8px 0" data-he-record="${esc(r.id)}">${esc(r.engine_name || r.engine_id)} × ${esc(r.dataset_version_id || "")} · ${fmtTime(r.created_at * 1000)} · P ${pct(r.summary?.precision)} / R ${pct(r.summary?.recall)}</button>`).join("")
+        ? rows.items.map((r) => `<button class="btn" style="display:block;width:100%;text-align:left;margin:8px 0" data-he-record="${esc(r.id)}">${esc(r.engine_name || r.engine_id)} × ${esc(r.dataset_version_id || "")} · ${fmtTime(r.created_at * 1000)} · P ${pct(r.summary?.precision)} / R ${pct(r.summary?.recall)}${r.accuracy_watch_status === "observed_drop" ? " · 精度观测下降" : ""}</button>`).join("")
         : "还没有历史报告——上方发起一次评测后会保存在这里。";
       body.querySelectorAll("[data-he-record]").forEach((button) => {
         button.onclick = async () => {

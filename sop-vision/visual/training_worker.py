@@ -86,6 +86,7 @@ def inspect_training_dataset(dataset_yaml: str | Path) -> dict:
             if name == 'manifest.json': manifest = _json(path)
     negatives = metadata.get('reviewed_negatives', [])
     hashes, counts, class_counts, assets = {}, {}, {}, {}
+    annotation_by_image = {}
     from PIL import Image
     for split in ('train', 'val'):
         folder = _local(root / 'images' / split, root)
@@ -134,6 +135,15 @@ def inspect_training_dataset(dataset_yaml: str | Path) -> dict:
                         min(x-w/2, y-h/2) < -1e-6 or max(x+w/2, y+h/2) > 1+1e-6):
                     raise ValueError('标签类别或坐标无效')
                 class_counts[split].add(cid)
+            # One image cannot teach contradictory targets, even within one split.
+            # Numeric canonicalization ignores line order and harmless text formatting.
+            canonical_labels = tuple(sorted((int(line.split()[0]), *(
+                round(float(v), 6) for v in line.split()[1:])) for line in lines))
+            label_signature = hashlib.sha256(json.dumps(canonical_labels, separators=(',', ':')).encode()).hexdigest()
+            prior = annotation_by_image.get(digest)
+            if prior is not None and prior[0] != label_signature:
+                raise ValueError(f'相同SHA图像标注冲突: {prior[1]} / {label_rel}')
+            annotation_by_image[digest] = (label_signature, label_rel)
             files[label_rel] = fingerprint(label)
             assets[image.stem] = (split, digest)
         if class_counts[split] != set(range(len(classes))):

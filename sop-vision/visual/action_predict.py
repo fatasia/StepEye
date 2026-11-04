@@ -114,6 +114,8 @@ class ActionPredictor:
         self.model_sha256 = model_sha256(self.model)
         if expected_sha256 is not None and self.model_sha256 != expected_sha256:
             raise ActionPredictError("Action model fingerprint differs from the approved model")
+        from .model_signature import verify_model_policy
+        verify_model_policy(self.model)
         self.class_names = list(class_names)
         self._lock = threading.Lock()
         self._closed = False
@@ -241,10 +243,10 @@ def _worker():
         providers = spec["providers"]
         if any(v not in ort.get_available_providers() for v in providers):
             raise ValueError
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = spec["threads"]
-        options.inter_op_num_threads = 1
+        from .action_runtime import session_options
+        options = session_options(ort, providers, spec["threads"])
         session = ort.InferenceSession(str(model), sess_options=options, providers=providers)
+        session.disable_fallback()  # Runtime failures must not switch to CPU silently.
         if session.get_providers()[0] != providers[0] or model_sha256(model) != spec["sha256"]:
             raise ValueError
         inputs, outputs = session.get_inputs(), session.get_outputs()

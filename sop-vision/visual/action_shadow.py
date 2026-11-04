@@ -13,6 +13,7 @@ from typing import Any, Callable
 import numpy as np
 
 from .dsl import ActionShadowCfg
+from .action_runtime import worker_python
 
 FRAMES, SIZE, SAMPLE_HZ, SUBMIT_S = 16, 224, 8, .5
 
@@ -92,7 +93,8 @@ class ActionScheduler:
                 if self.clock() - window.end_mono > cfg.ttl_ms / 1000:
                     owner._complete(window, None, "expired", 0., 0.)
                     continue
-                model_key = (str(owner.model), tuple(cfg.class_names), tuple(cfg.providers), cfg.model_sha256, cfg.timeout_s)
+                python = worker_python()
+                model_key = (str(owner.model), tuple(cfg.class_names), tuple(cfg.providers), cfg.model_sha256, cfg.timeout_s, python)
                 cold = runner is None or model_key != loaded_key
                 owner._started(window, cold)
                 start = self.clock()
@@ -103,7 +105,8 @@ class ActionScheduler:
                             runner.close()
                         runner, loaded_key = None, None
                         runner = self.factory(owner.model, cfg.class_names, timeout_s=cfg.timeout_s,
-                                              providers=tuple(cfg.providers), expected_sha256=cfg.model_sha256 or None)
+                                              providers=tuple(cfg.providers), expected_sha256=cfg.model_sha256 or None,
+                                              python_executable=python)
                         loaded_key = model_key
                     out = runner.predict(window.clip)
                     if cfg.model_sha256 and out.get("model_sha256", "").lower() != cfg.model_sha256.lower():

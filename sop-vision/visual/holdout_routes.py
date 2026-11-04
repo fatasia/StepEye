@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .label_jobs import LabelEngines, fingerprint
 from .labels import LabelError, LabelStore
+from .accuracy_watch import AccuracyWatch, AccuracyWatchBody
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_REPORT_BYTES = 64 * 1024 * 1024
@@ -59,6 +60,7 @@ class HoldoutEvaluations:
             self._db.execute(f"CREATE TRIGGER IF NOT EXISTS holdout_no_{operation.lower()} "
                              f"BEFORE {operation} ON holdout_evaluations "
                              "BEGIN SELECT RAISE(ABORT,'holdout evaluations are immutable'); END")
+        self.watch = AccuracyWatch(self._db)
         self._db.commit()
         self._closed = False
 
@@ -67,26 +69,41 @@ class HoldoutEvaluations:
         with self._guard:
             if self._closed:
                 raise ValueError("评测报告服务已关闭")
-            self._db.execute("INSERT INTO holdout_evaluations VALUES (?,?,?)",
-                             (record["id"], record["created_at"], raw))
-            self._db.commit()
+            with self._db:
+                self._db.execute("INSERT INTO holdout_evaluations VALUES (?,?,?)",
+                                 (record["id"], record["created_at"], raw))
+                self.watch.record(record)
 
     def get(self, report_id: str) -> dict:
         with self._guard:
             row = self._db.execute("SELECT body FROM holdout_evaluations WHERE id=?", (report_id,)).fetchone()
+            observation = self.watch.observation(report_id)
         if row is None:
             raise KeyError("评测报告不存在")
-        return json.loads(row[0])
+        record = json.loads(row[0])
+        if observation:
+            record["accuracy_watch"] = observation
+        return record
+
+    def configure_watch(self, identifier, body, actor):
+        with self._guard, self._db:
+            return self.watch.configure(identifier, body, actor)
+
+    def watch_status(self, identifier):
+        with self._guard:
+            record = self.watch._report(identifier)
+            return {"config": self.watch.config(record), "observation": self.watch.observation(identifier)}
 
     def list(self, limit: int = 50, offset: int = 0) -> dict:
         if type(limit) is not int or not 1 <= limit <= 100 or type(offset) is not int or not 0 <= offset <= 1000000:
             raise ValueError("分页范围无效")
         with self._guard:
             total = self._db.execute("SELECT COUNT(*) FROM holdout_evaluations").fetchone()[0]
-            rows = self._db.execute("SELECT body FROM holdout_evaluations "
-                                    "ORDER BY created DESC,id LIMIT ? OFFSET ?", (limit, offset)).fetchall()
+            rows = self._db.execute("SELECT h.body,o.body FROM holdout_evaluations h "
+                                    "LEFT JOIN accuracy_observations o ON o.report_id=h.id "
+                                    "ORDER BY h.created DESC,h.id LIMIT ? OFFSET ?", (limit, offset)).fetchall()
         items = []
-        for (raw,) in rows:
+        for raw, observation in rows:
             value = json.loads(raw)
             heavy = {"frames", "sources", "excluded", "evaluation"}
             summary = {k: v for k, v in value.items() if k not in heavy}
@@ -94,6 +111,8 @@ class HoldoutEvaluations:
             summary["summary"] = value["evaluation"]["summary"]
             summary["false_positive_frames"] = value["evaluation"]["false_positive_frames"]
             summary["missed_frames"] = value["evaluation"]["missed_frames"]
+            if observation:
+                summary["accuracy_watch_status"] = json.loads(observation)["status"]
             items.append(summary)
         return {"total": total, "items": items}
 
@@ -174,7 +193,7 @@ class HoldoutRunner:
                       "engine_id": body.engine_id, "engine_name": model["name"],
                       "project_id": body.project_id, "version_id": body.version_id}
             self.store.create(record)
-            return record
+            return self.store.get(record["id"])
         finally:
             self._slot.release()
 
@@ -220,6 +239,23 @@ def router(runner: HoldoutRunner) -> APIRouter:
         try:
             return compare_reports(runner.store.get(body.baseline_id), runner.store.get(body.current_id),
                                    min_samples=body.min_samples, min_drop=body.min_drop)
+        except KeyError:
+            raise HTTPException(404, "评测报告不存在") from None
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @api.get("/api/evaluations/holdout/{report_id}/watch")
+    def watch_status(report_id: str):
+        try:
+            return runner.store.watch_status(report_id)
+        except KeyError:
+            raise HTTPException(404, "评测报告不存在") from None
+
+    @api.post("/api/evaluations/holdout/{report_id}/watch")
+    def watch_config(report_id: str, body: AccuracyWatchBody, request: Request):
+        try:
+            actor = (getattr(request.state, "user", None) or {}).get("username", "local")
+            return runner.store.configure_watch(report_id, body.model_dump(), actor)
         except KeyError:
             raise HTTPException(404, "评测报告不存在") from None
         except ValueError as exc:
