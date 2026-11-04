@@ -220,3 +220,5 @@ YOLO ZIP 导入已接Web：名称映射、逐项问题、草稿复核、合成�
 PAINE2026权重通过固定SHA、受限容器映射和weights_only提取277个纯张量；官方FastAI架构严格匹配，导出164,893,241B自包含ONNX。公开1024×221图两块PT/ORT掩膜差异0像素，独立ORT推理2547.867ms、含加载保存3142.424ms。模型与掩膜保留原图尺度，按需离线运行，无常驻进程；仅针脚分割，不是缺陷分类、3D针高或实时YOLO替代。模型已在本机models/public，清单pin-models.json与独立probe工具可用，尚未接Web或现有ZIP；详见docs/MODEL-GAPS-QUALITY.md。
 
 本轮一次全量1311 passed / 2 skipped / 2 failed；两失败为旧配方测试SimpleNamespace不具备新增重载锁和方法分派，已改用无启动的真实StationManager实例。修复后配方、发布监控和针脚专项35项全部通过（含新增checkpoint检查）；未重复全量或训练。用户原有品牌文件保持不动。
+
+ESD/洁净穿戴本轮未取得公开导出包：页面匿名访问403，洁净数据导出API401要求key；证据和正常导出路径见docs/MODEL-GAPS-SAFETY-SOP.md，未训练。针脚代码已本地提交12c1226，推送连续两次TLS连接失败，后续网络恢复需推送本地提交。

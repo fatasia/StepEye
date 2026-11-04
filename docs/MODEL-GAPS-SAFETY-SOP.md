@@ -88,3 +88,12 @@
 本轮更新了来源核查和现有代码状态，没有重跑旧模型基准。未取得的导出包、未执行的推理均已逐项标记；检索范围为上述发布者页面、官方代码和本地已有资产，未找到不等于资源不存在。
 
 Kairos 原生适配已完成真实水洼图端到端。下一批验收：PPE 五用品用独立标注算逐人漏检/误配；ESD/洁净先查实际导出内容；睡岗与 SOP 先做同工位跨人视频验证。所有新候选维持 evaluation_only，不自动更改生产规则。
+
+## 2026-11-04 公开导出复核
+
+- **ESD**：项目仍列2,314图、3类、CC BY 4.0。版本3页面本次匿名HTTP访问返回403；未取得ZIP或标注文件，不能确认版本内拆分、重复图或类别计数。
+- **洁净穿戴**：[版本4](https://universe.roboflow.com/counting-trsti/cleanroom-vhj35/dataset/4)公开页列 **2,402张增强后图片**，train/valid/test为2,103/150/149，不是2,402张独立原图。预处理为自动方向、512×512拉伸、灰度；训练每张输出3份。项目首页的1,000是原始图片数量。
+- [YOLO导出入口](https://universe.roboflow.com/counting-trsti/cleanroom-vhj35/dataset/4/download/yolov8)本次匿名HTTP访问返回403，浏览器连接关闭，未得到ZIP直链。cleanroom v4的匿名导出API另返回401，明确要求API key（cleanroom-api.json）。这是本次访问结果，不说明数据不存在或发布者禁止下载。
+- [官方SDK下载流程](https://supervision.roboflow.com/latest/how_to/process_datasets/)要求登录；[版本导出接口](https://roboflow.github.io/roboflow-python/core/version/)使用API key获取导出链接。下一步需正常账号导出包或发布者提供公开ZIP，再审核标签和来源分组；本轮未读取本机凭据、未训练、未登记新权重。
+
+本机请求证据保存在 `.v0/esd-cleanroom-audit/`：两个HTTP403响应HTML及 `audit.json`。没有图片/标注下载完成数量可报告。现有PPE14未重复下载。
