@@ -66,6 +66,7 @@ class StationRuntime:
         self._alerts_lock = threading.Lock()
         self.listeners: list[Callable[[str, dict[str, Any]], None]] = []
         self.frame_observers: list[Callable] = []
+        self._cross_camera_frame = None
         self.signal_inbox = None
         self.thermal_service = None
         self._last_frame_wall: float | None = None
@@ -305,6 +306,7 @@ class StationRuntime:
 
     def _reset_visual_observations(self) -> None:
         """只清观测/去抖缓存，保留模型、标定参考和原始帧。"""
+        self._cross_camera_frame = None
         if self.ehs is not None:
             self.ehs.reset()
         self.proximity.reset()
@@ -356,6 +358,7 @@ class StationRuntime:
     # ------------------------------------------------------------ 主循环
     def process_frame(self, ts: float, frame: np.ndarray) -> list[Event]:
         captured_mono = time.monotonic()
+        detector_fresh = self.detector is not None and getattr(self.detector, "_last_frame_ts", None) != ts
         external = self.signal_inbox.drain(ts) if self.signal_inbox is not None else []
         self.raw = frame
         self._apply_calibration(frame)
@@ -414,12 +417,33 @@ class StationRuntime:
         self.recorder.flush()
         self.frame_idx += 1
         self._health_last_frame = time.time()
+        # Publish one detached snapshot; association runs only on API requests.
+        self._cross_camera_frame = {
+            "station": self.cfg.station, "epoch": self._health_epoch,
+            "generation": self._vision_generation, "frame_seq": self.frame_idx,
+            "received_mono": captured_mono, "frame_size": (frame.shape[1], frame.shape[0]),
+            "available": not blocked and detector_fresh and hasattr(self.detector, "mot"),
+            "source_type": self.cfg.source.type,
+            "available_labels": tuple(sorted(set(self.cfg.detector.classes) &
+                                             set(getattr(self.detector, "class_names", [])))),
+            "tracks": tuple({"track_id": t.track_id, "label": t.label,
+                             "xyxy": tuple(t.xyxy), "confidence": t.confidence}
+                            for t in self.ctx.object_tracks if t.last_seen == ts) if not blocked else (),
+        }
         for observer in self.frame_observers:
             observer(self)
         if time.monotonic() - self._state_wall > 0.25:  # 状态快照在本线程生成，API 线程只读缓存，避免读写竞争
             self._state_wall = time.monotonic()
             self.state_cache = self.state()
         return ([] if blocked else events) + external + quality_events + ([gate_event] if gate_event else [])
+
+    def cross_camera_snapshot(self):
+        """Host receipt time is not synchronized camera exposure time."""
+        snapshot = self._cross_camera_frame
+        if snapshot is None:
+            return None
+        return {**snapshot, "available": snapshot["available"] and self._health_running and not self.stop_event.is_set(),
+                "tracks": [dict(track) for track in snapshot["tracks"]]}
 
     def run(self, max_frames: int | None = None) -> None:
         if self.signal_inbox is not None:

@@ -1,3 +1,4 @@
+import { openCrossCamera } from "./cross-camera.js";
 import { openDrawer, toast } from "../ui.js";
 import { $, esc, fmtTime } from "../util.js";
 
@@ -41,6 +42,7 @@ export function openStockReconciliation({ canWrite }) {
     subtitle: "导入期望库存 → 录入当前可见数 → 对账差异",
     html: `<style>.stock-recon label{display:block;margin:14px 0 8px}.stock-recon input,.stock-recon select,.stock-recon textarea{max-width:100%;width:100%;box-sizing:border-box;padding:9px;background:transparent;color:inherit;border:1px solid #364348;border-radius:5px}.stock-recon textarea{font-family:var(--font-mono,monospace);font-size:12px}.stock-recon table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0}.stock-recon th,.stock-recon td{border-bottom:1px solid #2a3438;padding:6px 8px;text-align:left}.stock-recon .sr-error{color:#ff9890}.stock-recon .sr-actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}.stock-recon .diff-short{color:#ff9890}.stock-recon .diff-extra{color:#ffd47f}.stock-recon p{line-height:1.7}</style>
       <div class="stock-recon">
+        <button class="btn" data-sr-cross-camera>多机位观测</button>
         <label>工位 / 场景<input data-sr-station placeholder="如 WMS-A" ${canWrite ? "" : "disabled"}></label>
         <details ${canWrite ? "open" : ""}><summary>① 导入期望库存（JSON：[{"zone","item","count"}]）</summary>
           <label>期望值文件<input data-sr-file type="file" accept=".json" ${canWrite ? "" : "disabled"}></label>
@@ -58,6 +60,7 @@ export function openStockReconciliation({ canWrite }) {
     onClose: () => { closed = true; },
   });
   const body = drawer.body, error = $("[data-sr-error]", body);
+  $("[data-sr-cross-camera]", body).onclick = openCrossCamera;
   const showError = (e) => { if (!closed) error.textContent = e?.message || ""; };
   const station = () => $("[data-sr-station]", body).value.trim();
 

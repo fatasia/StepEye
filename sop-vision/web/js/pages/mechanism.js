@@ -1,3 +1,4 @@
+import { openActuatorClassifierAnalysis, actuatorClassifierReport } from "./mechanism-actuator-classifier.js";
 import { openCycleAnalysis } from "./mechanism-cycle.js";
 import { openMotorAnalysis, motorReport } from "./mechanism-motor.js";
 import { openActuatorAnalysis, actuatorReport } from "./mechanism-actuator.js";
@@ -48,7 +49,8 @@ export function render(root) {
     ['valve','阀门信号','双通道压力','命令时标与压力联合分析','03'],
     ['actuator','执行器','参考 + 评测窗','同工况运动残差','04'],
     ['rul','专域寿命','FD001 窗口','航空发动机仿真数据专域','05'],
-    ['motor','电机分类','114 维特征','振动与电流研究候选','06']
+    ['motor','电机分类','114 维特征','振动与电流研究候选','06'],
+    ['actuatorclassifier','执行器分类','完整信号记录','间隙 / 缺润滑 / 剥落','07']
   ];
   root.innerHTML=`<div class="mechanism-page"><header class="ml-head"><div><span class="ml-kicker">SIGNAL ANALYSIS</span><h2>机理实验室</h2><p>从设备信号，到可追溯的分析证据。</p></div><span class="ml-chip"><i></i>按需分析</span></header>
     <section class="ml-launcher" data-ml-upload hidden><button class="btn btn-primary" data-ml-start aria-expanded="false">＋ 新建分析</button><div class="ml-mode-grid" data-ml-modes hidden>${modes.map(([key,title,format,description,index])=>`<button class="ml-mode" data-ml-${key}><span class="ml-mode-top"><span>${index}</span><span>↗</span></span><strong>${title}</strong><span class="ml-mode-description">${description}</span><small>${format}</small></button>`).join('')}</div></section>
@@ -66,6 +68,7 @@ export function render(root) {
     selectedId = report.id;
     root.querySelectorAll("[data-ml-id]").forEach(button=>button.classList.toggle("is-active",button.dataset.mlId===selectedId));
     if(report.kind==='actuator_motion_residual'){find('[data-ml-report]').innerHTML=actuatorReport(report);return;}
+    if(report.kind==='actuator_classifier_shadow'){find('[data-ml-report]').innerHTML=actuatorClassifierReport(report);return;}
     if(report.kind==='motor_rf_shadow'){find('[data-ml-report]').innerHTML=motorReport(report);return;}
     if(report.kind==='cmapss_rul'){find('[data-ml-report]').innerHTML=rulReport(report);return;}
     if(report.kind==='valve_fusion_shadow'){find('[data-ml-report]').innerHTML=valveReport(report);return;}
@@ -103,7 +106,7 @@ export function render(root) {
     refresh();
     message('报告已保存');
   };
-  const openers={cycle:openCycleAnalysis,rotating:openRotatingAnalysis,valve:openValveAnalysis,rul:openRULAnalysis,actuator:openActuatorAnalysis,motor:openMotorAnalysis};
+  const openers={cycle:openCycleAnalysis,rotating:openRotatingAnalysis,valve:openValveAnalysis,rul:openRULAnalysis,actuator:openActuatorAnalysis,motor:openMotorAnalysis,actuatorclassifier:openActuatorClassifierAnalysis};
   find("[data-ml-start]").onclick=()=>{
     const modes=find("[data-ml-modes]");
     modes.hidden=!modes.hidden;

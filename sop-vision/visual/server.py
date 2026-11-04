@@ -626,6 +626,20 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .mechanism_motor import MotorService
     from .mechanism_motor_routes import motor_router
     app.include_router(motor_router(manager.mechanism, MotorService(ROOT)))
+    from .mechanism_actuator_classifier import ActuatorClassifierService
+    from .mechanism_actuator_classifier_routes import actuator_classifier_router
+    app.include_router(actuator_classifier_router(manager.mechanism, ActuatorClassifierService(ROOT)))
+    from .cross_camera import CrossCameraStore
+    from .cross_camera_routes import router as cross_camera_router
+    from .browser_scope import station_ids
+
+    def cross_camera_snapshot(station):
+        runtime = manager.runtimes.get(station)
+        return runtime.cross_camera_snapshot() if runtime is not None else None
+
+    cross_camera = CrossCameraStore(manager.data_dir / "cross_camera.json", manager.calibrations,
+                                   cross_camera_snapshot)
+    app.include_router(cross_camera_router(cross_camera, lambda user: station_ids(user, manager.labels)))
     from .gauge_routes import gauge_router
     app.include_router(gauge_router(manager.gauge))
     from .action_reference_routes import router as action_reference_router

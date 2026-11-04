@@ -40,6 +40,8 @@ async def check_request(request, user, manager):
     if allowed is None:
         return
     path, method = request.url.path, request.method
+    if path == '/api/cross-camera/groups' or path.startswith('/api/cross-camera/groups/'):
+        return  # Router checks every member before exposing or changing a group.
     if method == 'GET' and path in {
         '/api/label-projects', '/api/label-engines', '/api/models',
         '/api/training/capabilities',

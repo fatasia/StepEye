@@ -1,0 +1,117 @@
+{
+  "source_run": "20261031T063124Z-32d1eb3b",
+  "model_sha256": "6aa820a3b980a55f09dc6f2ba6c912c198ebabceba59f8ada9a16c32c0eeb89d",
+  "source_metrics_sha256": "3fa35c8e7a68963cb6e22f1ecc72d0b27ec78bceacaa206fc2187765fd801762",
+  "code_license": "MIT",
+  "data_license": "CC BY 4.0",
+  "source": "https://doi.org/10.17862/cranfield.rd.5097649",
+  "classes": [
+    "normal",
+    "backlash",
+    "lack_lubrication",
+    "spalling"
+  ],
+  "channels": [
+    "setpoint_mm",
+    "error_mm",
+    "current_A"
+  ],
+  "sample_rate_hz": 25,
+  "shape": [
+    null,
+    2000,
+    3
+  ],
+  "calibration": {
+    "temperatures": [
+      1,
+      0.5,
+      0.5
+    ],
+    "cutoff": 0.24933862686157227,
+    "records": 78
+  },
+  "protocol": {
+    "seeds": [
+      42,
+      43,
+      44
+    ],
+    "epochs": 60,
+    "reference_alignment": false,
+    "record_holdout": true,
+    "partition": "all known contexts; repeats1-5 train,6-7 validation,8 calibration,9-10 test",
+    "selection": "uniform fixed3seed ensemble; no seed or mixture weight selected by test",
+    "temperature_grid": [
+      0.25,
+      0.5,
+      1,
+      2,
+      4
+    ],
+    "temperature_selection": "per-seed record-level calibration NLL only",
+    "prediction_set_alpha": 0.1,
+    "prediction_set_scope": "record-level marginal calibration; exchangeability not established for new devices or conditions",
+    "input": "80s complete record [batch,2000,3]; five16s cycles,25Hz; setpoint_mm,error_mm,current_A",
+    "scope": "same inspected corpus, known six load/profile contexts, not new blind or cross-device validation"
+  },
+  "historical_test": {
+    "records": 156,
+    "macro_f1": 0.9673617272996156,
+    "accuracy": 0.9743589743589743,
+    "log_loss": 0.09717153757810593,
+    "confusion": [
+      [
+        11,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        21,
+        0,
+        3
+      ],
+      [
+        0,
+        0,
+        24,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        96
+      ]
+    ],
+    "false_positives": 1,
+    "false_negatives": 0,
+    "candidate_set_coverage": 0.9358974358974359,
+    "singleton_fraction": 0.9487179487179487,
+    "empty_fraction": 0.05128205128205128,
+    "errors": [
+      {
+        "record": 29,
+        "truth": 1,
+        "predicted": 3
+      },
+      {
+        "record": 31,
+        "truth": 1,
+        "predicted": 3
+      },
+      {
+        "record": 39,
+        "truth": 1,
+        "predicted": 3
+      },
+      {
+        "record": 280,
+        "truth": 0,
+        "predicted": 3
+      }
+    ]
+  }
+}
