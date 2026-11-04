@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-04",
+  "models": [
+    {
+      "id": "public-glue-yolov4-tiny",
+      "name": "胶路断胶 / 过量胶 · YOLOv4-Tiny（评估）",
+      "model_path": "models/public/glue-yolov4-tiny.onnx",
+      "classes": [
+        "discontinuity",
+        "excess"
+      ],
+      "sha256": "4a398f4e1a0ebfe69877f593f43bac3d220f1c5b785d5be3880e24462e1ea32a",
+      "bytes": 23551625,
+      "task": "detect",
+      "runtime": "onnx",
+      "adapter": "glue_yolov4",
+      "adapter_compatible": true,
+      "native_input": [
+        1,
+        3,
+        416,
+        416
+      ],
+      "native_output": [
+        1,
+        2535,
+        7
+      ],
+      "source": {
+        "repository": "https://github.com/RicardoSPeres/GAN_Synth_Adhesive",
+        "revision": "b309653ec5ef27013f5dc0d6ce1fc7bf4763c148",
+        "weight_file": "Weights/yolov4-tiny-obj_best_aug.weights",
+        "weight_sha256": "c51a715e886f585a1046a6b09f62270d212a8715a0e5428490c7897a88ced3a3",
+        "derived_cfg_sha256": "44dbebf92ad2dba2ebcc3da31d2058cd5a94b37ad9901c3e00973b1866cca3bb"
+      },
+      "preprocessing": "BGR to RGB; OpenCV bilinear direct416 resize; /255; no letterbox",
+      "output_layout": "normalized cx,cy,w,h,objectness,discontinuity_score,excess_score; class scores already multiplied by objectness",
+      "license_status": "Weights and dataset license not declared by publisher; evaluation only",
+      "commercial_review_required": true,
+      "usage": "evaluation_only",
+      "production_approval": false,
+      "threshold": 0.25,
+      "validation": {
+        "scope": "author holdout; no target-factory independent evaluation",
+        "images": 19,
+        "boxes": 57,
+        "iou": 0.5,
+        "confidence": 0.25,
+        "summary": {
+          "tp": 33,
+          "fp": 15,
+          "fn": 24,
+          "precision": 0.6875,
+          "recall": 0.5789473684210527,
+          "f1": 0.6285714285714286
+        },
+        "classes": {
+          "discontinuity": {
+            "tp": 22,
+            "fp": 9,
+            "fn": 18,
+            "precision": 0.7096774193548387,
+            "recall": 0.55,
+            "f1": 0.6197183098591549
+          },
+          "excess": {
+            "tp": 11,
+            "fp": 6,
+            "fn": 6,
+            "precision": 0.6470588235294118,
+            "recall": 0.6470588235294118,
+            "f1": 0.6470588235294118
+          }
+        },
+        "onnx_vs_opencv_max_box_error_px": 0.021818161010742188,
+        "onnx_vs_opencv_max_confidence_error": 0.0003686249256134033,
+        "cpu_2thread_median_inference_ms": 28.006300002743956
+      },
+      "limitations": [
+        "Only discontinuity/excess; not glue width, volume, UV coverage or 3D",
+        "Author holdout only; no independent target-line validation",
+        "Recall .579 at fixed operating point; not an automatic product release model"
+      ]
+    }
+  ]
+}

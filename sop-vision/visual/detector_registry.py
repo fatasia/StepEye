@@ -36,6 +36,9 @@ def create_backend(model_path, classes, threshold=.5, max_results=500, *, adapte
     if adapter=="kairos_rtdetr":
         from .kairos_rtdetr import KairosRTDetrBackend
         return KairosRTDetrBackend(model_path,classes,threshold,max_results)
+    if adapter=="glue_yolov4":
+        from .glue_yolov4 import GlueYoloV4Backend
+        return GlueYoloV4Backend(model_path,classes,threshold,max_results)
     raise ValueError("未登记的检测器输出适配器")
 
 

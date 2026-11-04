@@ -35,7 +35,7 @@ export function openHoldoutEvaluation({ canWrite }) {
           <label>样本项目<select data-he-project aria-label="样本项目"></select></label>
           <label>冻结数据版本（val 分组）<select data-he-version aria-label="数据版本"></select></label>
           <p data-he-meta class="muted"></p>
-          <label>输出适配器<select data-he-adapter><option value="yolo_raw">yolo_raw（原始布局）</option><option value="yolo_e2e">yolo_e2e（端到端）</option><option value="kairos_rtdetr">Kairos RT-DETR</option></select></label>
+          <label>输出适配器<select data-he-adapter><option value="yolo_raw">yolo_raw（原始布局）</option><option value="yolo_e2e">yolo_e2e（端到端）</option><option value="kairos_rtdetr">Kairos RT-DETR</option><option value="glue_yolov4">胶路 YOLOv4-Tiny</option></select></label>
           <div class="he-grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <label>置信度阈值<input data-he-conf type="number" step="0.01" min="0.01" max="1" value="0.25"></label>
             <label>IoU 阈值<input data-he-iou type="number" step="0.01" min="0.01" max="1" value="0.5"></label>

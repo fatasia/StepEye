@@ -26,7 +26,7 @@ class CandidateBody(BaseModel):
     engine_id: str = Field(min_length=1, max_length=100)
     model_sha256: str = Field(min_length=64, max_length=64)
     evaluation_id: str = Field(min_length=4, max_length=100)
-    adapter: Literal["yolo_raw", "yolo_e2e", "kairos_rtdetr"]
+    adapter: Literal["yolo_raw", "yolo_e2e", "kairos_rtdetr", "glue_yolov4"]
     classes: list[str] = Field(min_length=1, max_length=100)
 
 

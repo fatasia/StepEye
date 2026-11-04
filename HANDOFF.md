@@ -234,3 +234,13 @@ ESD/洁净穿戴本轮未取得公开导出包：页面匿名访问403，洁净�
 新增公开DsPCBSD+九类PCB标注：两份COCO标注完整CRC核验，共10259图/20276框；ZIP仅41943040/128541608B，剩余续传TLS失败，进程已停止。保留断点，不计完整训练数据；无新增训练权重。详见docs/PUBLIC-MODEL-NEXT.md。
 
 推送已恢复：使用 git -c http.sslBackend=schannel -c http.version=HTTP/1.1 push origin HEAD，12c1226/fc87598/65cfca9均已同步。DsPCBSD原生TLS续传到53462500/128541608B后180秒超时停止，新断点.v0/dspcbsd/DsPCBSD.resume.part，下一段从53462500开始，原断点保留；尚未整包校验或训练。
+
+### 2026-11-04 模型集中批次
+
+胶路Darknet已纯ONNX标准算子重建，固定416直接缩放，23.55MB；19张作者holdout与OpenCV4逐图结果对齐，P.6875/R.5789，CPU纯推理中位28.01ms。glue_yolov4已接原目录/试跑/预标注/运行配置/固定评测/发布参数，真实Web默认.4阈值3框与评测自动选择通过；不自动启用工位，权重/数据许可未声明。源模型未重新训练，详见docs/GLUE-ONNX.md。
+
+公开腕带项目取得141/196图，按组87train/23val，作者test31；train/test有49对dHash近似候选。复用现有YOLOv8n基座与training_worker，CPU20轮363秒完成ONNX。固定test TP12/FP1/FN46，整体R.207、腕带R.4、戒指R0；未达标，不加入自动目录/告警。候选记录safety-training-candidates.json，独立评测/原权重在.v0/safety-model-audit/edge-wrist。不是ESD合规识别已完成，不反推未佩戴。
+
+DsPCBSD+九类128541608B完整下载，官方MD5/ZIPCRC/10259图解码及跨split像素去重通过；无精确重复，270框轻微越界需记录裁剪，完整包.v0/dspcbsd/DsPCBSD.zip，不再重复下载。未启动PCB九类训练；本轮GPU可用显存仅0.6–1.4GB，用户未回复释放资源询问，未关闭任何用户应用。
+
+密封钉/六面/Pack新候选缺真实微调权重、类别或许可；Thalos所谓泄漏模型实际仅六类PPE。三路审计详细见docs/BATTERY-MODEL-FINAL-AUDIT.md、SAFETY-MODEL-AUDIT-2026-11-04.md、PUBLIC-MODEL-NEXT.md。相关47项整合和16项专项检查通过（集合有重叠）；无需重复此前1330全量。模型均不进此前ZIP，所有本轮下载/训练/验收进程已结束。

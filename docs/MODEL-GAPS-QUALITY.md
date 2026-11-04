@@ -89,3 +89,5 @@ python -m pytest tests/test_pin_checkpoint.py tests/test_pin_segmentation.py -q
 原始树、模型metadata、API响应和实推结果保存在 `.v0/quality-gaps/`；未训练、未替换其他模型。
 
 Web接线：GET /api/models 中 task=segment；POST /api/models/{id}/trial 复用原试跑入口，返回原尺寸二值PNG，不返回检测框或缺陷结论。单次最多400万像素/16块，30秒超时，任务结束释放CPU子进程；停服终止自有任务。框标注项目明确拒绝分割模型，电池六面检测列表不混入PCB针脚分割。真实Web公开图9148前景像素、切换/下载/只读权限已检查，记录位于.v0/output/playwright/pin-scope/。
+
+最新胶路转换及19图结果见[胶路ONNX](GLUE-ONNX.md)，已接平台，不再标记为非ONNX。电池新增候选排除证据见[BATTERY-MODEL-FINAL-AUDIT](BATTERY-MODEL-FINAL-AUDIT.md)。DsPCBSD+九类PCB完整公开包已下载校验，尚未训练新权重，见[下一批数据](PUBLIC-MODEL-NEXT.md)。

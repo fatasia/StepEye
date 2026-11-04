@@ -97,3 +97,5 @@ Kairos 原生适配已完成真实水洼图端到端。下一批验收：PPE 五
 - [官方SDK下载流程](https://supervision.roboflow.com/latest/how_to/process_datasets/)要求登录；[版本导出接口](https://roboflow.github.io/roboflow-python/core/version/)使用API key获取导出链接。下一步需正常账号导出包或发布者提供公开ZIP，再审核标签和来源分组；本轮未读取本机凭据、未训练、未登记新权重。
 
 本机请求证据保存在 `.v0/esd-cleanroom-audit/`：两个HTTP403响应HTML及 `audit.json`。没有图片/标注下载完成数量可报告。现有PPE14未重复下载。
+
+最新安全侧补充见[实际数据与训练审计](SAFETY-MODEL-AUDIT-2026-11-04.md)：新取得Edge Impulse公开腕带数据141张并完成20轮CPU训练/ONNX评测，固定test召回不足，未补齐ESD；Thalos静态类别证实不含leak，排除此滴漏候选。旧Roboflow导出限制不再解释为“完全没有腕带公开数据”。

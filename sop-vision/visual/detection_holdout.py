@@ -40,7 +40,7 @@ def run_holdout(dataset, model, output, *, model_sha256, dataset_sha256,
     # Validate operating point before loading an inference session.
     evaluate_boxes(['check'], [{'id':'check','reviewed':True,'truth':[], 'predictions':[]}],
                    confidence_threshold=confidence, iou_threshold=iou)
-    if adapter not in ('yolo_raw','yolo_e2e','kairos_rtdetr'):
+    if adapter not in ('yolo_raw','yolo_e2e','kairos_rtdetr','glue_yolov4'):
         raise ValueError('Unsupported adapter')
     if Path(dataset).stat().st_size > 4 * 1024**3 or Path(model).stat().st_size > 1024**3:
         raise ValueError('Dataset/model exceeds local evaluation size limit')
@@ -95,8 +95,8 @@ def run_holdout(dataset, model, output, *, model_sha256, dataset_sha256,
                 metadata = backend.session.get_modelmeta().custom_metadata_map
                 if metadata.get('task','detect') != 'detect':
                     raise ValueError('Classification model cannot run detection evaluation')
-                # The dedicated Kairos adapter validates its fixed water-class contract.
-                names = (list(backend.classes) if adapter == 'kairos_rtdetr' else
+                # Dedicated adapters validate their fixed class order.
+                names = (list(backend.classes) if adapter in ('kairos_rtdetr', 'glue_yolov4') else
                          ast.literal_eval(metadata.get('names', 'None')))
                 if isinstance(names, dict):
                     names = [names.get(i) for i in range(len(names))]

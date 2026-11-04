@@ -77,15 +77,16 @@ def test_candidate_audit_files_are_not_automatically_loaded(tmp_path):
     assert engines.list()==[]
 
 
-def test_water_adapter_registered_and_accepted_by_workflows(tmp_path):
+@pytest.mark.parametrize("adapter,classes,filename", [("kairos_rtdetr",["water"],"water-models.json"), ("glue_yolov4",["discontinuity","excess"],"glue-models.json")])
+def test_specialized_adapter_registered_and_accepted_by_workflows(tmp_path,adapter,classes,filename):
     from visual.dsl import DetectorCfg
     from visual.holdout_routes import HoldoutBody
     from visual.model_release_routes import CandidateBody
-    path=manifest(tmp_path,adapter='kairos_rtdetr',classes=['water'])
-    path.parent.joinpath('safety-models.json').rename(path.parent/'water-models.json')
+    path=manifest(tmp_path,adapter=adapter,classes=classes)
+    path.parent.joinpath('safety-models.json').rename(path.parent/filename)
     engines=LabelEngines()
     assert register_public_models(engines,tmp_path)==1
-    assert engines.snapshot('public-test')['adapter']=='kairos_rtdetr'
-    assert DetectorCfg(adapter='kairos_rtdetr').adapter=='kairos_rtdetr'
-    assert HoldoutBody(engine_id='public-test',project_id='p',version_id='v',adapter='kairos_rtdetr').adapter=='kairos_rtdetr'
-    assert CandidateBody(engine_id='public-test',model_sha256='a'*64,evaluation_id='HE-test',adapter='kairos_rtdetr',classes=['water']).adapter=='kairos_rtdetr'
+    assert engines.snapshot('public-test')['adapter']==adapter
+    assert DetectorCfg(adapter=adapter).adapter==adapter
+    assert HoldoutBody(engine_id='public-test',project_id='p',version_id='v',adapter=adapter).adapter==adapter
+    assert CandidateBody(engine_id='public-test',model_sha256='a'*64,evaluation_id='HE-test',adapter=adapter,classes=classes).adapter==adapter
