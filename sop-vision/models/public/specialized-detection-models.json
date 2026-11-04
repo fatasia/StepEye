@@ -170,6 +170,43 @@
     "note": "自报 mAP50 79.57%(自建合并集); 10 图试推: 烟柱 0.791 检出、负样本零误报、夜景明火漏检; 与 longlivewama 互补"
    },
    "trial_evidence": ".v0/fire-smoke/candidates.json (2026-11-04)"
+  },
+  {
+   "id": "public-fire-smoke-dfire-yolov8n-v1",
+   "name": "烟火检测 smoke+fire（YOLOv8n @640，D-Fire 自训 40ep，评估）",
+   "task": "detect",
+   "runtime": "onnx",
+   "model_path": "models/public/fire-smoke-dfire-yolov8n-v1.onnx",
+   "classes": [
+    "smoke",
+    "fire"
+   ],
+   "sha256": "3cd72800e5bbdb70e1292a28f90d1ce9527b253902b093ad7eeb744cdfcf8a60",
+   "bytes": 12239590,
+   "adapter": "yolo_raw",
+   "adapter_compatible": true,
+   "native_input": [
+    1,
+    3,
+    640,
+    640
+   ],
+   "native_output": [
+    1,
+    6,
+    8400
+   ],
+   "license_status": "data_CC0-1.0(D-Fire镜像集合级); base_YOLOv8n_AGPL-3.0(ultralytics基座); 商用评审必需",
+   "commercial_review_required": true,
+   "usage": "evaluation_only",
+   "production_ready": false,
+   "source": {
+    "repo": "D-Fire(Stevebirth/fire-ulm-dfire CC0 镜像) 自训",
+    "url": "https://huggingface.co/datasets/Stevebirth/fire-ulm-dfire",
+    "note": "D-Fire test 严格 holdout 200 图: P 0.736/R 0.668/F1 0.700, AP50 0.730, AP50-95 0.392, 48ms/img(最快); 4 负样本零误报; 类别序为 D-Fire 官方序 [smoke,fire], 与两社区候选 [fire,smoke] 相反, 接入注意; 40ep 未收敛, 100ep 有反超空间",
+    "trial_evidence": ".v0/fire-train/report.json (2026-11-04)"
+   },
+   "trial_evidence": ".v0/fire-train/report.json (2026-11-04)"
   }
  ]
 }
