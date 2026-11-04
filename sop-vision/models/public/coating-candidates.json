@@ -88,6 +88,52 @@
     "false-positive frames 412/444 partly from fragment boundary effects"
    ],
    "evidence_dir": ".v0/coatingvision (make_detection.py, test-eval-v1.json, train-gpu-v1)"
+  },
+  {
+   "id": "experimental-coating-seg-v1",
+   "name": "极片涂布三类分割（掩码→多边形）——不达标",
+   "task": "segment",
+   "adapter": "none_offline_only",
+   "adapter_compatible": false,
+   "model_path": ".v0/coatingvision/train-seg-v1/train/weights/best.pt",
+   "sha256": "4a879479a7139edbac243601d881a5f060a12a7916c79995ac2cf9ae3ebb42e9",
+   "bytes": 6767540,
+   "classes": [
+    "crack",
+    "delamination",
+    "pinhole"
+   ],
+   "status": "rejected_for_deployment",
+   "usage": "offline_evidence_only",
+   "production_approval": false,
+   "license_status": {
+    "dataset": "CC BY 4.0 (CoatingVision)",
+    "base": "Ultralytics YOLOv8n-seg AGPL-3.0 or commercial license"
+   },
+   "validation": {
+    "box_mAP50": 0.4098,
+    "box_mAP50_95": 0.1769,
+    "mask_mAP50": 0.2759,
+    "mask_mAP50_95": 0.0944,
+    "mask_precision": 0.3728,
+    "mask_recall": 0.3302,
+    "scope": "official val split (215 images); independent annotator pass absent"
+   },
+   "training": {
+    "epochs": 30,
+    "batch": 8,
+    "imgsz": 640,
+    "workers": 0,
+    "amp": false,
+    "base": "yolov8n-seg.pt (AGPL, downloaded official)",
+    "dataset_version": "CoatingVision-CV1-maskseg-v1"
+   },
+   "failure_analysis": [
+    "mask mAP50 0.276 at 640px/30 epochs: thin cracks are a few pixels wide at this resolution",
+    "delamination still starved (203 images); neither route rescues it without more data",
+    "both routes (box R 0.512, mask R 0.330) tested and honestly registered; higher resolution or more data needed, not more tuning"
+   ],
+   "evidence_dir": ".v0/coatingvision/train-seg-v1 (seg-summary.json, train results.csv)"
   }
  ]
 }
