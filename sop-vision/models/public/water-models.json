@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-04",
+  "models": [
+    {
+      "id": "public-kairos-water",
+      "name": "地面积水 / Kairos RT-DETR",
+      "model_path": "models/public/kairos-water-rtdetr-int8.onnx",
+      "classes": [
+        "water"
+      ],
+      "sha256": "30c96b4e48d5bcc56cb1b129c97ee9ac8875a91d0315b83593c21b2166be9e69",
+      "bytes": 21490967,
+      "task": "detect",
+      "runtime": "onnx",
+      "adapter": "kairos_rtdetr",
+      "adapter_compatible": true,
+      "native_input": [
+        "batch",
+        3,
+        640,
+        640
+      ],
+      "native_outputs": {
+        "logits": [
+          "batch",
+          "queries",
+          1
+        ],
+        "pred_boxes": [
+          "batch",
+          "queries",
+          4
+        ]
+      },
+      "source": {
+        "repo": "builtbyd3v/kairos-water-rtdetr",
+        "revision": "54c3bb405fdce4fcc27294d10051e1ae87ac2942",
+        "url": "https://huggingface.co/builtbyd3v/kairos-water-rtdetr/resolve/54c3bb405fdce4fcc27294d10051e1ae87ac2942/onnx/model_quantized.onnx"
+      },
+      "license_status": "Apache-2.0 (author model card)",
+      "license_source": "https://huggingface.co/builtbyd3v/kairos-water-rtdetr/blob/54c3bb405fdce4fcc27294d10051e1ae87ac2942/README.md",
+      "code_license": "existing project licensing; upstream RT-DETR Apache-2.0",
+      "training_data_license": "Author card: CC BY 4.0 (Mendeley/Roboflow), CC0 (Kaggle/SCAND); individual source review required",
+      "commercial_review_required": true,
+      "usage": "evaluation_only",
+      "validation": "single_public_image_smoke_only",
+      "threshold": 0.49,
+      "probes": [
+        {
+          "model_sha256": "30c96b4e48d5bcc56cb1b129c97ee9ac8875a91d0315b83593c21b2166be9e69",
+          "image_sha256": "6a41cb798aed793301c7bb53a5816fe2a3a8e96aeb99f2316db07feb20160d34",
+          "image_path": "D:\\Documents\\ChatGPT\\visoul\\.v0\\puddle-leak\\extract\\test-commons-puddle1-1280.jpg",
+          "threshold": 0.49,
+          "preprocess": "PIL RGB bilinear stretch640 /255 no pad/normalize",
+          "targets": [
+            {
+              "label_id": 0,
+              "xyxy_norm": [
+                0.3266362398862839,
+                0.34920620918273926,
+                0.8208287507295609,
+                0.8236323595046997
+              ],
+              "confidence": 0.8620424866676331
+            }
+          ],
+          "label_predict_cold_ms": 1255.039399999987,
+          "runtime_infer_ms": 341.98079999998754,
+          "tracks": [
+            {
+              "track_id": 1,
+              "label": "water"
+            }
+          ],
+          "event_count": 0
+        }
+      ],
+      "limitations": [
+        "Small spill recall weak; no box is not dry.",
+        "Indoor factory validation pending.",
+        "Earlier letterbox probe superseded by author-configured direct resize."
+      ]
+    }
+  ]
+}

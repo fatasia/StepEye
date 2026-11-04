@@ -27,7 +27,7 @@ def _validated_fields(engine_id, model_sha256, evaluation_id, adapter, classes):
         raise ValueError("model_sha256 必须为64位小写十六进制")
     if not isinstance(evaluation_id, str) or not evaluation_id.startswith("HE-") or len(evaluation_id) > 100:
         raise ValueError("evaluation_id 必须为 HE- 前缀的评测报告ID")
-    if adapter not in ("yolo_raw", "yolo_e2e"):
+    if adapter not in ("yolo_raw", "yolo_e2e", "kairos_rtdetr"):
         raise ValueError("adapter 不受支持")
     return validated_classes(classes)
 

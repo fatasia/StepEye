@@ -35,7 +35,7 @@ export function openHoldoutEvaluation({ canWrite }) {
           <label>样本项目<select data-he-project aria-label="样本项目"></select></label>
           <label>冻结数据版本（val 分组）<select data-he-version aria-label="数据版本"></select></label>
           <p data-he-meta class="muted"></p>
-          <label>输出适配器<select data-he-adapter><option value="yolo_raw">yolo_raw（原始布局）</option><option value="yolo_e2e">yolo_e2e（端到端）</option></select></label>
+          <label>输出适配器<select data-he-adapter><option value="yolo_raw">yolo_raw（原始布局）</option><option value="yolo_e2e">yolo_e2e（端到端）</option><option value="kairos_rtdetr">Kairos RT-DETR</option></select></label>
           <div class="he-grid2" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <label>置信度阈值<input data-he-conf type="number" step="0.01" min="0.01" max="1" value="0.25"></label>
             <label>IoU 阈值<input data-he-iou type="number" step="0.01" min="0.01" max="1" value="0.5"></label>
@@ -95,12 +95,20 @@ export function openHoldoutEvaluation({ canWrite }) {
       projects.innerHTML = options.projects.length
         ? options.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")
         : `<option value="">没有含 val 分组的项目——先到样本库导出确认版数据集</option>`;
+      selectAdapter();
       fillVersions();
       sync();
     } catch (e) {
       if (!closed) showError(e);
     }
   }
+
+  // Registered model metadata chooses the layout; users need not know output tensors.
+  function selectAdapter() {
+    const selected = (options?.models || []).find(m => m.id === $("[data-he-model]", body).value);
+    $("[data-he-adapter]", body).value = selected?.adapter || "yolo_raw";
+  }
+  $("[data-he-model]", body).onchange = selectAdapter;
 
   function fillVersions() {
     const projects = $("[data-he-project]", body), versions = $("[data-he-version]", body), meta = $("[data-he-meta]", body);

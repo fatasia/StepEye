@@ -10,7 +10,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('dataset','model','output','model-sha256','dataset-sha256'):
         p.add_argument('--'+name,required=True)
-    p.add_argument('--adapter',choices=['yolo_raw','yolo_e2e'],default='yolo_raw')
+    p.add_argument('--adapter',choices=['yolo_raw','yolo_e2e','kairos_rtdetr'],default='yolo_raw')
     p.add_argument('--confidence',type=float,default=.25)
     p.add_argument('--iou',type=float,default=.5)
     args=vars(p.parse_args())

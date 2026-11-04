@@ -33,6 +33,9 @@ def create_backend(model_path, classes, threshold=.5, max_results=500, *, adapte
     if adapter=="yolo_e2e":
         from .yolo_e2e import YoloE2EOnnxBackend
         return YoloE2EOnnxBackend(model_path,classes,threshold,max_results)
+    if adapter=="kairos_rtdetr":
+        from .kairos_rtdetr import KairosRTDetrBackend
+        return KairosRTDetrBackend(model_path,classes,threshold,max_results)
     raise ValueError("未登记的检测器输出适配器")
 
 

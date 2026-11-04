@@ -31,7 +31,7 @@ class HoldoutBody(BaseModel):
     engine_id: str = Field(min_length=1, max_length=100)
     project_id: str = Field(min_length=1, max_length=100)
     version_id: str = Field(min_length=1, max_length=100)
-    adapter: Literal["yolo_raw", "yolo_e2e"] = "yolo_raw"
+    adapter: Literal["yolo_raw", "yolo_e2e", "kairos_rtdetr"] = "yolo_raw"
     confidence: float = Field(default=.25, gt=0, le=1, allow_inf_nan=False)
     iou: float = Field(default=.5, gt=0, le=1, allow_inf_nan=False)
 

@@ -14,7 +14,7 @@ def register_public_models(engines: LabelEngines, root: Path) -> int:
     """Missing downloads are normal. Invalid or replaced assets are not offered."""
     root = root.resolve()
     count = 0
-    for name in ("safety-models.json","quality-models.json","specialized-detection-models.json"):
+    for name in ("safety-models.json","quality-models.json","specialized-detection-models.json","water-models.json"):
         manifest=root/"models/public"/name
         if not manifest.is_file(): continue
         try:
@@ -29,7 +29,7 @@ def register_public_models(engines: LabelEngines, root: Path) -> int:
                 if not path.is_relative_to(root/"models/public") or path.suffix!=".onnx":
                     raise ValueError("public model path outside asset directory")
                 adapter=item.get("adapter","yolo_raw")
-                if adapter not in {"yolo_raw","yolo_e2e"}: raise ValueError("unknown adapter")
+                if adapter not in {"yolo_raw","yolo_e2e","kairos_rtdetr"}: raise ValueError("unknown adapter")
                 shape=item.get("native_output")
                 if shape is not None:
                     if (not isinstance(shape,list) or len(shape)!=3 or shape[0]!=1 or
