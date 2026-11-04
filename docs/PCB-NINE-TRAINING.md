@@ -44,4 +44,3 @@ python sop-vision/tools/evaluate_pcb_onnx.py --model .v0/dspcbsd/train-gpu-v1/tr
 评测使用全部2,051张原作者val，置信度0.25、IoU0.5；记录每类TP/FP/FN、精确率/召回率、逐图预测和CPU延迟，不将截断预测计算为完整AP。结果文件存在时拒绝覆盖。取得实际指标后再决定候选登记，原PCB六类模型保留。
 
 数据CC BY 4.0不改变YOLOv8基座/训练框架的AGPL许可条件；本候选不标成Apache模型。
-
