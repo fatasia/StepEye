@@ -76,6 +76,11 @@ class LabelEngines:
         m["model_sha256"] = fingerprint(Path(m["model_path"]))
         if m.get("expected_sha256") and m["model_sha256"] != m["expected_sha256"]:
             raise LabelError("模型文件与登记指纹不一致，请重新安装已审核权重", 409)
+        from .model_signature import verify_model_policy
+        try:
+            m["signature"] = verify_model_policy(Path(m["model_path"]))
+        except ValueError as exc:
+            raise LabelError(str(exc), 409) from exc
         return m
 
 

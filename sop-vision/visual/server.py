@@ -83,10 +83,12 @@ class StationManager:
         from .audit import AuditStore
         self.audit = AuditStore(data_dir / "operations.db")
         self.data_dir = data_dir
+        from .storage_quota import StorageQuota
+        self.storage_quota = StorageQuota.from_env(data_dir)
         from .ai_services import AIServiceStore
         from .documents import DocumentStore
         self.ai_services = AIServiceStore(data_dir / "ai-services.json")
-        self.documents = DocumentStore(data_dir / "documents")
+        self.documents = DocumentStore(data_dir / "documents", quota=self.storage_quota)
         from .mechanism_routes import MechanismReports
         self.mechanism = MechanismReports(data_dir / "mechanism.sqlite")
         from .mechanism_valve import ValveShadow
@@ -100,7 +102,7 @@ class StationManager:
         rul_trust = os.getenv("STEPEYE_RUL_TRUST_KEYS")
         self.rul = RULService(ROOT, trusted_public_keys=json.loads(rul_trust) if rul_trust is not None else None)
         from .equipment_results import EquipmentResults
-        self.equipment_results = EquipmentResults(data_dir / "equipment-results")
+        self.equipment_results = EquipmentResults(data_dir / "equipment-results", quota=self.storage_quota)
         from .action_references import ActionReferenceStore
         self.action_references = ActionReferenceStore(data_dir / "action-references", data_dir / "timelines", data_dir / "timelines.db")
         from .action_reference_check import ReferenceChecks
@@ -126,7 +128,7 @@ class StationManager:
         self.patrol = PatrolStore(data_dir / "patrol.db")
         self.signal_store = SignalAuditStore(data_dir / "signals.db")
         self.signal_store.recover_abandoned()
-        self.labels = LabelStore(data_dir / "labeling")
+        self.labels = LabelStore(data_dir / "labeling", quota=self.storage_quota)
         from .calibration import CalibrationStore
         self.calibrations = CalibrationStore(data_dir / "calibrations.db")
         from .quality_routes import QualityReports
@@ -589,7 +591,7 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .holdout_routes import router as holdout_router
     app.include_router(holdout_router(manager.holdout_runner))
     from .ops_routes import router as ops_router
-    app.include_router(ops_router(manager.data_dir))
+    app.include_router(ops_router(manager.data_dir, manager.storage_quota.limits))
     from .stock_reconciliation_routes import router as stock_recon_router
     app.include_router(stock_recon_router(manager.stock_recon))
     from .model_release_routes import router as model_release_router
@@ -621,6 +623,9 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(rul_router(manager.mechanism, manager.rul))
     from .mechanism_actuator_routes import actuator_router
     app.include_router(actuator_router(manager.mechanism, manager.actuator))
+    from .mechanism_motor import MotorService
+    from .mechanism_motor_routes import motor_router
+    app.include_router(motor_router(manager.mechanism, MotorService(ROOT)))
     from .gauge_routes import gauge_router
     app.include_router(gauge_router(manager.gauge))
     from .action_reference_routes import router as action_reference_router

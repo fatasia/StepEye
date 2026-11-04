@@ -1,0 +1,2 @@
+# Imported model metadata/helper have pinned byte-level SHA256 values.
+sop-vision/models/mechanism/motor-rf/* -text whitespace=cr-at-eol

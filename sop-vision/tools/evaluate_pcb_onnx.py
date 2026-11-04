@@ -43,6 +43,32 @@ def truths(data):
     return result, clipped
 
 
+def evaluate_all(frames):
+    """Batch the bounded platform evaluator without dropping images or provenance."""
+    reports = []
+    for start in range(0, len(frames), 500):
+        # Source hashes remain in the outer report, not the strict frame contract.
+        batch = [{k: frame[k] for k in ('id', 'reviewed', 'truth', 'predictions')}
+                 for frame in frames[start:start + 500]]
+        reports.append(evaluate_boxes(CLASSES, batch, confidence_threshold=.25, iou_threshold=.5))
+    if not reports:
+        raise ValueError('No PCB evaluation frames')
+
+    def combine(rows):
+        counts = {key: sum(row[key] for row in rows) for key in ('tp', 'fp', 'fn')}
+        tp, fp, fn = (counts[key] for key in ('tp', 'fp', 'fn'))
+        return {**counts, 'precision': tp/(tp+fp) if tp+fp else None,
+                'recall': tp/(tp+fn) if tp+fn else None,
+                'f1': 2*tp/(2*tp+fp+fn) if 2*tp+fp+fn else None}
+
+    return {**reports[0], 'frames': len(frames),
+            'summary': combine([r['summary'] for r in reports]),
+            'classes': {name: combine([r['classes'][name] for r in reports]) for name in CLASSES},
+            'false_positive_frames': sum(r['false_positive_frames'] for r in reports),
+            'missed_frames': sum(r['missed_frames'] for r in reports),
+            'details': [d for r in reports for d in r['details']]}
+
+
 def run(model: Path, archive: Path, output: Path):
     import cv2
     import numpy as np
@@ -87,7 +113,7 @@ def run(model: Path, archive: Path, output: Path):
         'scope': 'original author val held out from training; not independent factory acceptance',
         'test_images': len(frames), 'clipped_boxes': clipped, 'frames': frames,
         'cpu_inference_ms_including_first': timings, 'median_inference_ms': statistics.median(timings),
-        'evaluation': evaluate_boxes(CLASSES, frames, confidence_threshold=.25, iou_threshold=.5),
+        'evaluation': evaluate_all(frames),
         'average_precision': None, 'ap_note': 'Predictions thresholded at .25; no full AP claim'}
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open('x', encoding='utf8') as stream:

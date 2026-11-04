@@ -1,0 +1,19 @@
+{
+  "source_project": "weihu",
+  "source_run": "20261031T205846Z-a699e055",
+  "source_bundle": "held-out-torque-profile-42",
+  "data_source": "https://data.mendeley.com/datasets/6s3dggj9mw/1",
+  "data_license": "CC-BY-4.0",
+  "authors": [
+    "Shijin Chen",
+    "Zeyi Liu",
+    "Chenyang Li",
+    "Dongliang Zou",
+    "Xiao He",
+    "Donghua Zhou"
+  ],
+  "code_license": "MIT",
+  "status": "evaluation_only",
+  "raw_waveform_input": false,
+  "cross_speed_generalization_passed": false
+}

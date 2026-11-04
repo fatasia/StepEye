@@ -17,6 +17,7 @@ import uuid
 from contextlib import contextmanager
 
 from .detection_eval import validated_classes
+from .model_signature import model_trust_keys, verify_model_policy
 
 
 def _validated_fields(engine_id, model_sha256, evaluation_id, adapter, classes):
@@ -40,7 +41,16 @@ def validate_release_model(record):
         raise ValueError("发布模型文件不存在")
     if fingerprint(path) != record["model_sha256"]:
         raise ValueError("发布模型 SHA 与审批记录不一致")
+    verify_model_policy(path)
     return path
+
+
+def _release_signature(record):
+    """Enforce at every transition, including direct store calls and rollback."""
+    if model_trust_keys() is None:
+        return {"verified": False, "status": "not_required"}
+    validate_release_model(record)
+    return {"verified": True, "status": "external_trust_verified", "algorithm": "Ed25519"}
 
 
 def create_candidate(releases, evaluations, *, engine_id, model_sha256, evaluation_id,
@@ -171,8 +181,9 @@ class ModelReleases:
                 raise KeyError("发布记录不存在")
             if current["status"] != "candidate":
                 raise ValueError("仅 candidate 状态可审批")
+            signature = _release_signature(current)
             record = self._bump(current, status="approved", action="approve", actor=actor)
-            record.update(approved_by=actor, approved_at=record["updated_at"])
+            record.update(approved_by=actor, approved_at=record["updated_at"], signature=signature)
             self._insert_locked(record)
         return record
 
@@ -185,11 +196,12 @@ class ModelReleases:
                 raise KeyError("发布记录不存在")
             if current["status"] != "approved":
                 raise ValueError("仅 approved 状态可激活")
+            signature = _release_signature(current)
             previous = self._active_on_locked(scene)
             now = time.time()
             record = self._bump(current, status="active", action="activate", actor=actor,
                                 extra={"scene": scene})
-            record.update(scene=scene, activated_at=now, activated_by=actor,
+            record.update(scene=scene, activated_at=now, activated_by=actor, signature=signature,
                           replaced_release_id=previous["id"] if previous else None)
             self._insert_locked(record)
             if previous is not None:  # 同 scene 只保留一个 active,旧版记 superseded
@@ -211,12 +223,13 @@ class ModelReleases:
             target = self._current_locked(target_id)
             if target is None:  # append-only 下不可达;防御账本被外力破坏
                 raise ValueError("账本缺少上一版本记录,拒绝自动回滚")
+            signature = _release_signature(target)
             rolled = self._bump(current, status="rolled_back", action="rollback", actor=actor,
                                 extra={"scene": current["scene"], "restored": target_id})
             self._insert_locked(rolled)
             restored = self._bump(target, status="active", action="restore", actor=actor,
                                   extra={"scene": target["scene"]})
-            restored.update(activated_at=restored["updated_at"], activated_by=actor,
+            restored.update(activated_at=restored["updated_at"], activated_by=actor, signature=signature,
                             replaced_release_id=current["id"])
             self._insert_locked(restored)
         return rolled

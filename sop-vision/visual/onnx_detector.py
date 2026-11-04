@@ -121,6 +121,8 @@ class OnnxObjectDetector:
             model = base_dir / model
         if not model.exists():
             raise FileNotFoundError(f"ONNX 检测模型不存在: {model}")
+        from .model_signature import verify_model_policy
+        verify_model_policy(model)
         self.class_names = list(cfg.class_names) or list(COCO80)
         self.backend = create_backend(model, self.class_names, cfg.min_conf, cfg.max_results,
                                       adapter=cfg.adapter)

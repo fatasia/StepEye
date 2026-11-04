@@ -18,6 +18,8 @@ import zipfile
 
 from PIL import Image, ImageOps, UnidentifiedImageError
 
+from .storage_quota import quota_write
+
 MAX_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_IMAGE_PIXELS = 40_000_000
 STATES = ("unlabeled", "draft", "suggested", "confirmed", "background")
@@ -83,7 +85,8 @@ def _targets(items, classes: list[str]) -> list[dict]:
 
 
 class LabelStore:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, quota=None):
+        self.quota = quota
         self.root = Path(root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         for folder in ("originals", "images", "versions"):
@@ -231,6 +234,7 @@ class LabelStore:
         with self._lock:
             return self._file(self._asset_row(aid)["image_file"])
 
+    @quota_write(LabelError)
     def add_asset(self, pid: str, raw: bytes, name: str, metadata: dict | None = None) -> dict:
         project = self.get_project(pid)
         if not isinstance(raw, bytes) or not raw:
@@ -277,6 +281,8 @@ class LabelStore:
             raise LabelError("图片像素超过安全限制", 413) from None
         except (UnidentifiedImageError, OSError, ValueError, SyntaxError):
             raise LabelError("图片无法完整解码") from None
+        if self.quota is not None:
+            self.quota.check(self.root, len(raw) + len(normalized))
         aid, now = "LA-" + uuid.uuid4().hex, _now()
         ext = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp", "BMP": ".bmp"}[fmt]
         original_rel, image_rel = f"originals/{aid}{ext}", f"images/{aid}.png"
@@ -285,8 +291,8 @@ class LabelStore:
             for relative, content in ((original_rel, raw), (image_rel, normalized)):
                 path = self._file(relative, exists=False)
                 with path.open("xb") as stream:
+                    written.append(path)
                     stream.write(content)
-                written.append(path)
             with self._write():
                 self._db.execute("INSERT INTO label_assets (id,project_id,name,original_file,image_file,width,height,sha256,image_sha256,"
                                  "group_id,synthetic,license_ref,illumination_bucket,metadata,revision,state,created_at,updated_at) "
@@ -461,6 +467,7 @@ class LabelStore:
                 "val_count": sum(v["split"] == "val" for v in assignments.values()), "group_count": len(manifest["groups"]),
                 "excluded_unconfirmed": len(manifest["excluded_assets"]), "warnings": manifest["warnings"]}
 
+    @quota_write(LabelError)
     def create_version(self, pid: str, seed: int = 42, val_ratio: float = .2, actor: str = "") -> dict:
         if isinstance(seed, bool) or not isinstance(seed, int) or not -(2**31) <= seed < 2**31:
             raise LabelError("seed 必须为 32 位整数")
@@ -519,6 +526,10 @@ class LabelStore:
         payloads["metadata.json"] = _json({"dataset_version_id": vid, "manifest_sha256": manifest_sha,
                                               "licenses": [], "license_refs": sorted({a["license_ref"] for a in assets if a["license_ref"]}),
                                               "reviewed_negatives": sorted(backgrounds)}).encode("utf-8")
+        if self.quota is not None:
+            self.quota.check(self.root, sum(len(value) for value in payloads.values()) +
+                             sum(path.stat().st_size for path, _ in image_files.values()) +
+                             len(manifest_text.encode("utf-8")))
         # 先写唯一临时目录；最终目录原子重命名，避免并发导出看到半个 ZIP。
         temp = self._file("versions/.tmp-" + uuid.uuid4().hex, exists=False)
         temp.mkdir()
@@ -540,6 +551,8 @@ class LabelStore:
                         if digest.hexdigest() != expected:
                             raise LabelError("图像在导出期间发生变化，拒绝生成版本", 409)
             zip_sha = self._hash_file(archive)
+            if self.quota is not None:
+                self.quota.check(self.root)
             with self._write():
                 existing = self._db.execute("SELECT * FROM label_versions WHERE id=?", (vid,)).fetchone()
                 if existing is None:

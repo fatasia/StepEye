@@ -23,7 +23,7 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def asset_plan(root=ROOT, *, include_local_vlm=False, monibuca=None):
+def asset_plan(root=ROOT, *, include_local_vlm=False, include_quality_extensions=False, monibuca=None):
     root = Path(root).resolve()
     policy = json.loads(POLICY.read_text(encoding='utf8'))
     rows, omitted, seen = [], [], set()
@@ -51,17 +51,22 @@ def asset_plan(root=ROOT, *, include_local_vlm=False, monibuca=None):
             if not path.is_file(): continue
             relative = path.relative_to(root)
             if any(p in policy['forbidden_parts'] for p in relative.parts): continue
-            if name == 'visual' and path.suffix != '.py': continue
+            if name == 'visual' and path.suffix != '.py' and not path.name.endswith('_LICENSE.txt'): continue
             if path.suffix.lower() in policy['forbidden_suffixes'] or path.name.startswith('.'): continue
             add(path, relative, 'application')
     for name in policy['core_models']:
         add(root / name, name, 'core_perception', required=True)
-    for catalog in policy['catalogs']:
+    optional_quality = policy.get('optional_quality_catalogs', [])
+    for catalog in [*policy['catalogs'], *optional_quality]:
         relative = Path('models/public') / catalog
         path = root / relative
         if not path.is_file(): continue
         add(path, relative, 'model_metadata')
         data = json.loads(path.read_text(encoding='utf8'))
+        if catalog in optional_quality and not include_quality_extensions:
+            omitted.extend({'target': item['model_path'], 'reason': 'optional_quality_extension'}
+                           for item in data.get('models', []))
+            continue
         for item in data.get('models', []):
             name = item['model_path']
             resolved = (root / name).resolve()
@@ -72,7 +77,7 @@ def asset_plan(root=ROOT, *, include_local_vlm=False, monibuca=None):
         add(root / name, name, 'perception_candidate', review=True)
     for folder in policy['mechanism_bundles']:
         for path in sorted((root / folder).glob('*')):
-            if path.suffix.lower() in {'.onnx', '.json', '.txt', '.md'}:
+            if path.suffix.lower() in {'.onnx', '.json', '.txt', '.md'} or path.name.startswith('LICENSE'):
                 add(path, path.relative_to(root), 'mechanism_candidate', review=True)
     media = Path(monibuca) if monibuca else REPO / '.v0/monibuca/monibuca_windows_amd64.exe'
     add(media, 'deploy/monibuca/monibuca_windows_amd64.exe', 'native_media', required=True, review=True)
@@ -93,7 +98,7 @@ def asset_plan(root=ROOT, *, include_local_vlm=False, monibuca=None):
             'asset_bytes': sum(row['bytes'] for row in rows),
             'redistribution_review_required': any(row['redistribution_review_required'] for row in rows),
             'external_components': policy['external_components'],
-            'local_vlm_included': include_local_vlm, 'artifact_kind': 'onedir_portable_not_installer'}
+            'local_vlm_included': include_local_vlm, 'quality_extensions_included': include_quality_extensions, 'artifact_kind': 'onedir_portable_not_installer'}
 
 
 def stage_assets(plan, stage):
@@ -136,6 +141,7 @@ def main():
     parser.add_argument('--stage-only', action='store_true')
     parser.add_argument('--allow-evaluation-assets', action='store_true')
     parser.add_argument('--include-local-vlm', action='store_true')
+    parser.add_argument('--include-quality-extensions', action='store_true', help='Bundle optional glue/pin segmentation weights')
     parser.add_argument('--monibuca', type=Path)
     parser.add_argument('--skip-zip', action='store_true')
     args = parser.parse_args()
@@ -144,7 +150,7 @@ def main():
         parser.error('Choose a separate new build directory')
     if (output / 'dist/stepeye-runtime').exists(): parser.error('Existing output is preserved; use a new directory')
     output.mkdir(parents=True, exist_ok=True)
-    plan = asset_plan(include_local_vlm=args.include_local_vlm, monibuca=args.monibuca)
+    plan = asset_plan(include_local_vlm=args.include_local_vlm, include_quality_extensions=args.include_quality_extensions, monibuca=args.monibuca)
     plan['evaluation_asset_opt_in'] = args.allow_evaluation_assets
     (output / 'assets-before.json').write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding='utf8')
     print(json.dumps({'asset_files': len(plan['assets']), 'asset_bytes': plan['asset_bytes'],
@@ -173,6 +179,7 @@ def main():
     (output / 'installed-runtime.txt').write_text('\n'.join(requirements) + '\n', encoding='utf8')
     report = size_report(bundle)
     report.update(asset_verification=verified, local_vlm_included=args.include_local_vlm,
+                  quality_extensions_included=args.include_quality_extensions,
                   artifact_kind='onedir_portable_not_installer', commercial_distribution_approved=False,
                   evaluation_assets_opted_in=args.allow_evaluation_assets)
     if not args.skip_zip:

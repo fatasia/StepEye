@@ -88,3 +88,20 @@ def test_cli_writes_report(tmp_path):
     result=subprocess.run(command,capture_output=True,text=True,timeout=30)
     assert result.returncode==0,result.stderr
     assert json.loads(result.stdout)['summary']['fp']>=4
+
+
+def test_ap_keeps_predictions_below_operating_point(tmp_path):
+    import onnx
+    from onnx import numpy_helper
+    args = arguments(tmp_path)
+    graph = onnx.load(args['model'])
+    tensor = graph.graph.node[0].attribute[0].t
+    values = numpy_helper.to_array(tensor).copy()
+    values[0, 0, 4] = .1  # Correct class below displayed confidence .25.
+    tensor.CopyFrom(numpy_helper.from_array(values))
+    onnx.save(graph, args['model'])
+    args['model_sha256'] = sha_file(args['model'])
+    report = run_holdout(**args)
+    assert report['evaluation']['summary']['tp'] == 0
+    assert report['average_precision']['ap50'] > 0
+    assert report['prediction_protocol'] == {'score_floor': .001, 'max_detections_per_image': 100}

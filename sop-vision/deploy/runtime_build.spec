@@ -15,10 +15,15 @@ if not (STAGE / 'web' / 'index.html').is_file():
 datas = [(str(STAGE / name), name) for name in
          ('web', 'configs', 'docs', 'models', 'deploy', 'visual') if (STAGE / name).is_dir()]
 datas += collect_data_files('rapidocr_onnxruntime')
+def runtime_module(name):
+    # Library unit tests and benchmarks are not inference entry points.
+    return not {'test', 'tests', 'benchmark', 'benchmarks'}.intersection(name.split('.'))
+
+
 hidden = []
 for package in ('visual', 'mediapipe.tasks', 'rapidocr_onnxruntime',
                 'mcp', 'apprise', 'harvesters', 'websockets'):
-    hidden += collect_submodules(package)
+    hidden += collect_submodules(package, filter=runtime_module)
 hidden += ['uvicorn.logging', 'uvicorn.loops.auto',
            'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets.auto',
            'uvicorn.protocols.websockets.websockets_impl',
@@ -33,7 +38,8 @@ analysis = Analysis(
     excludes=['torch', 'torchvision', 'torchaudio', 'transformers', 'timm',
               'ultralytics', 'onnx', 'sklearn', 'skl2onnx', 'pytest', 'playwright',
               'IPython', 'jupyter', 'notebook', 'PyQt5', 'PyQt6', 'PySide2',
-              'PySide6', 'tkinter'],
+              'PySide6', 'tkinter', 'sounddevice', '_sounddevice_data',
+              'mediapipe.tasks.python.test', 'mediapipe.tasks.python.benchmark'],
     noarchive=False, optimize=1,
 )
 archive = PYZ(analysis.pure)

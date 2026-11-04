@@ -36,8 +36,8 @@ def register_public_models(engines: LabelEngines, root: Path) -> int:
                         (adapter=="yolo_e2e" and shape[2]!=6) or
                         (adapter=="yolo_raw" and not any(d in (4+len(item["classes"]),5+len(item["classes"])) for d in shape[1:]))):
                         continue
-                if not item.get("adapter_compatible") or not path.is_file(): continue
-                if fingerprint(path)!=item["sha256"]:
+                if not item.get("adapter_compatible"): continue
+                if path.is_file() and fingerprint(path)!=item["sha256"]:
                     log.warning("Public model fingerprint mismatch: %s",item["id"])
                     continue
                 # Available means runnable for evaluation, not licensed/validated for deployment.

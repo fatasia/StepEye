@@ -36,6 +36,14 @@ class HoldoutBody(BaseModel):
     iou: float = Field(default=.5, gt=0, le=1, allow_inf_nan=False)
 
 
+class HoldoutCompareBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    baseline_id: str = Field(min_length=4, max_length=100, pattern="^HE-")
+    current_id: str = Field(min_length=4, max_length=100, pattern="^HE-")
+    min_samples: int = Field(default=20, ge=1, le=10000, strict=True)
+    min_drop: float = Field(default=.1, gt=0, le=1, allow_inf_nan=False)
+
+
 class HoldoutEvaluations:
     """不可变 SQLite 报告库；触发器拒绝 UPDATE/DELETE，同一份代码服务列表与详情。"""
 
@@ -205,5 +213,16 @@ def router(runner: HoldoutRunner) -> APIRouter:
             return runner.store.get(report_id)
         except KeyError:
             raise HTTPException(404, "评测报告不存在") from None
+
+    @api.post("/api/evaluations/holdout/compare")
+    def compare(body: HoldoutCompareBody) -> dict:
+        from .accuracy_monitor import compare_reports
+        try:
+            return compare_reports(runner.store.get(body.baseline_id), runner.store.get(body.current_id),
+                                   min_samples=body.min_samples, min_drop=body.min_drop)
+        except KeyError:
+            raise HTTPException(404, "评测报告不存在") from None
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
 
     return api

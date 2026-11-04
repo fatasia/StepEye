@@ -90,3 +90,14 @@ def test_specialized_adapter_registered_and_accepted_by_workflows(tmp_path,adapt
     assert DetectorCfg(adapter=adapter).adapter==adapter
     assert HoldoutBody(engine_id='public-test',project_id='p',version_id='v',adapter=adapter).adapter==adapter
     assert CandidateBody(engine_id='public-test',model_sha256='a'*64,evaluation_id='HE-test',adapter=adapter,classes=classes).adapter==adapter
+
+
+def test_missing_optional_weight_is_visible_but_cannot_run(tmp_path):
+    path = manifest(tmp_path)
+    path.unlink()
+    engines = LabelEngines()
+    assert register_public_models(engines,tmp_path) == 1
+    item = engines.list()[0]
+    assert item['available'] is False and item['reason']
+    with pytest.raises(LabelError,match='未安装'):
+        engines.snapshot('public-test')

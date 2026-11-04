@@ -1,0 +1,2 @@
+# Optional offline evaluation; not required by the real-time runtime.
+pycocotools==2.0.11

@@ -30,3 +30,16 @@ def test_unpinned_archive_never_starts_inference(tmp_path):
     archive = tmp_path/'bad.zip'; archive.write_bytes(b'wrong')
     with pytest.raises(ValueError, match='archive SHA'):
         module.run(tmp_path/'model.onnx', archive, tmp_path/'report.json')
+
+
+def test_all_2051_frames_aggregate_counts_not_batch_rates():
+    frames = [{'id': str(i), 'source_sha256': 'a'*64, 'reviewed': True,
+               'truth': [{'label': 'SH', 'box': [.1, .1, .2, .2]}],
+               'predictions': ([{'label': 'SH', 'box': [.1, .1, .2, .2], 'confidence': .9}]
+                               if i < 500 else [])} for i in range(2051)]
+    report = module.evaluate_all(frames)
+    assert report['frames'] == len(report['details']) == 2051
+    assert report['summary']['tp'] == 500 and report['summary']['fn'] == 1551
+    assert report['summary']['recall'] == pytest.approx(500/2051)
+    assert report['missed_frames'] == 1551
+    assert report['classes']['SH'] == report['summary']

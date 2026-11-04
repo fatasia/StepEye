@@ -13,6 +13,7 @@ import zipfile
 
 from .detection_eval import average_precision, evaluate_boxes
 from .detector_registry import create_backend
+from .coco_metrics import coco_bbox_metrics
 
 
 def sha_file(path):
@@ -89,8 +90,10 @@ def run_holdout(dataset, model, output, *, model_sha256, dataset_sha256,
                 selected.append(a)
             if not 1 <= len(selected) <= 500:
                 raise ValueError('Validation split must contain 1..500 eligible images; no implicit subsampling')
-            backend = create_backend(snapshot/'model.onnx',classes,confidence,max_results=101,adapter=adapter)
-            frames, sources = [], []
+            # AP needs low-score detections, independent of the displayed operating point.
+            score_floor = min(.001, confidence)
+            backend = create_backend(snapshot/'model.onnx',classes,score_floor,max_results=100,adapter=adapter)
+            frames, sources, dimensions = [], [], {}
             try:
                 metadata = backend.session.get_modelmeta().custom_metadata_map
                 if metadata.get('task','detect') != 'detect':
@@ -113,6 +116,7 @@ def run_holdout(dataset, model, output, *, model_sha256, dataset_sha256,
                     frame = cv2.imdecode(np.frombuffer(image,np.uint8),cv2.IMREAD_COLOR)
                     if frame is None: raise ValueError('Invalid image')
                     h,w=frame.shape[:2]
+                    dimensions[a['id']] = (w, h)
                     hits=backend.detect(frame)
                     predictions=[{'label':hit.label,'box':[hit.xyxy[0]/w,hit.xyxy[1]/h,hit.xyxy[2]/w,hit.xyxy[3]/h],
                                   'confidence':hit.confidence} for hit in hits]
@@ -136,6 +140,8 @@ def run_holdout(dataset, model, output, *, model_sha256, dataset_sha256,
             'model_training_overlap':'unknown; validation split is not an independent unseen holdout claim',
             'publication':'not_requested','excluded':excluded,'sources':sources,'frames':frames,
             'evaluation':result,'average_precision':average_precision(classes,frames),
+            'prediction_protocol': {'score_floor': score_floor, 'max_detections_per_image': 100},
+            'coco_bbox': coco_bbox_metrics(classes, frames, dimensions),
             'elapsed_ms':round((time.monotonic()-started)*1000,2)}
     output.parent.mkdir(parents=True,exist_ok=True)
     # Same-filesystem hard link publishes complete bytes without overwriting an existing report.

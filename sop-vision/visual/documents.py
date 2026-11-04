@@ -13,6 +13,7 @@ import uuid
 from datetime import datetime, timezone
 
 from .documents_parse import MAX_BYTES, parse_file
+from .storage_quota import quota_write
 
 
 class DocumentError(ValueError):
@@ -35,7 +36,8 @@ def authorize(role, write=False, admin=False):
 
 
 class DocumentStore:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, quota=None):
+        self.quota = quota
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.files = self.root / 'originals'
@@ -71,6 +73,7 @@ class DocumentStore:
             rows = self._db.execute("SELECT body,status FROM document_versions WHERE (? != 'viewer' OR status='published') AND (? IS NULL OR document_id=?) ORDER BY rowid DESC LIMIT 1000", (role, document_id, document_id)).fetchall()
         return [self._record(row) for row in rows]
 
+    @quota_write(DocumentError)
     def upload(self, filename, data, metadata, role, actor, document_id=None):
         authorize(role, write=True)
         suffix = Path(filename.replace('\\','/')).suffix.lower()
@@ -86,11 +89,13 @@ class DocumentStore:
             raise DocumentError('文档标题不能为空')
         if document_id and not self.list(role, document_id):
             raise DocumentError('文档不存在', 404)
+        if self.quota is not None:
+            self.quota.check(self.root, len(data))
         vid = uuid.uuid4().hex
         path = self.files / (vid + suffix)
         # Filename never controls the disk path; only opaque server IDs are used.
-        path.write_bytes(data)
         try:
+            path.write_bytes(data)
             text = parse_file(path)
             # Wrap unusually long lines before retrieval chunking; original stays unchanged.
             lines = [part for line in text.splitlines() for part in ( [line[i:i+300] for i in range(0,len(line),300)] or [''])]

@@ -13,6 +13,7 @@ import uuid
 from .equipment_results_types import EquipmentResultBody, EquipmentReviewBody, EquipmentRecheckBody
 from .label_jobs import fingerprint
 from .labels import LabelError
+from .storage_quota import quota_write
 from .model_routes import ModelTrials
 
 MAX_IMAGES, MAX_FILE, MAX_TOTAL = 5, 10*1024*1024, 25*1024*1024
@@ -23,7 +24,8 @@ def _signature(value):
 
 
 class EquipmentResults:
-    def __init__(self,root: Path):
+    def __init__(self,root: Path, quota=None):
+        self.quota = quota
         self.root=Path(root).resolve();self.root.mkdir(parents=True,exist_ok=True)
         self.records=self.root/"records";self.staging=self.root/"staging"
         if any(p.is_symlink() for p in (self.records,self.staging,self.root/"equipment.db")):
@@ -49,6 +51,7 @@ class EquipmentResults:
             raise RuntimeError("拒绝清理非本任务目录")
         shutil.rmtree(path,ignore_errors=True)
 
+    @quota_write(LabelError)
     def ingest(self,payload,files: list[tuple[str,bytes]],actor: str):
         body=payload if isinstance(payload,EquipmentResultBody) else EquipmentResultBody.model_validate(payload)
         if not 1<=len(files)<=MAX_IMAGES: raise LabelError("每次需要1–5张设备图片")
@@ -64,6 +67,8 @@ class EquipmentResults:
                 if prior:
                     if prior[0]!=signature: raise LabelError("设备幂等键已绑定不同结果或图片",409)
                     self._db.execute("COMMIT");return json.loads(prior[1]),False
+                if self.quota is not None:
+                    self.quota.check(self.root, sum(len(data) for _, data in files))
                 stage.mkdir(exist_ok=False);created_stage=True;images=[];pixels=0
                 for i,(name,data) in enumerate(files):
                     original=stage/f"{i}.original";image=stage/f"{i}.png"
@@ -72,6 +77,8 @@ class EquipmentResults:
                     if pixels>40000000: raise LabelError("整批图片总像素最多4000万",413)
                     images.append({"index":i,"name":Path(name.replace("\\","/")).name[:200],"width":width,"height":height,
                                    "original_sha256":hashlib.sha256(data).hexdigest(),"image_sha256":fingerprint(image)})
+                if self.quota is not None:
+                    self.quota.check(self.root)  # Include decoded PNGs, not just compressed originals.
                 if final.exists(): raise LabelError("结果目录冲突",409)
                 stage.replace(final);moved=True
                 record={**inputs,"id":rid,"actor":actor,"received_at":time.time(),"images":images,
