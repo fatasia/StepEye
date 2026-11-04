@@ -306,6 +306,8 @@ class ActionShadowCfg(BaseModel):
     roi: tuple[float, float, float, float] = (0., 0., 1., 1.)
     trigger_zone: str = ""
     active_steps: list[str] = Field(default_factory=list, max_length=128)
+    # 步骤 id → 期望动作类别；人工配置的语义映射，仅用于影子对账，不进入规则判定。
+    step_actions: dict[str, list[str]] = Field(default_factory=dict, max_length=128)
     min_conf: float = Field(default=.7, ge=0, le=1)
     ttl_ms: int = Field(default=1000, ge=100, le=10000)
     max_gap_ms: int = Field(default=300, ge=125, le=1000)
@@ -321,6 +323,12 @@ class ActionShadowCfg(BaseModel):
             raise ValueError("action_shadow.roi 必须为有限归一化 xyxy")
         if any(not c.strip() or c != c.strip() or len(c) > 100 for c in self.class_names) or len(set(self.class_names)) != len(self.class_names):
             raise ValueError("action_shadow.class_names 必须非空且不重复")
+        known = set(self.class_names)
+        for step, actions in self.step_actions.items():
+            if not step.strip() or len(step) > 100:
+                raise ValueError("action_shadow.step_actions 步骤 id 无效")
+            if any(a not in known for a in actions):
+                raise ValueError(f"action_shadow.step_actions[{step}] 引用了未登记的动作类别")
         return self
 
 

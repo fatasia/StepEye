@@ -108,6 +108,20 @@ def template_steps(template_id: str, zone_map: dict[str, str] | None = None) -> 
     return steps
 
 
+def step_skeleton(step_id: str, zone_map: dict[str, str] | None = None) -> dict:
+    """导出单个工步骨架（dsl.Step 兼容字典），供文档步骤草稿生成复用。"""
+    entry = next((e for e in _T if e["id"] == step_id), None)
+    if entry is None:
+        raise ValueError(f"未知工步骨架：{step_id}")
+    step = _skeleton(entry)
+    step["evidence"] = _remap(step["evidence"], zone_map or {})
+    return step
+
+
+def skeleton_ids() -> list[str]:
+    return [e["id"] for e in _T]
+
+
 def _remap(evidence: dict, zone_map: dict[str, str]) -> dict:
     mode = next(k for k in ("all", "any", "seq") if evidence.get(k))
     conds = []

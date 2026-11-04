@@ -1,0 +1,93 @@
+{
+ "schema_version": 1,
+ "automatic_registration": false,
+ "models": [
+  {
+   "id": "experimental-industrial-action-v1",
+   "name": "工业装配动作四类线性头（冻结 VideoMAEv2 特征）",
+   "task": "action_clip_classify",
+   "adapter": "videomae_feature_linear_head",
+   "model_path": "models/public/industrial-action-head-v1.npz",
+   "sha256": "8d811eab8b543c6cf6c12c3ede2f99a391ee1d6699ec288224ff0c787e272a28",
+   "bytes": 10670,
+   "head_format": "npz(weight,bias,mean,std,classes); feature normalized with train-only mean/std before linear",
+   "base_model": {
+    "id": "videomaev2-small-k710",
+    "onnx": "models/action/videomaev2-small-k710.onnx",
+    "onnx_sha256": "6748dbc33dfb4f83c581bfdd695c99c4f83654d63e87867d8b289f7fb40558a2",
+    "code_license": "MIT (OpenGVLab)",
+    "weight_card_license": "Apache-2.0 (HuggingFace weight card)"
+   },
+   "classes": [
+    "align_objects",
+    "tighten_nut",
+    "fit_nut",
+    "loosen_nut"
+   ],
+   "status": "research_candidate",
+   "usage": "evaluation_only",
+   "production_approval": false,
+   "license_status": {
+    "dataset": "Apache-2.0 (IndustReal, 4TU dataset b008dd74-020d-4ea4-a8ba-7bb60769d224)",
+    "training_framework_and_base": "VideoMAEv2 code MIT; weights Apache-2.0 per HF card; head trained in-house"
+   },
+   "source": {
+    "dataset": "https://data.4tu.nl/articles/dataset/b008dd74-020d-4ea4-a8ba-7bb60769d224",
+    "subset_recordings": 10,
+    "subset_bytes": 260237319,
+    "official_split": true,
+    "subject_leakage_check": "validate_subject_splits passed"
+   },
+   "training": {
+    "protocol": "frozen VideoMAEv2 features, 16-frame uniform sampling, segments <16 frames dropped",
+    "seed": 42,
+    "epochs": 200,
+    "selected_epoch": 8,
+    "normalization": "mean/std fit on train split only",
+    "checkpoint_rule": "lowest validation loss, test evaluated once at the end",
+    "train_segments": 45,
+    "val_segments": 18,
+    "short_segments_skipped": 44
+   },
+   "test": {
+    "test_segments": 16,
+    "accuracy": 0.5625,
+    "val_accuracy": 0.5555555555555556,
+    "confusion_test": [
+     [
+      4,
+      2,
+      0,
+      0
+     ],
+     [
+      0,
+      4,
+      1,
+      0
+     ],
+     [
+      1,
+      0,
+      1,
+      0
+     ],
+     [
+      2,
+      0,
+      1,
+      0
+     ]
+    ],
+    "scope": "hand-cut action segments from fixed 10-recording subset; NOT continuous-video step recognition",
+    "baseline_random": 0.25
+   },
+   "limitations": [
+    "45 train / 18 val / 16 test segments only; confusion between tighten_nut and fit_nut dominates errors",
+    "clip-level classification of pre-cut segments; streaming boundary detection unverified",
+    "research candidate; must not replace the generic K710 action model without approval"
+   ],
+   "evidence_dir": ".v0/industrial-action-20261104 (selection.json, experiment.json, segments.json, features-*.npz)"
+  }
+ ]
+}

@@ -89,6 +89,8 @@ class StationManager:
         from .documents import DocumentStore
         self.ai_services = AIServiceStore(data_dir / "ai-services.json")
         self.documents = DocumentStore(data_dir / "documents", quota=self.storage_quota)
+        from .action_ledger import ActionLedger
+        self.action_ledger = ActionLedger(data_dir / "action-ledger.db")
         from .mechanism_routes import MechanismReports
         self.mechanism = MechanismReports(data_dir / "mechanism.sqlite")
         from .mechanism_valve import ValveShadow
@@ -184,7 +186,7 @@ class StationManager:
                 cfg.source.shadow = True  # serve --shadow:全工位强制影子模式
             if cfg.station in self.runtimes:
                 raise ValueError(f"工位 id 重复: {cfg.station}")
-            rt = StationRuntime(cfg, data_dir, base_dir=ROOT, store=self.store)
+            rt = StationRuntime(cfg, data_dir, base_dir=ROOT, store=self.store, action_ledger=self.action_ledger)
             from .release_runtime import bind_release
             bind_release(rt, self.model_releases)
             rt.bind_calibrations(self.calibrations)
@@ -283,7 +285,7 @@ class StationManager:
         cfg = self._apply_active_release(cfg)
         if cfg.station in self.runtimes:
             raise ValueError(f"工位 id 已存在:{cfg.station}")
-        rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store, action_ledger=self.action_ledger)
         from .release_runtime import bind_release
         bind_release(rt, self.model_releases)
         rt.bind_calibrations(self.calibrations)
@@ -346,7 +348,7 @@ class StationManager:
         if old.engine.cycle is not None:
             raise HTTPException(409, "停机前新周期已启动，拒绝切换配方")
         old.signal_inbox.close()
-        rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store)
+        rt = StationRuntime(cfg, self.data_dir, base_dir=ROOT, store=self.store, action_ledger=self.action_ledger)
         from .release_runtime import bind_release
         bind_release(rt, self.model_releases)
         rt.bind_calibrations(self.calibrations)
@@ -613,6 +615,10 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .assistant import Assistant, router as assistant_router
     app.include_router(ai_router(manager.ai_services))
     app.include_router(documents_router(manager.documents))
+    from .sop_links import SopLinkStore
+    from .sop_link_routes import router as sop_link_router
+    app.include_router(sop_link_router(SopLinkStore(manager.data_dir / "sop-links.db"),
+                                       manager.documents, manager))
     from .mechanism_routes import router as mechanism_router
     app.include_router(mechanism_router(manager.mechanism))
     from .mechanism_rotating_routes import rotating_router
@@ -644,6 +650,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(gauge_router(manager.gauge))
     from .action_reference_routes import router as action_reference_router
     app.include_router(action_reference_router(manager.action_references, manager))
+    from .action_ledger_routes import router as action_ledger_router
+    app.include_router(action_ledger_router(manager.action_ledger))
     app.include_router(assistant_router(Assistant(manager.ai_services, manager.documents)))
     from .proximity_routes import router as proximity_router
     app.include_router(proximity_router(manager, manager.calibrations))

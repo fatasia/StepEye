@@ -42,7 +42,7 @@ COL_ACCENT, COL_OK, COL_HAND, COL_IDLE = (193, 198, 62), (141, 197, 89), (82, 17
 
 class StationRuntime:
     def __init__(self, cfg: StationConfig, data_dir: Path, base_dir: Path | None = None, hands_override=None,
-                 store: CycleStore | None = None):
+                 store: CycleStore | None = None, action_ledger=None):
         self.cfg = cfg
         self.data_dir = data_dir
         self.base_dir = base_dir or Path.cwd()
@@ -84,6 +84,9 @@ class StationRuntime:
         self._quality_blocked = False
         self._vision_generation = 0
         self.action_shadow = ActionShadow(cfg.action_shadow, cfg.station, self.base_dir)
+        # 影子结果与步骤期望动作的对账账本；None 或未配置映射时跳过。
+        self.action_ledger = action_ledger
+        self._ledger_window: int | None = None
         self._action_box = None
         self._action_token = 0
         self.source: Any
@@ -268,6 +271,27 @@ class StationRuntime:
         self.action_shadow.observe(frame, ts, generation=self._vision_generation,
                                    cycle_id=cycle.id if cycle else None, object_id=token,
                                    quality_ok=not blocked, visible=token is not None, trigger=trigger)
+        self._action_reconcile(cfg, cycle, active, ts)
+
+    def _action_reconcile(self, cfg, cycle, active, ts: float) -> None:
+        """影子结果与步骤期望动作对账；只记账不判定，任何失败都不阻塞采集线程。"""
+        if self.action_ledger is None or not cfg.step_actions:
+            return
+        try:
+            result = self.action_shadow.snapshot().get("result")
+            if not result or result.get("window_id") == self._ledger_window:
+                return
+            if cycle is None or result.get("cycle_id") != cycle.id:
+                return
+            expected = sorted({a for sid in active for a in cfg.step_actions.get(sid, [])
+                               if a in cfg.class_names})
+            row = self.action_ledger.record(
+                self.cfg.station, cycle.id, sorted(active), expected,
+                result["label"], result["confidence"], result["model_sha256"], result["window_id"])
+            if row is not None:
+                self._ledger_window = result["window_id"]
+        except Exception:
+            self._ledger_window = None
 
     def bind_calibrations(self, store):
         self.proximity.bind_calibrations(store)
