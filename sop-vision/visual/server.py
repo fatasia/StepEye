@@ -91,6 +91,14 @@ class StationManager:
         self.mechanism = MechanismReports(data_dir / "mechanism.sqlite")
         from .mechanism_valve import ValveShadow
         self.valve_shadow = ValveShadow(ROOT)
+        from .mechanism_actuator import ActuatorService
+        self.actuator = ActuatorService()
+        from .gauge import GaugeService
+        self.gauge = GaugeService(ROOT)
+        from .mechanism_rul import RULService
+        # JSON array of external PEM paths; absent means unsigned research mode.
+        rul_trust = os.getenv("STEPEYE_RUL_TRUST_KEYS")
+        self.rul = RULService(ROOT, trusted_public_keys=json.loads(rul_trust) if rul_trust is not None else None)
         from .equipment_results import EquipmentResults
         self.equipment_results = EquipmentResults(data_dir / "equipment-results")
         from .action_references import ActionReferenceStore
@@ -334,6 +342,9 @@ class StationManager:
     def stop(self) -> None:
         self.notifications.close()
         self.documents.close()
+        self.gauge.close()
+        self.actuator.close()
+        self.rul.close()
         self.valve_shadow.close()
         self.mechanism.close()
         self.equipment_results.close()
@@ -570,6 +581,12 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.include_router(rotating_router(manager.mechanism))
     from .mechanism_valve_routes import valve_router
     app.include_router(valve_router(manager.mechanism, manager.valve_shadow))
+    from .mechanism_rul_routes import rul_router
+    app.include_router(rul_router(manager.mechanism, manager.rul))
+    from .mechanism_actuator_routes import actuator_router
+    app.include_router(actuator_router(manager.mechanism, manager.actuator))
+    from .gauge_routes import gauge_router
+    app.include_router(gauge_router(manager.gauge))
     from .action_reference_routes import router as action_reference_router
     app.include_router(action_reference_router(manager.action_references, manager))
     app.include_router(assistant_router(Assistant(manager.ai_services, manager.documents)))

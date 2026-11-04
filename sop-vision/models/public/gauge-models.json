@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "checked_at": "2026-11-04",
+  "automatic_registration": false,
+  "models": [
+    {
+      "id": "public-gauge-pose-e120",
+      "name": "Analog dial 4-keypoint pose / 120 epochs",
+      "task": "gauge_pose",
+      "adapter": "independent_gauge_pose_4keypoints",
+      "model_path": "models/public/gauge_pose_e120.onnx",
+      "bytes": 12598927,
+      "sha256": "c5fd23e05397d75730dbef2d561ccb99fcdec8bc89a3148104559e633f139441",
+      "source": {
+        "repository": "https://github.com/Jason-Shell/gauge-ai-reader",
+        "revision": "139e43a446c1cab718fb6c69b061bba9d0967ec3",
+        "file": "models/gauge_pose_e120.onnx",
+        "git_blob_sha1": "1a55bb142030e0bcab8188d6d6a0614bd09dacac",
+        "download_url": "https://raw.githubusercontent.com/Jason-Shell/gauge-ai-reader/139e43a446c1cab718fb6c69b061bba9d0967ec3/models/gauge_pose_e120.onnx"
+      },
+      "input": {
+        "name": "images",
+        "dtype": "float32",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "output": {
+        "shape": [
+          1,
+          17,
+          8400
+        ],
+        "layout": "cx,cy,w,h,gauge_confidence + 4*(x,y,confidence)",
+        "keypoints": [
+          "min",
+          "max",
+          "tip",
+          "center"
+        ],
+        "nms_embedded": false
+      },
+      "preprocessing": "RGB; bilinear letterbox640, centered114 padding; /255; NCHW",
+      "calibration_required": [
+        "min_value",
+        "max_value",
+        "unit",
+        "direction(clockwise|counterclockwise)"
+      ],
+      "license_status": {
+        "onnx_metadata": "AGPL-3.0",
+        "source_code": "No root LICENSE at pinned revision; source implementation not copied",
+        "dataset_author_statement": "Roboflow Gauge v1 CC-BY-4.0",
+        "sample_image": "Repository photo license not separately declared; local evaluation only"
+      },
+      "usage": "evaluation_only",
+      "production_approval": false,
+      "limitations": [
+        "One gauge only for numeric reading",
+        "Manual linear range/unit/direction; no OCR or automatic scale guessing",
+        "Frontal view required; no perspective correction or nonlinear scale support",
+        "Keypoints and single-image output are not accuracy evidence"
+      ],
+      "probe_image": {
+        "source_file": "input/meter.jpg",
+        "bytes": 395676,
+        "sha256": "5d6ea5e13823ceac69cc25b8c29c0d2dd3560caaf1654b71c943eaed23991e94",
+        "width": 3119,
+        "height": 3012
+      }
+    }
+  ]
+}

@@ -1,3 +1,4 @@
 # Optional mechanism evidence; no model download or background worker.
 scipy>=1.11
 onnxruntime==1.27.0
+cryptography>=43

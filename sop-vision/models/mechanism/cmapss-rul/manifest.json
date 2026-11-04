@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "task": "remaining-useful-life",
+  "version": "20261031T072751Z-2c94fd86",
+  "file": "model.onnx",
+  "sha256": "e859f24836a4a40a35d3c45b34d7646c14eb88223e80f04051740cab3f3c252c",
+  "input": {
+    "name": "pre/values",
+    "layout": "BTC",
+    "shape": [
+      null,
+      30,
+      24
+    ],
+    "channels": [
+      "setting1",
+      "setting2",
+      "setting3",
+      "sensor1",
+      "sensor2",
+      "sensor3",
+      "sensor4",
+      "sensor5",
+      "sensor6",
+      "sensor7",
+      "sensor8",
+      "sensor9",
+      "sensor10",
+      "sensor11",
+      "sensor12",
+      "sensor13",
+      "sensor14",
+      "sensor15",
+      "sensor16",
+      "sensor17",
+      "sensor18",
+      "sensor19",
+      "sensor20",
+      "sensor21"
+    ],
+    "units": "publisher native units; one observation per operational cycle"
+  },
+  "postprocess": {
+    "clip_prediction": [
+      0,
+      125
+    ],
+    "interval_radius_cycles": 40.39861111111112,
+    "lower_bound": 0
+  },
+  "output": {
+    "index": 0,
+    "unit": "cycles"
+  },
+  "maxBatch": 8,
+  "parity_max_abs_error": 0.00017135959201652895,
+  "scope": "synthetic aircraft engines, not lithium manufacturing equipment"
+}
