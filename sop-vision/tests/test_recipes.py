@@ -41,6 +41,15 @@ def test_versions_switch_rollback_and_external_drift(service):
     with svc.manager.paths["a"].open("a") as out:
         out.write("\n# edited elsewhere\n")
     assert svc.status("a")["active"] is None
+    # 已有 applied 记录但文件不匹配：必须标记 unsynced，运维才能区分中断与从未切换。
+    assert svc.status("a")["unsynced"] is True
+
+
+def test_status_unsynced_false_before_any_switch(service):
+    svc, _ = service
+    create(svc)
+    status = svc.status("a")
+    assert status["active"] is None and status["unsynced"] is False
 
 
 @pytest.mark.parametrize("patch", [{"source": {}}, {"station": "other"}, {"detector": {"model": "x"}},

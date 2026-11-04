@@ -176,7 +176,10 @@ class RecipeService:
         if history and history[0]["status"] == "failed" and not history[0].get("restored"):
             latest = None
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        # active=None 有两种原因：从未切换、或切换中断/外部改动导致文件与记录不一致。
+        # unsynced 让运维能区分后者——配置实际在跑的规则可能与记录不符，需人工核查。
         return {"station_id": sid, "active": latest if latest and latest["config_sha256"] == digest else None,
+                "unsynced": bool(latest and latest["config_sha256"] != digest),
                 "config_sha256": digest, "history": history}
 
     def switch(self, sid, vid, actor):

@@ -135,3 +135,14 @@ curl -L -o screw_candidate_detection.tar "https://zenodo.org/records/17173803/fi
 - 未下载任何超 50MB 文件，未取得任何新权重；未重复请求已审计失败资源。
 - "未找到"仅指本轮检索范围（WebSearch + 指定平台/仓库核实），不等于互联网上不存在。
 - OpenDataLab、Roboflow Universe、MDPI 部分页面 JS 渲染或反爬（403/418），相应字段以可核实的 API/索引/全文为准并已注明。
+
+## 落地状态更新（2026-11-05 补记）
+
+**CoatingVision 已下载并校验**：`.v0/coatingvision/CoatingVision.zip` 94,296,797 字节，官方 MD5 `7cbbf14725f9762a64a81a12b858a2b4` 匹配，ZIP CRC 全部通过，9,498 条目 / 8,908 图。
+
+实测内容与官方声明一致：
+- classification：2,227 图多标签 CSV（Surface_Crack 1947 / Delamination 203 / Pinhole 519 / unclassified 78）
+- detection：仅 581 个标注文件、649 框（类 0: 564、类 1: 85），2,164 张图无框——检测子集偏小，类别名未随包声明，用途待确认
+- segmentation：PNG 二值掩码配套
+
+结论：数据资产登记价值成立（CC BY 4.0 已核实）；极片"裂纹/分层"两类首次有真实样本，分层仅 203 图需谨慎评估；训练方向（多标签分类 vs 扩充检测）待定，未启动训练，不重复已有针孔能力。
