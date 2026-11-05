@@ -619,6 +619,8 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .sop_link_routes import router as sop_link_router
     app.include_router(sop_link_router(SopLinkStore(manager.data_dir / "sop-links.db"),
                                        manager.documents, manager))
+    from .industry_template_routes import industry_template_router
+    app.include_router(industry_template_router())
     from .mechanism_routes import router as mechanism_router
     app.include_router(mechanism_router(manager.mechanism))
     from .mechanism_rotating_routes import rotating_router
