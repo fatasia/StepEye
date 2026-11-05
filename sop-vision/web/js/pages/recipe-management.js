@@ -2,7 +2,7 @@ import { openDrawer } from '../ui.js';
 import { esc, fmtTime } from '../util.js';
 
 /** Versions and switching remain owned by RecipeService; the UI sends no model paths. */
-export function openRecipeManagement({canWrite}) {
+export function openRecipeManagement({canWrite, station: preset=''}={}) {
   let closed=false;
   let busy=false;
   let station='';
@@ -95,7 +95,7 @@ export function openRecipeManagement({canWrite}) {
   action(async()=>{
     const rows=await request('/api/stations');if(closed)return;
     const stations=rows.filter(row=>row.meta?.id);
-    find('[data-rm-station]').innerHTML=stations.length?stations.map(row=>`<option value="${esc(row.meta.id)}">${esc(row.meta.name||row.meta.id)}</option>`).join(''):'<option value="">没有可用工位</option>';
+    find('[data-rm-station]').innerHTML=stations.length?stations.map(row=>`<option value="${esc(row.meta.id)}"${row.meta.id===preset?' selected':''}>${esc(row.meta.name||row.meta.id)}</option>`).join(''):'<option value="">没有可用工位</option>';
     station=find('[data-rm-station]').value;
     if(station)await load();else message('请先配置工位，再保存配方。');
   });

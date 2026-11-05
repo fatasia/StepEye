@@ -1,5 +1,6 @@
 import { openReferenceGallery } from "./action-references.js";
 import { openSafetySettings } from "./safety-config.js";
+import { openRecipeManagement } from "./recipe-management.js";
 import { api } from "../api.js";
 import { icon } from "../icons.js";
 import { store, subscribe } from "../store.js";
@@ -185,7 +186,7 @@ export function render(root, params) {
         <section class="panel cfg-map">
           <header class="panel-head"><div class="head-left"><h2>现场画面与区域</h2>
             <label class="select-wrap"><span class="sr-only">切换工位</span><select id="sel">${store.metas.map((m) => `<option value="${esc(m.id)}" ${m.id === id ? "selected" : ""}>${esc(m.name)}</option>`).join("")}</select></label></div>
-            <button class="btn" data-action-references>动作卡</button><button class="btn" data-safety-settings>安全防护</button><button class="btn" data-edit>${editing ? `${icon("cross", 14)}退出编辑` : `${icon("order", 14)}编辑区域`}</button></header>
+            <button class="btn" data-action-references>动作卡</button><button class="btn" data-safety-settings>安全防护</button><button class="btn" data-recipe-management>配方版本</button><button class="btn" data-edit>${editing ? `${icon("cross", 14)}退出编辑` : `${icon("order", 14)}编辑区域`}</button></header>
           <div class="map" style="aspect-ratio:${cfg.meta.width}/${cfg.meta.height}"><img src="${api.snapshot(id, true)}" alt="现场画面"><div data-r="map"></div></div>
           <div data-r="editor"></div>
           <p class="hint muted" data-r="hint"></p>
@@ -225,6 +226,12 @@ export function render(root, params) {
       if (e.target.closest("[data-safety-settings]")) {
         safetyDrawer?.close();
         safetyDrawer = openSafetySettings(id);
+        return;
+      }
+      if (e.target.closest("[data-recipe-management]")) {
+        safetyDrawer?.close();
+        const me = await api.me().catch(() => ({ role: "viewer" }));
+        safetyDrawer = openRecipeManagement({ canWrite: me.role !== "viewer", station: id });
         return;
       }
       if (e.target.closest("[data-edit]")) {
