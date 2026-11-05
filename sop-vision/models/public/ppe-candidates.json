@@ -1,167 +1,234 @@
 {
-  "schema_version": 1,
-  "checked_at": "2026-11-03",
-  "scope": "PPE gloves/goggles/shoes candidate beyond existing warehouse20/helmet",
-  "automatic_registration": false,
-  "production_models_changed": false,
-  "torch_or_pickle_loaded": false,
-  "trained": false,
-  "models": [
+ "schema_version": 1,
+ "checked_at": "2026-11-05",
+ "scope": "PPE gloves/goggles/shoes candidate beyond existing warehouse20/helmet",
+ "automatic_registration": false,
+ "production_models_changed": false,
+ "torch_or_pickle_loaded": false,
+ "trained": false,
+ "models": [
+  {
+   "id": "public-ppe-construction-v03",
+   "name": "PPE / 护目镜·鞋·手套 14类（评估）",
+   "task": "detect",
+   "runtime": "onnx",
+   "adapter": "yolo_raw",
+   "adapter_compatible": true,
+   "registry_status": "registered_evaluation_only_when_local_hash_matches",
+   "usage": "evaluation_only",
+   "production_ready": false,
+   "artifact": {
+    "path": ".v0/ppe-models/buildvision-hazards-v0.3.onnx",
+    "bytes": 44766819,
+    "sha256": "55f4dd2f53158eac4ff093d938b9fbda80c99454a03672145bbc36f539988249",
+    "published_lfs_oid_matches": true
+   },
+   "source": {
+    "repo": "constructelligence/construction-site-safety-hazards",
+    "revision": "79673cff5a8bb249fc8ec9cca3daa19e2ef95191",
+    "url": "https://huggingface.co/constructelligence/construction-site-safety-hazards/resolve/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/buildvision-hazards-v0.3.onnx",
+    "model_card_url": "https://huggingface.co/constructelligence/construction-site-safety-hazards/blob/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/README.md",
+    "model_card_sha256": "7091675890c21fa3be69bafa9526b606fb4edd570e1167d5b0d50a68ee4ea10a"
+   },
+   "licenses": {
+    "weights": "AGPL-3.0; publisher explicitly identifies Ultralytics derivative",
+    "training_data": "CC-BY-4.0 per publisher; complete individual source/attribution chain not independently audited",
+    "commercial_review_required": true,
+    "license_approved_for_release": false
+   },
+   "classes": [
+    "person",
+    "hardhat",
+    "no-hardhat",
+    "safety vest",
+    "no-safety vest",
+    "no-mask",
+    "gloves",
+    "safety shoes",
+    "excavator",
+    "wheel loader",
+    "dump truck",
+    "goggles",
+    "no-goggles",
+    "no-gloves"
+   ],
+   "native_input": [
+    1,
+    3,
+    640,
+    640
+   ],
+   "native_output": [
+    1,
+    18,
+    8400
+   ],
+   "onnx_opset": 12,
+   "onnx_checker": "passed",
+   "custom_op_domains": [],
+   "external_data": false,
+   "preprocessing": "BGR image -> letterbox640 pad114 -> RGB float32 /255 NCHW; per-class NMS using existing adapter",
+   "overlap_with_installed": {
+    "warehouse20": [
+     "person",
+     "gloves",
+     "helmet/hardhat semantic family",
+     "safety vest"
+    ],
+    "new_classes": [
+     "safety shoes",
+     "goggles",
+     "no-goggles",
+     "no-gloves"
+    ],
+    "existing_weights_replaced": false
+   },
+   "probes": [
     {
-      "id": "public-ppe-construction-v03",
-      "name": "PPE / 护目镜·鞋·手套 14类（评估）",
-      "task": "detect",
-      "runtime": "onnx",
-      "adapter": "yolo_raw",
-      "adapter_compatible": true,
-      "registry_status": "registered_evaluation_only_when_local_hash_matches",
-      "usage": "evaluation_only",
-      "production_ready": false,
-      "artifact": {
-        "path": ".v0/ppe-models/buildvision-hazards-v0.3.onnx",
-        "bytes": 44766819,
-        "sha256": "55f4dd2f53158eac4ff093d938b9fbda80c99454a03672145bbc36f539988249",
-        "published_lfs_oid_matches": true
-      },
-      "source": {
-        "repo": "constructelligence/construction-site-safety-hazards",
-        "revision": "79673cff5a8bb249fc8ec9cca3daa19e2ef95191",
-        "url": "https://huggingface.co/constructelligence/construction-site-safety-hazards/resolve/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/buildvision-hazards-v0.3.onnx",
-        "model_card_url": "https://huggingface.co/constructelligence/construction-site-safety-hazards/blob/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/README.md",
-        "model_card_sha256": "7091675890c21fa3be69bafa9526b606fb4edd570e1167d5b0d50a68ee4ea10a"
-      },
-      "licenses": {
-        "weights": "AGPL-3.0; publisher explicitly identifies Ultralytics derivative",
-        "training_data": "CC-BY-4.0 per publisher; complete individual source/attribution chain not independently audited",
-        "commercial_review_required": true,
-        "license_approved_for_release": false
-      },
-      "classes": [
-        "person",
-        "hardhat",
-        "no-hardhat",
-        "safety vest",
-        "no-safety vest",
-        "no-mask",
-        "gloves",
-        "safety shoes",
-        "excavator",
-        "wheel loader",
-        "dump truck",
-        "goggles",
-        "no-goggles",
-        "no-gloves"
-      ],
-      "native_input": [
-        1,
-        3,
-        640,
-        640
-      ],
-      "native_output": [
-        1,
-        18,
-        8400
-      ],
-      "onnx_opset": 12,
-      "onnx_checker": "passed",
-      "custom_op_domains": [],
-      "external_data": false,
-      "preprocessing": "BGR image -> letterbox640 pad114 -> RGB float32 /255 NCHW; per-class NMS using existing adapter",
-      "overlap_with_installed": {
-        "warehouse20": [
-          "person",
-          "gloves",
-          "helmet/hardhat semantic family",
-          "safety vest"
-        ],
-        "new_classes": [
-          "safety shoes",
-          "goggles",
-          "no-goggles",
-          "no-gloves"
-        ],
-        "existing_weights_replaced": false
-      },
-      "probes": [
-        {
-          "image": ".v0/ppe-models/example.jpg",
-          "image_sha256": "0d80be78cb9c050ad88140786173305db88e5c2d1b17bcf3024e445de9f98b96",
-          "source": "https://huggingface.co/constructelligence/construction-site-safety-hazards/resolve/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/example.jpg",
-          "source_kind": "publisher annotated four-panel collage; not independent evaluation",
-          "threshold": 0.25,
-          "pipeline": "real ModelTrials subprocess -> visual.label_predict -> detector_registry yolo_raw",
-          "provider": "CPUExecutionProvider",
-          "elapsed_ms": 1096.26,
-          "class_counts": {
-            "person": 4,
-            "excavator": 1,
-            "dump truck": 1,
-            "hardhat": 4,
-            "safety vest": 3,
-            "no-safety vest": 1,
-            "safety shoes": 2
-          },
-          "missing_requested_labels": [
-            "gloves",
-            "goggles",
-            "no-gloves",
-            "no-goggles"
-          ],
-          "report": ".v0/ppe-models/platform-trial.json",
-          "accuracy": null
-        },
-        {
-          "image": "sop-vision/.v0/test-helmet.png",
-          "image_sha256": "1dce75c0424407f215fedb6d546a70c12b93b259d98ef83c5e91980155b408ad",
-          "source_kind": "existing project smoke fixture; provenance/independence not newly established",
-          "threshold": 0.25,
-          "class_counts": {
-            "hardhat": 6,
-            "person": 3,
-            "safety vest": 2
-          },
-          "report": ".v0/ppe-models/existing-fixture-probe.json",
-          "accuracy": null
-        }
-      ],
-      "blockers": [
-        "Publisher collage has existing boxes/text; inference is functional verification only.",
-        "Gloves and goggles exist in exact model metadata but were not returned on this full collage at conf0.25.",
-        "No independent class-level labelled test set or target-line acceptance.",
-        "PPEMonitor currently lacks explicit hardhat/no-hardhat and goggles/shoes/negative-glove handling; do not switch detector and assume compliance rules are integrated.",
-        "Visible shoes/gloves do not establish protective material certification or ESD resistance.",
-        "Model/data licence chain still requires deployment review."
-      ],
-      "catalog_manifest": "models/public/specialized-detection-models.json"
-    }
-  ],
-  "other_checked_candidates": [
-    {
-      "id": "itsadityabaniya/yolov8n-ppe-detection-6classes",
-      "revision": "02bdec1b9be00d55ec1e804d53e7b54b6cb42eb6",
-      "declared_license": "MIT",
-      "actual_files": "best.pt (5625014 bytes) and data ZIP (667690668 bytes), no ONNX",
-      "decision": "not_downloaded; model card saying exported ONNX is not proof of an available ONNX; mirror/base/data licensing unverified"
+     "image": ".v0/ppe-models/example.jpg",
+     "image_sha256": "0d80be78cb9c050ad88140786173305db88e5c2d1b17bcf3024e445de9f98b96",
+     "source": "https://huggingface.co/constructelligence/construction-site-safety-hazards/resolve/79673cff5a8bb249fc8ec9cca3daa19e2ef95191/example.jpg",
+     "source_kind": "publisher annotated four-panel collage; not independent evaluation",
+     "threshold": 0.25,
+     "pipeline": "real ModelTrials subprocess -> visual.label_predict -> detector_registry yolo_raw",
+     "provider": "CPUExecutionProvider",
+     "elapsed_ms": 1096.26,
+     "class_counts": {
+      "person": 4,
+      "excavator": 1,
+      "dump truck": 1,
+      "hardhat": 4,
+      "safety vest": 3,
+      "no-safety vest": 1,
+      "safety shoes": 2
+     },
+     "missing_requested_labels": [
+      "gloves",
+      "goggles",
+      "no-gloves",
+      "no-goggles"
+     ],
+     "report": ".v0/ppe-models/platform-trial.json",
+     "accuracy": null
     },
     {
-      "id": "qualcomm/PPE-Detection",
-      "revision": "64bcb058030fc802242e2e340412898e4895b85a",
-      "declared_license": "BSD-3-Clause/model-specific terms require checking",
-      "actual_scope": "publisher lists 2 output classes, not the required multi-class glove/goggle/shoe or ESD detector",
-      "decision": "not_downloaded; current tree points to external release assets; not a new verified required-class candidate"
+     "image": "sop-vision/.v0/test-helmet.png",
+     "image_sha256": "1dce75c0424407f215fedb6d546a70c12b93b259d98ef83c5e91980155b408ad",
+     "source_kind": "existing project smoke fixture; provenance/independence not newly established",
+     "threshold": 0.25,
+     "class_counts": {
+      "hardhat": 6,
+      "person": 3,
+      "safety vest": 2
+     },
+     "report": ".v0/ppe-models/existing-fixture-probe.json",
+     "accuracy": null
     }
-  ],
-  "esd_status": {
-    "weights_acquired": false,
-    "visual_esd_material_or_resistance_model_verified": false,
-    "note": "Search results named ESD-YOLO were unrelated autonomous-driving/fall/termite algorithms; no electrostatic-protection capability inferred. Use authenticated electrical measurements for resistance, not ordinary-PPE appearance."
+   ],
+   "blockers": [
+    "Publisher collage has existing boxes/text; inference is functional verification only.",
+    "Gloves and goggles exist in exact model metadata but were not returned on this full collage at conf0.25.",
+    "No independent class-level labelled test set or target-line acceptance.",
+    "PPEMonitor currently lacks explicit hardhat/no-hardhat and goggles/shoes/negative-glove handling; do not switch detector and assume compliance rules are integrated.",
+    "Visible shoes/gloves do not establish protective material certification or ESD resistance.",
+    "Model/data licence chain still requires deployment review."
+   ],
+   "catalog_manifest": "models/public/specialized-detection-models.json"
   },
-  "failed_downloads": [
-    {
-      "url": "https://commons.wikimedia.org/wiki/File:Safety_and_work.jpg",
-      "reason": "TLS handshake failures, then direct request HTTP403; image not acquired, no independent trial claimed"
-    }
-  ],
-  "reproduction": "python sop-vision/tools/public_model_probe.py --model .v0/ppe-models/buildvision-hazards-v0.3.onnx --image .v0/ppe-models/example.jpg --out .v0/ppe-models/new-probe.json"
+  {
+   "id": "experimental-kitchen-hygiene-v1",
+   "name": "厨房穿戴七类正负对（域差候选）",
+   "task": "detect",
+   "adapter": "yolo_raw",
+   "adapter_compatible": true,
+   "model_path": "models/public/kitchen-hygiene-v1.onnx",
+   "sha256": "5e19d64e87f663b3e859d038b83649c92cb3102171210317a0236570a9bd467f",
+   "bytes": 12270576,
+   "classes": [
+    "glove",
+    "hairnet",
+    "incorrect_mask",
+    "mask",
+    "no_glove",
+    "no_hairnet",
+    "no_mask"
+   ],
+   "status": "research_candidate",
+   "usage": "evaluation_only",
+   "production_approval": false,
+   "license_status": {
+    "dataset": "CC BY 4.0 (Roboflow kitchen-hygiene-gear v5)",
+    "base": "Ultralytics YOLOv8n AGPL-3.0 or commercial license"
+   },
+   "source": {
+    "dataset": "https://universe.roboflow.com/seniorproject-y8seu/kitchen-hygiene-gear/5",
+    "images": 31371,
+    "boxes": 88788,
+    "split": "official roboflow train/valid/test; 3 empty labels kept as exported",
+    "domain": "kitchen scenes - NOT industrial cleanroom"
+   },
+   "training": {
+    "epochs": 30,
+    "batch": 8,
+    "imgsz": 640,
+    "device": "0",
+    "workers": 0,
+    "amp": false,
+    "base_sha256": "f59b3d833e2ff32e194b5bb8e08d211dc7c5bdf144b90d2c8412c47ccfc83b36"
+   },
+   "test": {
+    "images": 3028,
+    "boxes": 9563,
+    "mAP50": 0.7874629694484204,
+    "mAP50_95": 0.426776381581041,
+    "precision": 0.7969839654957858,
+    "recall": 0.7217939257034978,
+    "scope": "roboflow official test split; same-domain holdout, NOT cleanroom transfer"
+   },
+   "per_class_mAP50": {
+    "hairnet": 0.936,
+    "glove": 0.796,
+    "no_mask": 0.798,
+    "no_hairnet": 0.818,
+    "incorrect_mask": 0.784,
+    "mask": 0.7,
+    "no_glove": 0.681
+   },
+   "limitations": [
+    "kitchen domain gap to industrial cleanroom; hairnet maps to industrial hairnet/帽 class only",
+    "no shoe covers / coveralls / cleanroom gown classes in this dataset",
+    "no_glove recall 0.586 weakest class; PPE 'not detected != not worn' rule still applies",
+    "positive/negative class pairs are detection-style presence labels, not ESD compliance"
+   ],
+   "evidence_dir": ".v0/kitchen-hygiene (summary.json, train-v1.log, test val tables)"
+  }
+ ],
+ "other_checked_candidates": [
+  {
+   "id": "itsadityabaniya/yolov8n-ppe-detection-6classes",
+   "revision": "02bdec1b9be00d55ec1e804d53e7b54b6cb42eb6",
+   "declared_license": "MIT",
+   "actual_files": "best.pt (5625014 bytes) and data ZIP (667690668 bytes), no ONNX",
+   "decision": "not_downloaded; model card saying exported ONNX is not proof of an available ONNX; mirror/base/data licensing unverified"
+  },
+  {
+   "id": "qualcomm/PPE-Detection",
+   "revision": "64bcb058030fc802242e2e340412898e4895b85a",
+   "declared_license": "BSD-3-Clause/model-specific terms require checking",
+   "actual_scope": "publisher lists 2 output classes, not the required multi-class glove/goggle/shoe or ESD detector",
+   "decision": "not_downloaded; current tree points to external release assets; not a new verified required-class candidate"
+  }
+ ],
+ "esd_status": {
+  "weights_acquired": false,
+  "visual_esd_material_or_resistance_model_verified": false,
+  "note": "Search results named ESD-YOLO were unrelated autonomous-driving/fall/termite algorithms; no electrostatic-protection capability inferred. Use authenticated electrical measurements for resistance, not ordinary-PPE appearance."
+ },
+ "failed_downloads": [
+  {
+   "url": "https://commons.wikimedia.org/wiki/File:Safety_and_work.jpg",
+   "reason": "TLS handshake failures, then direct request HTTP403; image not acquired, no independent trial claimed"
+  }
+ ],
+ "reproduction": "python sop-vision/tools/public_model_probe.py --model .v0/ppe-models/buildvision-hazards-v0.3.onnx --image .v0/ppe-models/example.jpg --out .v0/ppe-models/new-probe.json"
 }
