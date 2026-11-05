@@ -56,3 +56,36 @@ def test_invalid_tracker_config_or_clock():
     with pytest.raises(ValueError): ClassAwareIoUTracker(ttl_s=math.nan)
     with pytest.raises(ValueError): ClassAwareIoUTracker(max_tracks=0)
     with pytest.raises(ValueError): ClassAwareIoUTracker().update([],math.nan)
+
+
+def test_motion_extrapolation_holds_identity_through_gap():
+    """匀速目标在短间隙后应保持身份；预测框吸收位移而非依赖框重叠。"""
+    t = ClassAwareIoUTracker(min_iou=.5)
+    a = t.update([d(0)], 0)[0]
+    t.update([d(2)], .1)   # 2px/0.1s 可匹配（IoU .667），速度 = 20/s
+    # 跳过一帧（0.2s 间隙）：无外推时原框 IoU=6/16<0.5，预测框 IoU=1
+    b = t.update([d(6)], .3)[0]
+    assert b.track_id == a.track_id and b.observations == 3
+
+
+def test_velocity_cap_prevents_runaway():
+    """跳变速度被钳制在单框对角线×每秒 2，预测框不会甩出画面。"""
+    t = ClassAwareIoUTracker(min_iou=.3)
+    a = t.update([d(0)], 0)[0]
+    t.update([d(5)], .1)   # 原始速度 50/s 超出钳制上限
+    state = t._tracks[a.track_id]
+    assert state.velocity is not None
+    cap = 2 * math.hypot(10, 10)
+    assert math.isclose(math.hypot(state.velocity[0], state.velocity[1]), cap, rel_tol=1e-6)
+    # 钳制后的预测位置应接住原身份
+    px = 5 + cap * .1
+    b = t.update([Detection('person', (px, 0, px + 10, 10), .9)], .2)[0]
+    assert b.track_id == a.track_id and b.observations == 3
+
+
+def test_first_frame_has_no_velocity_static_objects_unchanged():
+    """单次观测无速度：静态目标行为与旧版完全一致。"""
+    t = ClassAwareIoUTracker()
+    a = t.update([d(0)], 0)[0]
+    b = t.update([d(1)], .5)[0]
+    assert b.track_id == a.track_id and b.observations == 2
