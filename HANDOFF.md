@@ -336,3 +336,15 @@ weihu 执行器四类575 KB ONNX接机理实验室，四条真实留出记录CPU
 ### 2026-11-05 终：Kitchen 穿戴训练完成
 
 提交 488773a。Kitchen Hygiene Gear 七类 30 轮训练完成：官方 test split（3,028 图/9,563 框）P 0.797 / R 0.722 / **mAP50 0.787**（mAP50-95 0.427）；逐类 hairnet 0.936、no_hairnet 0.818、no_mask 0.798、glove 0.796、incorrect_mask 0.784、mask 0.700、no_glove 0.681（最弱）。登记 `experimental-kitchen-hygiene-v1`（research_candidate，ONNX 本机 models/public/kitchen-hygiene-v1.onnx）。同域 holdout，厨房域差与"未检出≠未佩戴"限制如实标注；hairnet 类直接对应 A3 缺的工业发网/帽类。登记过程中曾误覆盖 ppe-candidates.json 原内容，已从 git 恢复并正确追加。全部下载/训练/评测进程已退出（tasklist 零 python）。
+
+### 2026-11-05 续二：A1 最后一步打通、C3 门控落地、D3 前端完成
+
+提交 1e527b4/4e2e158/d2009ef 已推送（openssl 后端绕过 schannel TLS 故障；schannel 间歇失败时换 backend 即可）。
+
+**A1 工业动作头运行链全通**：tools/export_action_fused_v1.py 把已登记 npz 线性头融合进单个 ONNX（forward_features + 训练集归一化 + 线性头），双重奇偶校验（ONNX vs torch 融合前向 5.8e-06；融合前向 vs 注册头手算 0.0），样例预处理用运行时同款 normalize_clip。输出 (1,4) 直接被现有 ActionShadow/ActionPredictor 单 ONNX 链服务，零平台改动。真实视频段端到端验收：4 个 test 段经完整子进程链预测，命中 2/4 与登记 test acc 0.5625 水平一致（tighten↔fit 混淆为登记主方向）。运行模型 sop-vision/models/public/industrial-action-fused-v1.onnx（本机，sha 在登记 runtime_model 字段）。配置方式：action_shadow.model=融合 onnx，class_names=四类，step_actions 人工映射进对账。
+
+**C3 运动外推门控落地**：tracking.py 匹配改用速度预测框；速度=最近两观测位移/时间差，钳制在单框对角线×每秒 2；单次观测退化原框，静态行为不变。MOT16 复测：GT 纯关联 IDF1 94.4→100.0（miou .3，IDSW 1299→455），91.8→96.1（miou .5）；det 轮 IDSW -16%，IDF1 持平（瓶颈仍是检测供给）。12 项测试全过（含外推保持身份、钳制防甩飞、静态兼容）。
+
+**D3 机理实验室前端完成**：mechanism-degradation.js 第 8 张模式卡（FEMTO 相似性趋势）+ 抽屉表单（模板下载/2MB JSON 上传）+ 报告视图（逐窗口相似性 RUL 表、匹配参考、线性外推对照、阈值不确定性说明）+ viewer 只读。修复 worker 输出缺 status 字段导致列表端点 500（浏览器验收发现）。真实浏览器验收 11/11 全过，截图 .v0/output/playwright/degradation-rul/。
+
+全部下载/训练/评测进程已退出。剩余待办见 2026-11-05 批次记录的"待办"节，新增：无（A1/C3/D3 三项已完成闭环）。
