@@ -87,7 +87,23 @@
     "clip-level classification of pre-cut segments; streaming boundary detection unverified",
     "research candidate; must not replace the generic K710 action model without approval"
    ],
-   "evidence_dir": ".v0/industrial-action-20261104 (selection.json, experiment.json, segments.json, features-*.npz)"
+   "evidence_dir": ".v0/industrial-action-20261104 (selection.json, experiment.json, segments.json, features-*.npz)",
+   "runtime_model": {
+    "fused_onnx": "models/public/industrial-action-fused-v1.onnx",
+    "sha256": "813246f5b0bd5040fc8e4c785b80cf490d4c865138744d3ca4fbefa2ecb1b423",
+    "bytes": 90019968,
+    "output": [
+     1,
+     4
+    ],
+    "export_parity_max_abs": 5.841255187988281e-06,
+    "export_tool": "sop-vision/tools/export_action_fused_v1.py",
+    "runtime_acceptance": {
+     "segments_checked": 4,
+     "matched_truth": 2,
+     "note": "matches registered test accuracy level; tighten/fit confusion is the registered dominant error"
+    }
+   }
   }
  ]
 }
