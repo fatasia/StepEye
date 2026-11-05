@@ -98,6 +98,7 @@ def main():
             "points": int(len(rms)),
         })
     print(json.dumps({
+        "status": "evidence_only",
         "dataset": reference["dataset"],
         "license": reference["license"],
         "unit": "minute",
