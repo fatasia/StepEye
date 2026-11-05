@@ -332,3 +332,7 @@ weihu 执行器四类575 KB ONNX接机理实验室，四条真实留出记录CPU
 **踩坑新增**：ultralytics dataset.yaml 的相对 path 是相对进程 cwd 而非 yaml 所在目录（写绝对路径）；Windows 下 ultralytics workers 默认>0 会死锁（必须 workers=0，与平台 training_worker 一致）；掩码转框的亚像素舍入会写出 >1 的框坐标（评测端钳制）。
 
 **待办**：Kitchen 训练完成评测登记；动作头两段推理接入；MOT 建议的运动外推门控（有数据支撑，值得做）。
+
+### 2026-11-05 终：Kitchen 穿戴训练完成
+
+提交 488773a。Kitchen Hygiene Gear 七类 30 轮训练完成：官方 test split（3,028 图/9,563 框）P 0.797 / R 0.722 / **mAP50 0.787**（mAP50-95 0.427）；逐类 hairnet 0.936、no_hairnet 0.818、no_mask 0.798、glove 0.796、incorrect_mask 0.784、mask 0.700、no_glove 0.681（最弱）。登记 `experimental-kitchen-hygiene-v1`（research_candidate，ONNX 本机 models/public/kitchen-hygiene-v1.onnx）。同域 holdout，厨房域差与"未检出≠未佩戴"限制如实标注；hairnet 类直接对应 A3 缺的工业发网/帽类。登记过程中曾误覆盖 ppe-candidates.json 原内容，已从 git 恢复并正确追加。全部下载/训练/评测进程已退出（tasklist 零 python）。
