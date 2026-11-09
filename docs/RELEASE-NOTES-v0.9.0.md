@@ -31,7 +31,7 @@
 |---|---|---|
 | `StepEye-Setup-0.9.0.exe` | 488,920,895 字节 | `f92cf1e10d160a0590f9254fae20269615eb6f3adf3a823e5844c52b0dadcb29` |
 | `stepeye-runtime-windows.zip` | 586,916,643 字节 | `6a297e2a281986b62cd30fdbb2fb5b4246429420a03219c60713b1dd27dff7c8` |
-| `stepeye-source-0.9.0.zip` | 19,519,649 字节 | `9fc16383c3b4ddcafe324cf0824658063515fadc796803f600eb692751527c7d` |
+| `stepeye-source-0.9.0.zip` | 19,526,654 字节 | `24b73a54da8abc123b78203b0cc1dad7383e1ef79d4cbd0cb32d12b11eaaa232` |
 | `stepeye-runtime-windows.manifest.json` | 升级清单 | 见文件内 |
 
 安装包为 NSIS 自解压程序，默认装到 `%LOCALAPPDATA%\StepEye`，升级保留 `data\`。运行包是 Windows x64 便携目录包（onedir），含评估模型与 Monibuca v6 beta 原生二进制；评估资产的商用再分发许可仍需逐项审核。
