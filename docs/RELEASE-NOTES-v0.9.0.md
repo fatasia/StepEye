@@ -29,20 +29,22 @@
 
 | 文件 | 大小 | SHA256 |
 |---|---|---|
+| `StepEye-Setup-0.9.0.exe` | 488,920,895 字节 | `f92cf1e10d160a0590f9254fae20269615eb6f3adf3a823e5844c52b0dadcb29` |
 | `stepeye-runtime-windows.zip` | 586,916,643 字节 | `6a297e2a281986b62cd30fdbb2fb5b4246429420a03219c60713b1dd27dff7c8` |
+| `stepeye-source-0.9.0.zip` | 19,519,649 字节 | `9fc16383c3b4ddcafe324cf0824658063515fadc796803f600eb692751527c7d` |
 | `stepeye-runtime-windows.manifest.json` | 升级清单 | 见文件内 |
 
-运行包为 Windows x64 便携目录包（onedir，非安装器），含评估模型与 Monibuca v6 beta 原生二进制；评估资产的商用再分发许可仍需逐项审核。
+安装包为 NSIS 自解压程序，默认装到 `%LOCALAPPDATA%\StepEye`，升级保留 `data\`。运行包是 Windows x64 便携目录包（onedir），含评估模型与 Monibuca v6 beta 原生二进制；评估资产的商用再分发许可仍需逐项审核。
 
 ## 安装 / 升级
 
-```powershell
-# 安装（可选，脚本安装器）
-powershell -ExecutionPolicy Bypass -File deploy\install_windows.ps1 `
-  -Zip .\stepeye-runtime-windows.zip -Version 0.9.0
+```text
+安装：双击 StepEye-Setup-0.9.0.exe，按向导安装
+便携：解压 stepeye-runtime-windows.zip，运行 start_windows.ps1 或 stepeye-runtime.exe
+源码：解压 stepeye-source-0.9.0.zip，双击 START-WINDOWS.bat
 
-# 离线升级（带 SHA256 校验与回滚）
-python -m visual upgrade --manifest .\stepeye-runtime-windows.manifest.json `
+离线升级（带 SHA256 校验与回滚）：
+python -m visual upgrade --manifest stepeye-runtime-windows.manifest.json ^
   --current <安装目录> --staging <空目录> --backup <新目录>
 ```
 
