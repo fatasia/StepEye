@@ -153,6 +153,17 @@ def _passwd(args: argparse.Namespace) -> int:
     return 0
 
 
+def _upgrade_cmd(args: argparse.Namespace) -> int:
+    from .upgrade import ReleaseManifest, apply_upgrade
+
+    manifest = ReleaseManifest.load(Path(args.manifest))
+    archive = Path(args.archive) if args.archive else Path(manifest.archive)
+    result = apply_upgrade(archive, manifest, Path(args.current), Path(args.staging),
+                           Path(args.backup), dry_run=args.dry_run)
+    print(json.dumps(result, ensure_ascii=False))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if not stream.isatty():  # 管道输出（日志 / JSON 行）统一 UTF-8，避免中文乱码
@@ -225,6 +236,15 @@ def main(argv: list[str] | None = None) -> int:
     s2.add_argument("--out", required=True, help="输出目录(manifest 追加写入)")
     s2.add_argument("--seed", type=int, default=7)
     s2.set_defaults(fn=_gen_samples)
+
+    up = sub.add_parser("upgrade", help="校验离线升级包并切换目录(可回滚)")
+    up.add_argument("--manifest", required=True, help="升级清单 JSON(version/archive/sha256/size)")
+    up.add_argument("--archive", help="升级包路径;缺省用清单里的 archive")
+    up.add_argument("--current", default=".", help="当前安装目录")
+    up.add_argument("--staging", required=True, help="解压暂存目录(必须为空)")
+    up.add_argument("--backup", required=True, help="旧版本备份目录(必须不存在)")
+    up.add_argument("--dry-run", action="store_true", help="只校验版本与 SHA256,不落盘")
+    up.set_defaults(fn=_upgrade_cmd)
 
     args = p.parse_args(argv)
     try:

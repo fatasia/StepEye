@@ -85,3 +85,7 @@ python tools/bench_action.py --model models/action.onnx --classes models/action-
 ### 2026-11-04：ONNX CUDA部署链已验证
 
 复用原模型与固定公开片段，独立ORT GPU1.27环境实际profile为319个CUDA节点、CPU节点0。已有worker热态往返P50/P95为44.59/74.22ms，纯推理26.22/26.98ms（5次）；签名、隔离Python配置和按需释放已接。详见[ACTION-CUDA](ACTION-CUDA.md)。上文“ORT CUDA尚未验证”为历史状态；工业动作头、多路容量与Linux GPU实机仍未验证。
+
+### 2026-11-09：动作对账绑定设备证据
+
+`ActionLedger` 增加 `evidence` 列（旧库自动 ALTER，不丢历史）：每条影子动作对账可携带该窗口内最近 30 秒、最多 20 条设备信号（来源/名称/值/质量/采集时刻），上限 8KB。证据只供人工复核，不参与 `agree` 判定，也不驱动 SOP；"工业动作权重 + 设备证据"由此在同一条账本记录里可追溯。跨人/跨工步扩类仍需 IndustReal 剩余 val/test 与专用类别头。

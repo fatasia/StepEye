@@ -69,6 +69,7 @@ class StationRuntime:
         self._cross_camera_frame = None
         self.signal_inbox = None
         self.thermal_service = None
+        self._recent_signals: list[dict[str, Any]] = []
         self._last_frame_wall: float | None = None
         self._calib_request: list[str] | None = None
         self._lock = threading.Lock()
@@ -273,6 +274,25 @@ class StationRuntime:
                                    quality_ok=not blocked, visible=token is not None, trigger=trigger)
         self._action_reconcile(cfg, cycle, active, ts)
 
+    def _remember_signals(self, events) -> None:
+        """保留最近 30 秒设备信号，供动作对账作为同窗口证据；不参与规则判定。"""
+        now = time.time()
+        for event in events:
+            data = getattr(event, "data", None) or {}
+            self._recent_signals.append({
+                "name": getattr(event, "name", None),
+                "value": getattr(event, "value", None),
+                "source": getattr(event, "source", None),
+                "quality": data.get("quality"),
+                "observed_at": data.get("observed_at"),
+                "received_at": data.get("received_at"),
+            })
+        # 用服务端接收时刻算窗口,避免设备时钟偏差把有效证据过滤掉。
+        self._recent_signals = [
+            item for item in self._recent_signals
+            if now - float(item.get("received_at") or item.get("observed_at") or now) <= 30
+        ][-20:]
+
     def _action_reconcile(self, cfg, cycle, active, ts: float) -> None:
         """影子结果与步骤期望动作对账；只记账不判定，任何失败都不阻塞采集线程。"""
         if self.action_ledger is None or not cfg.step_actions:
@@ -285,9 +305,11 @@ class StationRuntime:
                 return
             expected = sorted({a for sid in active for a in cfg.step_actions.get(sid, [])
                                if a in cfg.class_names})
+            evidence = {"signals": list(getattr(self, "_recent_signals", []))} if getattr(self, "_recent_signals", None) else None
             row = self.action_ledger.record(
                 self.cfg.station, cycle.id, sorted(active), expected,
-                result["label"], result["confidence"], result["model_sha256"], result["window_id"])
+                result["label"], result["confidence"], result["model_sha256"], result["window_id"],
+                evidence=evidence)
             if row is not None:
                 self._ledger_window = result["window_id"]
         except Exception:
@@ -384,6 +406,8 @@ class StationRuntime:
         captured_mono = time.monotonic()
         detector_fresh = self.detector is not None and getattr(self.detector, "_last_frame_ts", None) != ts
         external = self.signal_inbox.drain(ts) if self.signal_inbox is not None else []
+        if external:
+            self._remember_signals(external)
         self.raw = frame
         self._apply_calibration(frame)
         self.ctx.reset()

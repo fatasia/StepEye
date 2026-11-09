@@ -143,3 +143,40 @@ def test_runtime_reconcile_records_and_dedupes(tmp_path):
     rt._action_reconcile(cfg, FakeCycle(), {'fasten'}, 1.0)
     assert len(ledger.list()) == 1
     ledger.close()
+
+
+def test_equipment_evidence_roundtrip(ledger):
+    evidence = {"signals": [{"name": "torque_ok", "value": True, "source": "plc",
+                             "quality": "ok", "observed_at": 1760000000.0}]}
+    row = ledger.record('s1', 'c1', ['fasten'], ['tighten_nut'], 'tighten_nut',
+                        .9, 'a' * 64, 7, evidence=evidence)
+    assert row['evidence'] == evidence
+    stored = ledger.list(station='s1')[0]
+    assert stored['evidence']['signals'][0]['name'] == 'torque_ok'
+
+
+def test_equipment_evidence_size_limited(ledger):
+    huge = {"signals": [{"name": "x" * 9000, "value": 1}]}
+    with pytest.raises(ValueError, match='设备证据过大'):
+        ledger.record('s1', 'c1', ['fasten'], [], 'fit_nut', .8, 'a' * 64, 8, evidence=huge)
+
+
+def test_old_ledger_schema_migrates_evidence_column(tmp_path):
+    import sqlite3
+    path = tmp_path / 'old.db'
+    db = sqlite3.connect(path)
+    db.execute("""CREATE TABLE action_reconciliation (
+        id TEXT PRIMARY KEY, station TEXT, cycle_id TEXT, step_ids TEXT,
+        expected TEXT, observed TEXT, confidence REAL, agree INTEGER,
+        model_sha256 TEXT, window_id INTEGER, at TEXT, UNIQUE(station, window_id))""")
+    db.execute("INSERT INTO action_reconciliation VALUES('old','s1','c1','[]','[]','fit_nut',.8,0,'x',1,'t')")
+    db.commit(); db.close()
+    store = ActionLedger(path)
+    try:
+        old = store.list()[0]
+        assert old['observed'] == 'fit_nut' and old['evidence'] is None
+        row = store.record('s1', 'c2', ['fasten'], [], 'fit_nut', .8, 'a' * 64, 2,
+                           evidence={"signals": []})
+        assert row is not None and row['evidence'] == {"signals": []}
+    finally:
+        store.close()

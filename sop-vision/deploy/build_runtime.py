@@ -23,7 +23,8 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def asset_plan(root=ROOT, *, include_local_vlm=False, include_quality_extensions=False, monibuca=None):
+def asset_plan(root=ROOT, *, include_local_vlm=False, include_quality_extensions=False, monibuca=None,
+               platform_label='windows'):
     root = Path(root).resolve()
     policy = json.loads(POLICY.read_text(encoding='utf8'))
     rows, omitted, seen = [], [], set()
@@ -79,8 +80,13 @@ def asset_plan(root=ROOT, *, include_local_vlm=False, include_quality_extensions
         for path in sorted((root / folder).glob('*')):
             if path.suffix.lower() in {'.onnx', '.json', '.txt', '.md'} or path.name.startswith('LICENSE'):
                 add(path, path.relative_to(root), 'mechanism_candidate', review=True)
-    media = Path(monibuca) if monibuca else REPO / '.v0/monibuca/monibuca_windows_amd64.exe'
-    add(media, 'deploy/monibuca/monibuca_windows_amd64.exe', 'native_media', required=True, review=True)
+    default_media = REPO / '.v0/monibuca/monibuca_windows_amd64.exe' if platform_label == 'windows' else None
+    media = Path(monibuca) if monibuca else default_media
+    if media is None or not media.is_file():
+        raise FileNotFoundError(f'{platform_label} 构建需要 --monibuca 指向原生媒体二进制')
+    media_target = ('deploy/monibuca/monibuca_windows_amd64.exe' if platform_label == 'windows'
+                    else f'deploy/monibuca/monibuca_{platform_label}_amd64')
+    add(media, media_target, 'native_media', required=True, review=True)
     add(root / 'deploy/monibuca/config.yml', 'deploy/monibuca/config.yml', 'media_config', required=True)
     add(root / 'deploy/monibuca/runtime-v6.yaml', 'deploy/monibuca/runtime-v6.yaml', 'media_config')
     add(root / 'deploy/portable-README.md', 'deploy/portable-README.md', 'application')
@@ -94,7 +100,7 @@ def asset_plan(root=ROOT, *, include_local_vlm=False, include_quality_extensions
         if not any(row['target'].endswith('/llama-server.exe') for row in rows):
             raise FileNotFoundError('Local VLM runtime unavailable')
     return {'schema_version': 1, 'created_at': time.time(), 'platform': sys.platform,
-            'assets': rows, 'omitted_optional_assets': omitted,
+            'platform_label': platform_label, 'assets': rows, 'omitted_optional_assets': omitted,
             'asset_bytes': sum(row['bytes'] for row in rows),
             'redistribution_review_required': any(row['redistribution_review_required'] for row in rows),
             'external_components': policy['external_components'],
@@ -143,6 +149,9 @@ def main():
     parser.add_argument('--include-local-vlm', action='store_true')
     parser.add_argument('--include-quality-extensions', action='store_true', help='Bundle optional glue/pin segmentation weights')
     parser.add_argument('--monibuca', type=Path)
+    parser.add_argument('--platform-label', default='windows' if sys.platform == 'win32' else
+                        ('linux' if sys.platform.startswith('linux') else sys.platform),
+                        help='产物平台标签(用于媒体二进制路径与 ZIP 名)')
     parser.add_argument('--skip-zip', action='store_true')
     args = parser.parse_args()
     output = args.output.resolve()
@@ -150,7 +159,8 @@ def main():
         parser.error('Choose a separate new build directory')
     if (output / 'dist/stepeye-runtime').exists(): parser.error('Existing output is preserved; use a new directory')
     output.mkdir(parents=True, exist_ok=True)
-    plan = asset_plan(include_local_vlm=args.include_local_vlm, include_quality_extensions=args.include_quality_extensions, monibuca=args.monibuca)
+    plan = asset_plan(include_local_vlm=args.include_local_vlm, include_quality_extensions=args.include_quality_extensions,
+                      monibuca=args.monibuca, platform_label=args.platform_label)
     plan['evaluation_asset_opt_in'] = args.allow_evaluation_assets
     (output / 'assets-before.json').write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding='utf8')
     print(json.dumps({'asset_files': len(plan['assets']), 'asset_bytes': plan['asset_bytes'],
@@ -183,7 +193,7 @@ def main():
                   artifact_kind='onedir_portable_not_installer', commercial_distribution_approved=False,
                   evaluation_assets_opted_in=args.allow_evaluation_assets)
     if not args.skip_zip:
-        archive = output / 'stepeye-runtime-windows.zip'
+        archive = output / f'stepeye-runtime-{args.platform_label}.zip'
         with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
             for path in sorted(bundle.rglob('*')):
                 if path.is_file(): z.write(path, path.relative_to(bundle.parent).as_posix())

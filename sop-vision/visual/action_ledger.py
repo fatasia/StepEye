@@ -23,6 +23,10 @@ class ActionLedger:
             id TEXT PRIMARY KEY, station TEXT, cycle_id TEXT, step_ids TEXT,
             expected TEXT, observed TEXT, confidence REAL, agree INTEGER,
             model_sha256 TEXT, window_id INTEGER, at TEXT, UNIQUE(station, window_id))""")
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(action_reconciliation)")}
+        if "evidence" not in columns:
+            # 旧库原地加列:设备信号证据随动作窗口落账,不重建表、不丢历史记录。
+            self.db.execute("ALTER TABLE action_reconciliation ADD COLUMN evidence TEXT")
         self.db.commit()
 
     def close(self):
@@ -31,17 +35,29 @@ class ActionLedger:
 
     def record(self, station: str, cycle_id: str | None, step_ids: list[str],
                expected: list[str], observed: str, confidence: float,
-               model_sha256: str, window_id: int) -> dict | None:
-        """记一条对账；expected 为空表示该步骤未配置期望动作（agree=NULL）。"""
+               model_sha256: str, window_id: int, evidence: dict | None = None) -> dict | None:
+        """记一条对账；expected 为空表示该步骤未配置期望动作（agree=NULL）。
+
+        evidence 为该动作窗口内采集到的设备信号摘要（来源/名称/值/采集时刻），
+        只随账本保存供人工复核，不参与 agree 判定。
+        """
         if confidence < 0 or confidence > 1 or not observed or len(observed) > 100:
             raise ValueError("对账观测值无效")
+        evidence_json = None
+        if evidence is not None:
+            if not isinstance(evidence, dict):
+                raise ValueError("设备证据须为对象")
+            evidence_json = json.dumps(evidence, ensure_ascii=False, sort_keys=True)
+            if len(evidence_json.encode("utf-8")) > 8192:
+                raise ValueError("设备证据过大（上限 8KB）")
         agree = None if not expected else int(observed in expected)
         row = {"id": uuid.uuid4().hex, "station": station, "cycle_id": cycle_id,
                "step_ids": json.dumps(step_ids, ensure_ascii=False),
                "expected": json.dumps(expected, ensure_ascii=False), "observed": observed,
                "confidence": float(confidence), "agree": agree,
                "model_sha256": model_sha256, "window_id": int(window_id),
-               "at": datetime.now(timezone.utc).isoformat()}
+               "at": datetime.now(timezone.utc).isoformat(),
+               "evidence": evidence}
         row_return = {**row, "agree": None if agree is None else bool(agree),
                       "step_ids": step_ids, "expected": list(expected)}
         with self.lock:
@@ -53,9 +69,12 @@ class ActionLedger:
                     self.db.execute("DELETE FROM action_reconciliation WHERE rowid IN "
                                     "(SELECT rowid FROM action_reconciliation ORDER BY rowid LIMIT ?)",
                                     (count - MAX_ROWS + 1000,))
-                self.db.execute("INSERT OR IGNORE INTO action_reconciliation VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                                (row["id"], station, cycle_id, row["step_ids"], row["expected"],
-                                 observed, confidence, agree, model_sha256, int(window_id), row["at"]))
+                self.db.execute(
+                    "INSERT OR IGNORE INTO action_reconciliation"
+                    "(id,station,cycle_id,step_ids,expected,observed,confidence,agree,"
+                    " model_sha256,window_id,at,evidence) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (row["id"], station, cycle_id, row["step_ids"], row["expected"],
+                     observed, confidence, agree, model_sha256, int(window_id), row["at"], evidence_json))
                 self.db.commit()
             except Exception:
                 self.db.rollback()
@@ -91,8 +110,15 @@ class ActionLedger:
 
     @staticmethod
     def _row(row):
+        evidence = None
+        if len(row) > 11 and row[11]:
+            try:
+                evidence = json.loads(row[11])
+            except (TypeError, ValueError):
+                evidence = None
         return {"id": row[0], "station": row[1], "cycle_id": row[2],
                 "step_ids": json.loads(row[3]), "expected": json.loads(row[4]),
                 "observed": row[5], "confidence": row[6],
                 "agree": None if row[7] is None else bool(row[7]),
-                "model_sha256": row[8], "window_id": row[9], "at": row[10]}
+                "model_sha256": row[8], "window_id": row[9], "at": row[10],
+                "evidence": evidence}

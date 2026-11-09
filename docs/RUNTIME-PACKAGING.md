@@ -110,3 +110,11 @@ $env:M7S_ADMIN_DEV_MODE = '1'
 另用3帧协议视频加载手/姿态/通用目标三个MediaPipe模型并正常退出；不属于识别准确率测试。
 仿真配置的loop已在有限视频验证中明确关闭；首次保留loop导致的超时记录在报告中。
 所有测试只停止自己启动的进程，未接管已有媒体服务。
+
+## 安装与升级（2026-11-09）
+
+- 安装：`deploy/install_windows.ps1 -Zip <发布ZIP> -Version <版本> [-Sha256 <摘要>]`。默认装到 `%LOCALAPPDATA%\StepEye`，已有目录先改名备份，识别 ZIP 单顶层目录，创建开始菜单快捷方式；不写系统目录、不注册服务、不改防火墙。
+- 升级：`deploy/make_release_manifest.py` 从 ZIP 生成 `{version,archive,sha256,size,notes}` 清单；`deploy/upgrade_windows.ps1 -Manifest <清单>` 停进程后调用 `python -m visual upgrade`。升级器拒绝降级/同版本、拒绝绝对路径/`..`/符号链接、解压上限 8GB、SHA256 不符即中止；目录切换为 current→backup、staged→current，第二步失败自动回滚。
+- 回滚：旧版本保留在 `<安装目录>.bak-<时间戳>`；人工回滚即停进程后把备份目录改回原名。
+- Linux 构建：`deploy/build_runtime.py --platform-label linux --monibuca <linux二进制>` 生成 `stepeye-runtime-linux.zip`；模型权重不入 Git，需在带资产的主机上构建，CI 不能单独凑齐。
+- 仍未提供：单文件 EXE 安装包、EXE 代码签名、系统服务注册、自动更新检查（需证书/Inno 或 NSIS 工具链与发布服务器）。
