@@ -16,6 +16,8 @@ const stationName = (id) => store.metas.find((m) => m.id === id)?.name ?? id;
 
 function tableHtml(rows) {
   if (!rows.length) return emptyBlock("没有符合条件的周期", "调整筛选条件，或等待工位完成新的周期。");
+  // 没有采集到序列号的工位不展示整列为空的"序列号",避免看起来像数据丢失。
+  const hasSn = rows.some((r) => r.sn);
   const body = rows.map((r) => {
     const takt = r.takt_s;
     const ratio = takt ? Math.min(r.duration_s / takt, 1.5) / 1.5 : 0;
@@ -24,12 +26,12 @@ function tableHtml(rows) {
       <td class="num nowrap">${fmtTime(r.start_wall)}</td>
       <td class="ellipsis" title="${esc(r.station)}">${esc(stationName(r.station))}</td>
       <td class="mono" title="${esc(r.cycle_id)}">${esc(r.cycle_id.split("-").slice(-1)[0])}</td>
-      <td class="mono">${r.sn ? esc(r.sn) : '<span class="faint">—</span>'}</td>
+      <td class="mono">${hasSn ? (r.sn ? esc(r.sn) : '<span class="faint">—</span>') : ""}</td>
       <td>${resultBadge(r.result)}</td>
       <td class="num right"><span class="dur-cell">${durHtml(r.duration_s)}${takt ? `<span class="mini-bar ${r.duration_s > takt ? "over" : ""}"><i style="width:${(ratio * 100).toFixed(0)}%"></i></span>` : ""}</span></td>
       <td><div class="tags">${vs}</div></td></tr>`;
   }).join("");
-  return `<table class="table"><thead><tr><th>开始时间</th><th>工位</th><th>周期号</th><th>序列号</th><th>结果</th><th class="right">耗时</th><th>违规</th></tr></thead><tbody>${body}</tbody></table>`;
+  return `<table class="table"><thead><tr><th>开始时间</th><th>工位</th><th>周期号</th>${hasSn ? "<th>序列号</th>" : ""}<th>结果</th><th class="right">耗时</th><th>违规</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 
 const hashRow = (label, value) => value

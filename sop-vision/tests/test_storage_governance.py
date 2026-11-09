@@ -51,9 +51,9 @@ def test_quota_check_over_limit(tmp_path):
     assert quota_check(root, {}) == []
 
 
-def _client(tmp_path, limits=None):
+def _client(tmp_path, limits=None, **kwargs):
     app = FastAPI()
-    app.include_router(router(tmp_path, limits))
+    app.include_router(router(tmp_path, limits, **kwargs))
 
     @app.middleware("http")
     async def fake_auth(request: Request, call_next):
@@ -82,3 +82,31 @@ def test_storage_route_without_limits(tmp_path):
     body = _client(missing_dir).get("/api/operations/storage", headers={"x-test-role": "admin"}).json()
     assert body["quota"] == {"limits": {}, "exceeded": []}
     assert body["usage"]["exists"] is False
+
+
+def test_alert_governance_route_admin_only_and_persists(tmp_path):
+    from visual.alert_governance import (CounterStore, GovernedAlerts, RuleCooldown,
+                                         load_cooldown_setting)
+    from visual.alerts import AlertStore
+
+    counters = CounterStore(tmp_path / "counters.json")
+    gov = GovernedAlerts(AlertStore(tmp_path / "alerts.db"),
+                         cooldown=RuleCooldown(0, counters=counters))
+    settings = tmp_path / "alert-governance.json"
+    client = _client(tmp_path, governance=gov, counters=counters, settings_path=settings)
+
+    assert client.get("/api/operations/alert-governance").status_code == 401
+    for role in ("viewer", "operator"):
+        assert client.get("/api/operations/alert-governance",
+                          headers={"x-test-role": role}).status_code == 403
+    body = client.get("/api/operations/alert-governance", headers={"x-test-role": "admin"}).json()
+    assert body["cooldown_s"] == 0 and body["cooldown_dropped"] == 0
+
+    resp = client.put("/api/operations/alert-governance", headers={"x-test-role": "admin"},
+                      json={"cooldown_s": 30})
+    assert resp.status_code == 200 and resp.json()["cooldown_s"] == 30
+    assert gov.cooldown.min_interval_s == 30
+    assert load_cooldown_setting(settings) == 30.0
+
+    assert client.put("/api/operations/alert-governance", headers={"x-test-role": "admin"},
+                      json={"cooldown_s": 3601}).status_code == 422

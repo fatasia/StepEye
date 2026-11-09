@@ -23,14 +23,84 @@ AlertStore 的表结构(无新字段,旧库天然兼容):
 """
 from __future__ import annotations
 
+import json
 import math
 import threading
 import time
 from collections import deque
+from pathlib import Path
 from typing import Any
 
 _TS_FMT = "%Y-%m-%dT%H:%M:%S"
 _SEVERITY_RANK = {"info": 0, "warn": 1, "error": 2, "critical": 3}
+
+
+class CounterStore:
+    """治理计数的轻量持久化(JSON):只存累计数字,不存告警内容。
+
+    计数在每次拦截时落盘,重启后继续累计;写盘失败不阻断告警主流程,
+    仅退化为内存计数(与原行为一致)。
+    """
+
+    def __init__(self, path: Path | None = None):
+        self._path = Path(path) if path else None
+        self._lock = threading.Lock()
+        self._data: dict[str, int] = {}
+        if self._path and self._path.is_file():
+            try:
+                raw = json.loads(self._path.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    self._data = {str(k): int(v) for k, v in raw.items()
+                                  if isinstance(v, (int, float)) and not isinstance(v, bool)}
+            except (OSError, ValueError):
+                self._data = {}
+
+    def add(self, key: str, n: int = 1) -> None:
+        if n <= 0:
+            return
+        with self._lock:
+            self._data[key] = self._data.get(key, 0) + int(n)
+            self._flush()
+
+    def get(self, key: str) -> int:
+        with self._lock:
+            return int(self._data.get(key, 0))
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return dict(self._data)
+
+    def _flush(self) -> None:
+        if not self._path:
+            return
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self._path.with_suffix(self._path.suffix + ".tmp")
+            tmp.write_text(json.dumps(self._data, ensure_ascii=False, sort_keys=True), encoding="utf-8")
+            tmp.replace(self._path)
+        except OSError:
+            pass
+
+
+def load_cooldown_setting(path: Path) -> float | None:
+    """读取管理员保存的冷却秒数;文件缺失/损坏返回 None(回落到环境变量)。"""
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        value = float(raw.get("cooldown_s"))
+        return value if math.isfinite(value) and 0 <= value <= 3600 else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def save_cooldown_setting(path: Path, seconds: float) -> None:
+    value = float(seconds)
+    if not math.isfinite(value) or not 0 <= value <= 3600:
+        raise ValueError("冷却秒数须在 0–3600 之间")
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps({"cooldown_s": value}, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(target)
 
 
 def _severity_rank(severity: str | None) -> int:
@@ -47,11 +117,13 @@ class StormSuppressor:
     """
 
     def __init__(self, window_s: float = 300.0, threshold: int = 10,
-                 summary_interval_s: float = 60.0, quiet_s: float | None = None):
+                 summary_interval_s: float = 60.0, quiet_s: float | None = None,
+                 counters: CounterStore | None = None):
         self.window_s = float(window_s)
         self.threshold = int(threshold)
         self.summary_interval_s = float(summary_interval_s)
         self.quiet_s = self.window_s if quiet_s is None else float(quiet_s)
+        self._counters = counters
         self._lock = threading.Lock()
         # key -> [hits(窗口内触发时刻,抑制后不再增长,内存有界), in_storm, last_trigger,
         #         last_summary, suppressed_total, suppressed_since_summary, max_severity]
@@ -79,6 +151,8 @@ class StormSuppressor:
             if st["in_storm"]:
                 st["suppressed_total"] += 1
                 st["suppressed_since_summary"] += 1
+                if self._counters:
+                    self._counters.add("storm_suppressed")
                 st["max_severity"] = max(st["max_severity"], _severity_rank(severity))
                 if now - st["last_summary"] >= self.summary_interval_s:
                     n = st["suppressed_since_summary"]
@@ -110,17 +184,20 @@ class StormSuppressor:
         with self._lock:
             active = [k for k, st in self._states.items() if st["in_storm"]]
             pending = sum(st["suppressed_since_summary"] for st in self._states.values())
-            total = sum(st["suppressed_total"] for st in self._states.values())
+            total = (self._counters.get("storm_suppressed") if self._counters
+                     else sum(st["suppressed_total"] for st in self._states.values()))
             return {"suppressed_total": total, "suppressed_since_summary": pending,
                     "active_keys": active}
 
 
 class RuleBudget:
-    """每 (station, source, kind) 滑动小时窗入库上限(内存态,线程安全)。"""
+    """每 (station, source, kind) 滑动小时窗入库上限(窗口内存态,计数可持久化)。"""
 
-    def __init__(self, max_per_hour: int = 60, window_s: float = 3600.0):
+    def __init__(self, max_per_hour: int = 60, window_s: float = 3600.0,
+                 counters: CounterStore | None = None):
         self.max_per_hour = int(max_per_hour)
         self.window_s = float(window_s)
+        self._counters = counters
         self._lock = threading.Lock()
         self._hits: dict[tuple, deque] = {}
         self._dropped: dict[tuple, int] = {}
@@ -133,6 +210,8 @@ class RuleBudget:
                 hits.popleft()
             if len(hits) >= self.max_per_hour:
                 self._dropped[key] = self._dropped.get(key, 0) + 1
+                if self._counters:
+                    self._counters.add("budget_dropped")
                 return False
             hits.append(now)
             return True
@@ -142,22 +221,34 @@ class RuleBudget:
             return dict(self._dropped)
 
     def dropped_total(self) -> int:
+        if self._counters:
+            return self._counters.get("budget_dropped")
         with self._lock:
             return sum(self._dropped.values())
 
 
 class RuleCooldown:
-    """同键最小入库间隔(B3 统一冷却;默认 0=关闭,经 STEPEYE_ALERT_COOLDOWN_S 开启)。
+    """同键最小入库间隔(B3 统一冷却;默认 0=关闭,可经管理接口或环境变量开启)。
 
     与 ref_id 回写防重互补:防重只挡同 ref 的未决告警,本类挡"同键高频重复",
     间隔内重复触发只计 dropped 不入库。风暴摘要不经过本闸门。
     """
 
-    def __init__(self, min_interval_s: float = 0.0):
+    def __init__(self, min_interval_s: float = 0.0, counters: CounterStore | None = None):
         self.min_interval_s = max(0.0, float(min_interval_s))
+        self._counters = counters
         self._lock = threading.Lock()
         self._last: dict[tuple, float] = {}
         self._dropped = 0
+
+    def set_interval(self, seconds: float) -> None:
+        value = float(seconds)
+        if not math.isfinite(value) or not 0 <= value <= 3600:
+            raise ValueError("冷却秒数须在 0–3600 之间")
+        with self._lock:
+            self.min_interval_s = value
+            # 关闭或调整间隔时清空上次时间,避免旧间隔继续压制新配置。
+            self._last.clear()
 
     def admit(self, key: tuple, now: float) -> bool:
         if self.min_interval_s <= 0:
@@ -165,11 +256,15 @@ class RuleCooldown:
         with self._lock:
             if now - self._last.get(key, -math.inf) < self.min_interval_s:
                 self._dropped += 1
+                if self._counters:
+                    self._counters.add("cooldown_dropped")
                 return False
             self._last[key] = now
             return True
 
     def dropped_total(self) -> int:
+        if self._counters:
+            return self._counters.get("cooldown_dropped")
         with self._lock:
             return self._dropped
 

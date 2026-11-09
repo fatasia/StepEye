@@ -38,7 +38,7 @@ export function render(root, params = {}) {
   root.innerHTML = `<div class="filters">
     <div class="seg-ctl" role="group" aria-label="按状态筛选">${STATUS_FILTER.map(([v,t]) => `<button class="${v === f.status ? "on" : ""}" data-v="${v}" aria-pressed="${v === f.status}">${t}</button>`).join("")}</div>
     <label class="field"><span>来源</span><select id="al-src"><option value="">全部</option>${Object.entries(SOURCE).map(([v,t]) => `<option value="${v}">${t}</option>`).join("")}</select></label>
-    <label class="field"><span>工位/场景</span><input id="al-station" value="${esc(f.station)}" placeholder="全部"></label><button class="btn" id="al-refresh">${icon("refresh", 14)}刷新</button></div>
+    <label class="field"><span>工位/场景</span><input id="al-station" value="${esc(f.station)}" placeholder="全部"></label><button class="btn" id="al-refresh">${icon("refresh", 14)}刷新</button><button class="btn" id="al-governance" hidden>${icon("config", 14)}治理设置</button></div>
     <section class="panel table-panel"><div class="table-wrap" id="al-tbl"><div class="skeleton-rows"></div></div><footer class="table-foot muted num" id="al-foot"></footer></section>
     <section class="panel table-panel shadow-panel"><header class="panel-head"><div class="head-left"><h2>影子真值标注</h2><span class="muted">先看证据，再标 PASS / NG；无证据的样本可留待复核</span></div>
       <label class="select-wrap"><span class="sr-only">影子样本筛选</span><select id="sh-filter"><option value="pending">待标注</option><option value="labeled">已标注</option><option value="all">全部样本</option></select></label></header>
@@ -135,8 +135,39 @@ export function render(root, params = {}) {
   $("#al-refresh",root).onclick = async () => { await Promise.all([load(),loadShadow()]); };
   tbl.onclick = (e) => { const tr = e.target.closest("tr[data-id]"); if (tr) openAlert(+tr.dataset.id); };
   tbl.onkeydown = (e) => { if (e.key === "Enter") { const tr = e.target.closest("tr[data-id]"); if (tr) { e.preventDefault(); openAlert(+tr.dataset.id); } } };
+  const openGovernance = async () => {
+    let state;
+    try { state = await api.alertGovernance(); }
+    catch (e) { toast(e.message, "error"); return; }
+    const stats = () => `<div class="kv-grid gov-stats"><div class="kv"><span class="muted">预算拦截</span><span class="num">${state.budget_dropped}</span></div><div class="kv"><span class="muted">冷却拦截</span><span class="num">${state.cooldown_dropped}</span></div><div class="kv"><span class="muted">风暴抑制</span><span class="num">${state.storm_suppressed}</span></div></div>`;
+    const d = (drawer = openDrawer({
+      title: "告警治理",
+      subtitle: "冷却只拦截同工位 / 来源 / 类型的重复入库；计数重启后继续累计。",
+      html: `<form class="gov-form"><label>同键冷却（秒，0 = 关闭）<input id="gov-cooldown" type="number" min="0" max="3600" step="1" value="${Number(state.cooldown_s)}" required></label><p class="hint muted">例如 60 表示同一规则 60 秒内只入库一条；风暴摘要不受影响。</p>${stats()}<div class="ez-actions"><button class="btn btn-primary" type="submit">保存</button></div></form>`,
+    }));
+    const form = d.body.querySelector(".gov-form");
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      const value = Number(form.querySelector("#gov-cooldown").value);
+      if (!Number.isFinite(value) || value < 0 || value > 3600) { toast("冷却秒数须在 0–3600 之间", "error"); return; }
+      const button = form.querySelector("[type=submit]");
+      button.disabled = true;
+      try {
+        state = await api.setAlertGovernance(value);
+        form.querySelector(".gov-stats").outerHTML = stats();
+        toast(value ? `已开启冷却：${value} 秒` : "已关闭冷却", "success");
+      } catch (e) { toast(e.message, "error"); }
+      finally { button.disabled = false; }
+    };
+  };
   const init = async () => {
-    try { const me = await api.me(); if (dead) return; canWrite = ["admin","operator"].includes(me.role); await Promise.all([load(),loadShadow()]); if (!dead) timer = setInterval(load,5000); }
+    try {
+      const me = await api.me(); if (dead) return;
+      canWrite = ["admin","operator"].includes(me.role);
+      const gov = $("#al-governance", root);
+      if (me.role === "admin") { gov.hidden = false; gov.onclick = openGovernance; }
+      await Promise.all([load(),loadShadow()]); if (!dead) timer = setInterval(load,5000);
+    }
     catch (e) { if (!dead) { setHTML(tbl,errorBlock(e.message)); $("[data-retry]",tbl).onclick = init; } }
   };
   init();

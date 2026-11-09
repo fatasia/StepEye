@@ -9,11 +9,14 @@ import threading
 from pathlib import Path
 
 from visual.alert_governance import (
+    CounterStore,
     GovernedAlerts,
     RuleBudget,
     RuleCooldown,
     StormSuppressor,
     false_positive_report,
+    load_cooldown_setting,
+    save_cooldown_setting,
 )
 from visual.alerts import AlertStore
 
@@ -293,3 +296,35 @@ def test_cooldown_does_not_block_storm_summary(tmp_path):
         gov.create("ST", "safety", "person_absent", "warn", f"触发 {i}")
     summary, new = gov.create("ST", "safety", "person_absent", "warn", "风暴延续")
     assert summary is not None and new is True and summary["message"].startswith("[风暴摘要]")
+
+
+def test_governance_counters_survive_restart(tmp_path):
+    path = tmp_path / "counters.json"
+    store = AlertStore(tmp_path / "alerts.db")
+    gov = GovernedAlerts(store, cooldown=RuleCooldown(60, counters=CounterStore(path)))
+    gov._clock = lambda: 1000.0
+    gov.create("ST", "safety", "person_absent", "warn", "第 1 条")
+    gov.create("ST", "safety", "person_absent", "warn", "被冷却")
+    assert gov.stats()["cooldown_dropped"] == 1
+
+    # 模拟进程重启:新实例从同一计数文件恢复,不再从 0 开始。
+    gov2 = GovernedAlerts(AlertStore(tmp_path / "alerts2.db"),
+                          cooldown=RuleCooldown(60, counters=CounterStore(path)))
+    assert gov2.stats()["cooldown_dropped"] == 1
+
+
+def test_cooldown_setting_roundtrip(tmp_path):
+    path = tmp_path / "alert-governance.json"
+    assert load_cooldown_setting(path) is None
+    save_cooldown_setting(path, 45)
+    assert load_cooldown_setting(path) == 45.0
+    path.write_text("{broken", encoding="utf-8")
+    assert load_cooldown_setting(path) is None
+
+
+def test_rule_cooldown_set_interval_clears_previous_state(tmp_path):
+    cooldown = RuleCooldown(60)
+    assert cooldown.admit(("ST", "safety", "x"), 100.0) is True
+    assert cooldown.admit(("ST", "safety", "x"), 110.0) is False
+    cooldown.set_interval(0)
+    assert cooldown.admit(("ST", "safety", "x"), 111.0) is True

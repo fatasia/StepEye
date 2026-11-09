@@ -5,7 +5,7 @@ import * as docscenter from "./pages/docs-center.js";
 import { icon, LOGO } from "./icons.js";
 import { api, ApiError } from "./api.js";
 import { bootstrap, connect, store, subscribe } from "./store.js";
-import { errorBlock, onEsc } from "./ui.js";
+import { errorBlock, onEsc, watchFileInputs } from "./ui.js";
 import { $, fmtClock } from "./util.js";
 import * as overview from "./pages/overview.js";
 import * as live from "./pages/live.js";
@@ -77,7 +77,7 @@ function setGroup(id, open) {
 }
 
 function buildShell() {
-  $("#brand").innerHTML = `${LOGO}<span class="brand-name">视觉实验室</span><span class="brand-sub">SOP 合规</span>`;
+  $("#brand").innerHTML = `${LOGO}<span class="brand-name">StepEye</span>`;
   const navLink = (k) => `<a href="#/${k}" data-nav="${k}">${icon(ROUTE_ICONS[k], 18)}<span>${TITLES[k]}</span></a>`;
   $("#nav").innerHTML =
     NAV_GROUPS.map(([id, title, ic, items]) =>
@@ -145,7 +145,7 @@ function route() {
   const { name, params } = parseHash();
   cleanup();
   $("#page-title").textContent = TITLES[name];
-  document.title = `${TITLES[name]} · 视觉实验室`;
+  document.title = `${TITLES[name]} · StepEye`;
   document.querySelectorAll("[data-nav]").forEach((a) => {
     const on = a.dataset.nav === name || (name === "labeling" && a.dataset.nav === "samples");
     a.classList.toggle("on", on);
@@ -166,6 +166,7 @@ function route() {
 
 async function start() {
   buildShell();
+  watchFileInputs();
   applyTheme();
   paintConn();
   const tickClock = () => ($("#clock").textContent = fmtClock());

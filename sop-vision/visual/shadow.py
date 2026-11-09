@@ -18,6 +18,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# 首次建库(切换 WAL + 建表)必须串行:并发连接同时切换 journal_mode 时,
+# Windows 上后到的连接会拿到 "attempt to write a readonly database"。
+# 进程内用锁,跨进程用有限重试兜底(服务通常单进程,CLI 为短进程)。
+_INIT_LOCK = threading.Lock()
+_INIT_RETRIES = 6
+
 
 class ShadowStore:
     """影子样本:每次周期结束/检测结论都存一条,带模型版本与规则指纹,供人工标注。"""
@@ -25,15 +31,29 @@ class ShadowStore:
     def __init__(self, db_path: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._db = sqlite3.connect(str(db_path), check_same_thread=False, timeout=10)
-        self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.execute(
-            "CREATE TABLE IF NOT EXISTS shadow_samples (id INTEGER PRIMARY KEY AUTOINCREMENT,"
-            " kind TEXT, station TEXT, ref_id TEXT, system_verdict TEXT, confidence REAL,"
-            " truth TEXT, created TEXT, body TEXT)"
-        )
-        self._db.execute("CREATE INDEX IF NOT EXISTS idx_shadow_truth ON shadow_samples(kind, truth)")
-        self._db.commit()
+        self._db = None
+        with _INIT_LOCK:
+            for attempt in range(_INIT_RETRIES):
+                try:
+                    self._db = sqlite3.connect(str(db_path), check_same_thread=False, timeout=10)
+                    self._db.execute("PRAGMA busy_timeout=5000")
+                    self._db.execute("PRAGMA journal_mode=WAL")
+                    self._db.execute(
+                        "CREATE TABLE IF NOT EXISTS shadow_samples (id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                        " kind TEXT, station TEXT, ref_id TEXT, system_verdict TEXT, confidence REAL,"
+                        " truth TEXT, created TEXT, body TEXT)"
+                    )
+                    self._db.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_shadow_truth ON shadow_samples(kind, truth)")
+                    self._db.commit()
+                    break
+                except sqlite3.OperationalError:
+                    if self._db is not None:
+                        self._db.close()
+                        self._db = None
+                    if attempt == _INIT_RETRIES - 1:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
 
     def close(self) -> None:
         with self._lock:

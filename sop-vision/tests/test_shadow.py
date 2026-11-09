@@ -1,6 +1,7 @@
 """影子模式(shadow)测试:入库/真值/报告数学 + forwarder 采集 + inspection 采集。"""
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 from visual.server import StationManager
@@ -64,3 +65,33 @@ def test_shadow_recorder_and_inspection_collection(tmp_path):
     m.store.close()
     if m.shadow_store is not None:
         m.shadow_store.close()
+
+
+def test_shadow_store_concurrent_first_open(tmp_path):
+    """首次建库并发访问不能出现 readonly/locked:告警页会同时打 samples + report。"""
+    path = tmp_path / "shadow.db"
+    errors: list[BaseException] = []
+    barrier = threading.Barrier(8)
+
+    def worker():
+        try:
+            barrier.wait(timeout=10)
+            store = ShadowStore(path)
+            try:
+                store.report()
+            finally:
+                store.close()
+        except BaseException as exc:  # noqa: BLE001 - 测试要收集所有异常
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=30)
+    assert not errors, errors
+    store = ShadowStore(path)
+    try:
+        assert store.report()["kinds"] == {}
+    finally:
+        store.close()

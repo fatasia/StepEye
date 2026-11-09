@@ -15,7 +15,7 @@ export function render(root) {
         <label class="field"><span>标签</span><select id="s-label"><option>OK</option><option>NG</option></select></label>
         <div class="seg-ctl" role="group" aria-label="引擎"><button class="on" data-v="augment">增强合成(秒级)</button><button data-v="cogview">CogView</button><button data-v="lk888">lk888</button><button data-v="configured" disabled>已配置服务</button></div>
         <label class="field"><span>数量</span><input id="s-n" type="number" value="10" min="1" max="100" style="width:72px"></label>
-        <input id="s-desc" class="field" style="flex:1 1 220px" placeholder="描述,如:表面出现刮痕(生成式用)" autocomplete="off">
+        <label class="field" style="flex:1 1 220px"><span>描述</span><input id="s-desc" placeholder="如:表面出现划痕(生成式用)" autocomplete="off"></label>
         <button class="btn btn-primary" id="s-go" disabled>${icon("check", 14)}生成样本</button>
         <div class="inline-empty muted" id="s-note" hidden></div>
       </div>

@@ -8,13 +8,21 @@ export function render(root, params) {
   root.innerHTML = `<header class="command-head"><div><span class="command-kicker">STEPEYE / EVIDENCE REPLAY</span><h2>时间里的现场</h2><p>按工位与时段检索，回到事件发生的那一刻。</p></div><a class="btn" href="#/trace">进入事件追溯</a></header><div class="filters"><label class="field"><span>工位</span><select id="rec-station">${store.metas.map((s) => `<option value="${esc(s.id)}" ${s.id === params.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>
     <label class="field"><span>开始 / 北京时间</span><input id="rec-start" type="datetime-local" value="${day}T00:00"></label>
     <label class="field"><span>结束 / 北京时间</span><input id="rec-end" type="datetime-local" value="${day}T23:59"></label><button class="btn btn-primary" id="rec-query">检索录像</button></div>
-    <section class="panel"><header class="panel-head"><h2>录像回放</h2><span class="muted" id="rec-note">选择已完成的录像片段播放</span></header>
+    <section class="panel" id="rec-panel" hidden><header class="panel-head"><h2>录像回放</h2><span class="muted" id="rec-note">选择已完成的录像片段播放</span></header>
     <div class="panel-body"><video id="rec-player" controls playsinline preload="metadata" style="width:100%;max-height:480px;background:var(--bg-0)"></video><div id="rec-current" class="muted"></div></div></section>
     <section class="panel table-panel"><div class="table-wrap" id="rec-list"></div></section>`;
   let dead = false, version = 0;
-  const player = $("#rec-player", root), list = $("#rec-list", root);
+  const player = $("#rec-player", root), list = $("#rec-list", root), panel = $("#rec-panel", root);
+  const resetPlayer = () => {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+    panel.hidden = true;
+    $("#rec-current", root).textContent = "";
+  };
   const search = async () => {
     const turn = ++version, id = $("#rec-station", root).value;
+    resetPlayer();
     if (!id) { setHTML(list, emptyBlock("没有可调阅的工位", "先接入相机并配置预览流及录像目录。")); return; }
     const start = $("#rec-start", root).value, end = $("#rec-end", root).value;
     if (!start || !end || end <= start) { toast("请选择有效的起止时间", "error"); return; }
@@ -32,13 +40,14 @@ export function render(root, params) {
   list.onclick = (e) => {
     const b = e.target.closest("[data-record]");
     if (!b) return;
+    panel.hidden = false;
     player.src = api.recordingVideo(b.dataset.station, b.dataset.record);
     $("#rec-current", root).textContent = b.dataset.record;
     player.play().catch(() => toast("请在播放器中点击播放，或检查浏览器是否支持该录像编码", "error"));
   };
   player.onerror = () => { if (!dead) toast("录像读取或解码失败，请检查文件和浏览器编码支持", "error"); };
   $("#rec-query", root).onclick = search;
-  $("#rec-station", root).onchange = () => { player.pause(); player.removeAttribute("src"); player.load(); search(); };
+  $("#rec-station", root).onchange = () => { resetPlayer(); search(); };
   search();
-  return () => { dead = true; version++; player.onerror = null; player.pause(); player.removeAttribute("src"); player.load(); };
+  return () => { dead = true; version++; player.onerror = null; resetPlayer(); };
 }

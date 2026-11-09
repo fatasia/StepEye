@@ -87,6 +87,12 @@
 
 /* ---------- SOP 配置 ---------- */
 .cfg { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: var(--s-3); align-items: start; }
+/* 左栏宽度有限:标题与操作按钮必须整词换行,不能在 1280-1600 区间被压成逐字竖排 */
+.cfg-map > .panel-head { flex-wrap: wrap; row-gap: 6px; padding-top: 6px; padding-bottom: 6px; }
+.cfg-map > .panel-head .head-left { flex-wrap: wrap; row-gap: 6px; }
+.cfg-map > .panel-head h2 { white-space: nowrap; flex: 0 0 auto; }
+.cfg-map > .panel-head .head-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.cfg-map > .panel-head .head-actions .btn { white-space: nowrap; flex: 0 0 auto; }
 .cfg-map .map { position: relative; margin: var(--s-3); background: var(--bg-0); border-radius: var(--r-ctl); overflow: hidden; border: 1px solid var(--line-subtle); }
 .cfg-map .map img, .cfg-map .map svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .cfg-map .map img { object-fit: contain; }

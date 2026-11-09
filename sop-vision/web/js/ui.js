@@ -124,3 +124,58 @@ export const errorBlock = (message, retryAttr = "data-retry") =>
   `<div class="state-block error" role="alert">${icon("alarm", 28)}<div class="state-title">加载失败</div><p>${esc(message)}</p><button class="btn" ${retryAttr}>${icon("refresh", 14)}重试</button></div>`;
 export const emptyBlock = (title, hint, action = "") =>
   `<div class="state-block">${icon("inbox", 28)}<div class="state-title">${esc(title)}</div><p>${esc(hint)}</p>${action}</div>`;
+
+/* ---------- 文件选择控件 ----------
+   浏览器原生 input[type=file] 会显示英文 "Choose File / No file chosen",
+   与中文界面不一致。保留原 input(表单语义/name 不变),在它外面加一层
+   统一的"选择文件 + 文件名"外观。 */
+let fileInputObserver = null;
+
+export function enhanceFileInputs(root = document) {
+  root.querySelectorAll('input[type="file"]:not([data-file-ui])').forEach((input) => {
+    if (input.hidden || input.closest(".file-picker")) return;
+    input.dataset.fileUi = "1";
+    const wrap = document.createElement("span");
+    wrap.className = "file-picker";
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    const button = document.createElement("span");
+    button.className = "file-picker-btn";
+    button.textContent = "选择文件";
+    const name = document.createElement("span");
+    name.className = "file-picker-name";
+    wrap.append(button, name);
+    input.classList.add("file-picker-input");
+    const sync = () => {
+      const files = input.files ? Array.from(input.files) : [];
+      name.textContent = files.length ? files.map((f) => f.name).join("、") : "未选择文件";
+      name.title = name.textContent;
+      wrap.classList.toggle("has-file", files.length > 0);
+    };
+    input.addEventListener("change", sync);
+    // input 在 <label> 内时,点击 label 已能唤起文件框,再绑 click 会弹两次。
+    if (!input.closest("label")) {
+      wrap.addEventListener("click", (event) => {
+        if (event.target !== input) input.click();
+      });
+    }
+    sync();
+  });
+}
+
+export function watchFileInputs() {
+  if (fileInputObserver) return;
+  let queued = false;
+  const run = () => {
+    queued = false;
+    enhanceFileInputs(document);
+  };
+  fileInputObserver = new MutationObserver(() => {
+    if (!queued) {
+      queued = true;
+      requestAnimationFrame(run);
+    }
+  });
+  fileInputObserver.observe(document.body, { childList: true, subtree: true });
+  run();
+}

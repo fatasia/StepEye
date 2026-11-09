@@ -1,5 +1,7 @@
 # 专用模型公开资源检索（2026-11-05）
 
+> **2026-11-09 更新：文中"CoatingVision 分割路线待评估""训练方向待定"已过期——框/分割两条路线均已训练并登记为 rejected。最新状态见 [STATUS-2026-11-09](STATUS-2026-11-09.md)。**
+
 本轮为纯检索任务：WebSearch 检索 + 官方页面/API 逐个核实。**未下载任何 >50MB 文件，未训练，未新增本地权重**。许可结论均以"实际打开许可页或官方 API 响应"为准，未打开的不标可用。证据文件保存在 `.v0/model-retrieval-20261105/`（Zenodo/Mendeley API 原始响应 JSON）。
 
 先读避免重复的文档：BATTERY-MODEL-FINAL-AUDIT、MODEL-GAPS-QUALITY、MODEL-GAPS-SAFETY-SOP、SAFETY-MODEL-AUDIT-2026-11-04、PUBLIC-MODEL-NEXT。本轮**未重复请求**：LGASS/OPT-SND（401）、cleanroom Roboflow v4 导出（401）、ESD_NOT_WEARING（403）、LIBAD（gated 401）、M-BSD（需协议）、DAEF（百度盘）、SH17（CC BY-NC-SA）、Thalos（类别不符）。

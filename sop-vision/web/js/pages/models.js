@@ -84,6 +84,12 @@ export function render(root) {
       .join("");
     actions();
   }
+  // 窄屏(单列)下详情在模型列表之后,选中后把它带到视口内,避免"点了没反应"。
+  function revealDetail() {
+    if (!window.matchMedia("(max-width: 1000px)").matches) return;
+    const detail = root.querySelector(".models-detail");
+    if (detail) detail.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   // 目录查询不启动推理进程；只有显式试跑才向后端提交图片。
   async function load() {
     showError("");
@@ -109,7 +115,7 @@ export function render(root) {
         : '<div class="models-no-model"><h3>还没有可选模型</h3><p>管理员登记本机模型后会出现在这里。没有模型也可以先手工标注。</p><a class="btn" href="#/labeling">打开标注工作台</a></div>';
       root
         .querySelectorAll("[data-model-id]")
-        .forEach((el) => (el.onclick = () => select(el.dataset.modelId)));
+        .forEach((el) => (el.onclick = () => { select(el.dataset.modelId); revealDetail(); }));
       if (models.length)
         select(
           models.some((m) => m.id === selected?.id)

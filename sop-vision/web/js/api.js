@@ -77,6 +77,11 @@ export const api = {
     return request(`/api/alerts?${q}`);
   },
   alertStats: () => request("/api/alerts/stats"),
+  alertGovernance: () => request("/api/operations/alert-governance"),
+  setAlertGovernance: (cooldown_s) => request("/api/operations/alert-governance", {
+    method: "PUT", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cooldown_s }),
+  }),
   inspectionStats: () => request("/api/inspection/stats"),
   alertPatch: (id, body) =>
     request(`/api/alerts/${encodeURIComponent(id)}`, { method: "PATCH",

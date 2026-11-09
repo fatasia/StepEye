@@ -13,7 +13,7 @@ export function render(root) {
       <div class="panel-body insp-upload">
         <div class="dropzone" id="t-drop" tabindex="0" role="button" aria-label="选择视频">${icon("camera", 20)}<span>选择视频(mp4/avi)</span></div>
         <input type="file" id="t-file" accept="video/mp4,video/x-msvideo" hidden>
-        <input id="t-name" class="field" style="flex:1 1 200px" placeholder="项目名,如:东门岗作业示教" autocomplete="off">
+        <label class="field" style="flex:1 1 200px"><span>项目名</span><input id="t-name" placeholder="如:东门岗作业示教" autocomplete="off"></label>
         <button class="btn btn-primary" id="t-go" disabled>${icon("check", 14)}创建标注项目</button>
       </div>
     </section>

@@ -113,13 +113,22 @@ class StationManager:
         self.store = CycleStore(data_dir / "sop.db")
         self._owns_alerts = alert_store is None
         # 治理门面:create 叠加风暴抑制/冷却/预算闸门,其余方法透传;close 经透传到达真实 store
-        from .alert_governance import GovernedAlerts, RuleCooldown
-        try:
-            cooldown_s = float(os.environ.get("STEPEYE_ALERT_COOLDOWN_S", "0") or 0)
-        except ValueError:
-            cooldown_s = 0.0
+        from .alert_governance import (GovernedAlerts, RuleCooldown, RuleBudget,
+                                       StormSuppressor, CounterStore, load_cooldown_setting)
+        cooldown_path = data_dir / "alert-governance.json"
+        cooldown_s = load_cooldown_setting(cooldown_path)
+        if cooldown_s is None:
+            try:
+                cooldown_s = float(os.environ.get("STEPEYE_ALERT_COOLDOWN_S", "0") or 0)
+            except ValueError:
+                cooldown_s = 0.0
+        counters = CounterStore(data_dir / "governance-counters.json")
+        self.governance_counters = counters
+        self.governance_settings_path = cooldown_path
         self.alerts = GovernedAlerts(alert_store or AlertStore(data_dir / "alerts.db"),
-                                     cooldown=RuleCooldown(cooldown_s))
+                                     storm=StormSuppressor(counters=counters),
+                                     budget=RuleBudget(counters=counters),
+                                     cooldown=RuleCooldown(cooldown_s, counters=counters))
         self.feishu_webhook = os.environ.get("FEISHU_WEBHOOK_URL", "").strip()
         from .notifications import NotificationDispatcher
         from .llm_provider import _default_env_path
@@ -593,7 +602,9 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     from .holdout_routes import router as holdout_router
     app.include_router(holdout_router(manager.holdout_runner))
     from .ops_routes import router as ops_router
-    app.include_router(ops_router(manager.data_dir, manager.storage_quota.limits))
+    app.include_router(ops_router(manager.data_dir, manager.storage_quota.limits,
+                                  governance=manager.alerts, counters=manager.governance_counters,
+                                  settings_path=manager.governance_settings_path))
     from .stock_reconciliation_routes import router as stock_recon_router
     app.include_router(stock_recon_router(manager.stock_recon))
     from .model_release_routes import router as model_release_router

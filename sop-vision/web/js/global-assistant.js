@@ -52,6 +52,7 @@ export function mountAssistant(host = document.body) {
     busy(false);
   }
   function close() {
+    if (panel.hidden) return;
     panel.hidden = true;
     launch.setAttribute("aria-expanded", "false");
     if (controller) {
@@ -71,6 +72,13 @@ export function mountAssistant(host = document.body) {
     if (!panel.hidden) form.elements.message.focus();
   };
   shell.querySelector("[data-assistant-close]").onclick = close;
+  // 面板是浮层:焦点可能已移到页面其他位置,关闭键与点外部必须在 document 层监听。
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !panel.hidden) close();
+  });
+  document.addEventListener("click", (event) => {
+    if (!panel.hidden && !shell.contains(event.target)) close();
+  });
   shell.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !panel.hidden) close();
   });

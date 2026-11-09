@@ -189,3 +189,21 @@
 .code { margin: 0; padding: var(--s-3); max-height: 56vh; overflow: auto; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-ctl); font: 12px/1.6 var(--font-mono); color: var(--text); white-space: pre; tab-size: 2; }
 .code-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-2); }
 .hint { margin-top: var(--s-3); font-size: 12px; }
+
+/* ---------- 文件选择(统一原生 input 外观) ---------- */
+.file-picker { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; vertical-align: middle; }
+.file-picker-input { position: absolute !important; width: 1px !important; height: 1px !important; margin: -1px !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; clip: rect(0 0 0 0) !important; white-space: nowrap !important; opacity: 0; }
+.file-picker-btn { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); color: var(--text-strong); font-size: 12px; cursor: pointer; white-space: nowrap; transition: border-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
+.file-picker:hover .file-picker-btn, .file-picker:focus-within .file-picker-btn { border-color: var(--accent); color: var(--accent); }
+.file-picker-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: 12px; }
+.file-picker.has-file .file-picker-name { color: var(--text); }
+
+.dur-cell { white-space: nowrap; }
+
+/* ---------- 告警治理抽屉 ---------- */
+.gov-form > label { display: grid; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.gov-form input[type="number"] { width: 100%; }
+.gov-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 14px 0; }
+.gov-stats .kv { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); }
+.gov-stats .kv .muted { font-size: 11px; }
+.gov-stats .kv .num { font-size: 16px; color: var(--text-strong); }
