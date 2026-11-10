@@ -8,6 +8,14 @@
 
 当前版本 **v0.9.0**，安装包、便携包、源码包都在 [Releases](https://github.com/fatasia/StepEye/releases/tag/v0.9.0)。
 
+## 演示视频
+
+[![点击观看 StepEye 系统介绍](docs/assets/stepeye-demo-preview.png)](docs/assets/stepeye-demo.mp4)
+
+[观看视频](docs/assets/stepeye-demo.mp4) · 1 分 53 秒 · 1080p · 中文旁白与字幕
+
+真实操作录屏：实时监控 → 异常筛选 → 周期详情与证据放大 → SOP 配置 → 视觉应用。工位输入为仿真画面，非现场相机实拍。
+
 ![实时监控：画面、区域状态、步骤轨迹在同一屏](docs/assets/ui-live.png)
 
 ## 三种用法
