@@ -9,6 +9,7 @@ data/
 
 # 设计与过程产物
 output/
+demo-output/
 .workbuddy-ai/
 
 # 凭据 —— 绝不入库
