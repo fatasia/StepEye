@@ -22,5 +22,6 @@ output/
 dist/
 build/
 *.spec
+!deploy/runtime_build.spec
 *.onnx
 *.pt
