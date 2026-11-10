@@ -10,6 +10,11 @@ from visual.mechanism_degradation import (DegBody, DegError, DegradationService,
 from visual import mechanism_degradation_worker as worker
 
 ROOT = Path(__file__).resolve().parents[1]
+FEATURES = ROOT / '.v0' / 'degradation-rul' / 'results' / 'features.csv'
+BUNDLE = ROOT / 'models' / 'mechanism' / 'femto-degradation'
+needs_local_assets = pytest.mark.skipif(
+    not (FEATURES.is_file() and (BUNDLE / 'model.onnx').is_file()),
+    reason='需要本机 FEMTO 特征缓存与模型包（.v0/degradation-rul）')
 
 
 def make_body(rms, baseline, unit='Bearing-test'):
@@ -34,6 +39,7 @@ def csv_reader():
     return csv.DictReader(cache.open())
 
 
+@needs_local_assets
 def test_bundle_fingerprint_intact(tmp_path):
     service = DegradationService(ROOT)
     assert pinned_bundle(ROOT).is_dir()
@@ -51,6 +57,7 @@ def test_contract_rejects_duplicates_and_bad_rms():
         DegWindow(unit_id='a', baseline_rms=1.0, rms_values=[1.0, 0.0, 1.2, 1.1, 1.0])
 
 
+@needs_local_assets
 def test_worker_similarity_on_real_holdout():
     """真实留出试验（Bearing1_2，40% 寿命）端到端：相似性 RUL 与基线报告同数量级。"""
     rms, baseline, duration = real_observation(0.4)
@@ -80,6 +87,7 @@ def worker_run(body):
         return json.loads(p.stdout)
 
 
+@needs_local_assets
 def test_service_analyze_and_close():
     service = DegradationService(ROOT)
     rms, baseline, _ = real_observation(0.55)
