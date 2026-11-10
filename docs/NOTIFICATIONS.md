@@ -13,12 +13,12 @@ StepEye 用可选的 [Apprise](https://github.com/caronc/apprise) 原生 Python 
 
 ```powershell
 python -m venv .v0/notify-venv
-.v0/notify-venv/Scripts/python.exe -m pip install -r sop-vision/requirements-notify.txt
+.v0/notify-venv/Scripts/python.exe -m pip install -r requirements-notify.txt
 ```
 
 Linux 使用 `.v0/notify-venv/bin/python`。SDK 固定为 Apprise 2.1.0（[PyPI](https://pypi.org/project/apprise/2.1.0/)，BSD-2-Clause）。
 
-编辑服务使用的 `sop-vision/.env`，填入解释器的绝对路径，以及需要的渠道：
+编辑服务使用的 `.env`，填入解释器的绝对路径，以及需要的渠道：
 
 ```dotenv
 STEPEYE_NOTIFY_PYTHON=D:/Documents/ChatGPT/visoul/.v0/notify-venv/Scripts/python.exe

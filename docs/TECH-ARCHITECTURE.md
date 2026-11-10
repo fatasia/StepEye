@@ -11,7 +11,7 @@
 ## 2. 目录导览
 
 ```
-sop-vision/
+
 ├── visual/            # 后端全部业务
 │   ├── server.py      # FastAPI 组装 + StationManager(工位生命周期/热加岗/重载)
 │   ├── runtime.py     # 单工位运行时(采集→感知→规则→事件)
@@ -53,14 +53,12 @@ sop-vision/
 
 ## 6. 测试与验收
 
-- `python -m pytest -q`（从 sop-vision 目录）：全量 1200+，CI（Windows/Linux + MCP 四 job）守护。
+- `python -m pytest -q`（仓库根目录）：全量 1200+，CI（Windows/Linux + MCP 四 job）守护。
 - 浏览器验收：Playwright 真实交互脚本放 `.v0/`（不入 Git），截图人工复核；UI 改动必过一遍真实交互。
 - 诚实条款：测试替身/合成信号/公开数据效果分开记录，不冒充现场验收。
 
 ## 7. 相关文档
 
 - [使用指南](USAGE.md)
-- [任务覆盖清单](TASK-COVERAGE.md)（B/S/Q/V 逐项状态）
-- [检测验证方法](DETECTION-VALIDATION.md)、[模型资产审计](MODEL-ASSET-AUDIT.md)
-- [机理实验室](MECHANISM-LAB.md)、[weihu 复用边界](WEIHU-REUSE.md)
-- [MCP 接入](MCP.md)、[AI 文档问答](AI-DOCUMENTS.md)
+- [机理实验室](MECHANISM-LAB.md)
+- [MCP 接入](MCP.md)

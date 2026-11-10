@@ -27,8 +27,8 @@ export STEPEYE_MODEL_TRUST_KEYS='["/etc/stepeye/trust/release-public.pem"]'
 私钥在模型目录外离线保存；服务器只部署公钥。使用已有 Ed25519 PEM 密钥，执行：
 
 ```powershell
-python sop-vision/tools/model_signature.py sign --directory D:/StepEye/models/pcb-v1 --key D:/Signing/release-private.pem
-python sop-vision/tools/model_signature.py verify --directory D:/StepEye/models/pcb-v1 --key D:/StepEye/trust/release-public.pem
+python tools/model_signature.py sign --directory D:/StepEye/models/pcb-v1 --key D:/Signing/release-private.pem
+python tools/model_signature.py verify --directory D:/StepEye/models/pcb-v1 --key D:/StepEye/trust/release-public.pem
 ```
 
 工具生成 `signature.json`，拒绝覆盖已有签名。模型升级应新建版本目录，再走现有评测、审批和发布；不原地替换活动模型。

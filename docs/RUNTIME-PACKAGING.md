@@ -41,12 +41,12 @@ v1的数据补充前后记录仍保留在v1目录。
 
 ## 构建与启动
 
-不改原品牌打包bat。新入口与spec独立，默认不覆盖已有产物：
+构建输出必须放在仓库外（构建脚本拒绝写入源码目录）：
 
 ```powershell
 python -m venv .v0/runtime-build-env
-.v0/runtime-build-env/Scripts/python.exe -m pip install -r sop-vision/deploy/requirements-runtime.txt
-.v0/runtime-build-env/Scripts/python.exe sop-vision/deploy/build_runtime.py --output .v0/runtime-build-new --allow-evaluation-assets
+.v0/runtime-build-env/Scripts/python.exe -m pip install -r deploy/requirements-runtime.txt
+.v0/runtime-build-env/Scripts/python.exe deploy/build_runtime.py --output D:/build/stepeye-runtime --allow-evaluation-assets
 ```
 
 `deploy/runtime-assets.json` 是资源白名单；`runtime_build.spec` 保留必要推理依赖，排除训练/开发栈。

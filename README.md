@@ -49,14 +49,13 @@ cd "$env:LOCALAPPDATA\StepEye"
 手动启动：
 
 ```powershell
-cd sop-vision
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python -m visual serve configs/demo_sim.yaml --port 8000
 ```
 
-源码包带演示用的 MediaPipe 手部/姿态/目标检测模型；训练和评测用的大权重不在包里，来源记在 `docs/MODEL-*.md`。
+源码包带演示用的 MediaPipe 手部/姿态/目标检测模型；训练和评测用的大权重不在包里，来源与许可记在 `models/public/*.json`。
 
 ## 功能
 
@@ -153,7 +152,7 @@ python -m visual serve configs/demo_sim.yaml --port 8000
 
 MediaPipe 手部 21 点、姿态、EfficientDet-Lite0 目标检测，用于手部停留判定和人员定位，随包附带。
 
-模型的许可、来源、SHA 逐项登记在 `models/public/*.json` 与 `docs/PUBLIC-*.md`。多数权重来自公开数据集训练，评估可用，商用再分发前需要按登记表逐项确认。
+模型的许可、来源、SHA 逐项登记在 `models/public/*.json`。多数权重来自公开数据集训练，评估可用，商用再分发前需要按登记表逐项确认。
 
 ## 界面
 
@@ -171,14 +170,17 @@ MediaPipe 手部 21 点、姿态、EfficientDet-Lite0 目标检测，用于手�
 FastAPI 单服务 + 零构建原生 JS 前端 + SQLite 证据库。模型、流媒体、采集都是可选组件，缺了就降级，不影响主流程。
 
 ```
-sop-vision/
-  visual/      规则引擎、感知、安全、质量、模型治理、路由
-  web/         原生 JS 页面与样式，改完刷新即生效
-  configs/     工位 YAML 与模板
-  deploy/      打包、安装、升级、Monibuca
-  tools/       训练、导出、评测、巡检脚本
-  tests/       pytest 全量用例
+visual/      规则引擎、感知、安全、质量、模型治理、路由
+web/         原生 JS 页面与样式，改完刷新即生效
+configs/     工位 YAML 与模板
+deploy/      打包、安装、升级、Monibuca
+tools/       训练、导出、评测、巡检脚本
+tests/       pytest 全量用例
+models/      模型权重与登记表
+docs/        技术、使用与模型文档
 ```
+
+仓库根就是服务本体，这些目录之外只剩 README、依赖清单和 CI 配置。
 
 一条周期从采集线程进来，依次过画质门禁、手部/人员感知、区域状态核验、SOP 状态机、安全规则、告警治理，最后落到证据库。试推和标注推理跑在独立子进程里，用完退出；在线检测器常驻服务进程。
 
@@ -187,27 +189,23 @@ sop-vision/
 ## 开发
 
 ```powershell
-cd sop-vision
 python -m pytest -q                              # 全量 1501 passed / 2 skipped
 python -m visual validate configs/demo_sim.yaml  # 校验规则编译
 node --check web/js/main.js                      # 前端零构建，语法单独检查
 ```
 
 - 前端不用打包器，`web/` 改完刷新即可。
-- 模型、代码、数据许可分开登记在 `models/public/*.json` 与 `docs/`。
+- 模型、代码、数据许可分开登记在 `models/public/*.json`。
 - 工位上线：文档 → 步骤草稿 → 人工确认 → YAML → 热加岗。
 
 ## 文档
 
 - [使用说明](docs/USAGE.md)：装、配、用、排查
 - [技术架构](docs/TECH-ARCHITECTURE.md)
-- [功能与状态](docs/STATUS-2026-11-09.md)
-- [剩余任务](docs/REMAINING-2026-11-09.md)
-- [MOT17 跟踪评测](docs/MOT17-EVAL-2026-11-09.md)
-- [运行包与安装升级](docs/RUNTIME-PACKAGING.md)
+- [全部文档](docs/README.md)：能力、模型、接入、运维
 
 ## 范围
 
 代码和模型在仿真、公开数据和固定 holdout 上验证过；现场精度要按实际工位验收，同一套模型换一条线、换一个光照，结果会不一样。
 
-运行包内含评估模型与 Monibuca v6 beta，商用再分发前按 `docs/` 里的许可记录逐项确认。代码许可见仓库内 LICENSE 与各文件头，第三方组件许可见 `docs/WEIHU-REUSE.md`、`docs/PUBLIC-*.md`。
+运行包内含评估模型与 Monibuca v6 beta，商用再分发前按 `models/public/*.json` 里的许可登记逐项确认。

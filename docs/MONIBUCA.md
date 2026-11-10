@@ -9,7 +9,7 @@ StepEye 在 Windows、Linux 上运行同一套 Python 服务与 Web 页面；Mon
 
 ## 1. 安装与启动
 
-在 `sop-vision` 目录执行：
+在仓库根目录执行：
 
 ```text
 python deploy/install_monibuca.py
@@ -35,7 +35,7 @@ cd data/monibuca
 
 ## 2. 接线
 
-在 `sop-vision/.env` 配置（地址只留在服务端）：
+在 `.env` 配置（地址只留在服务端）：
 
 ```dotenv
 MONIBUCA_URL=http://127.0.0.1:8180

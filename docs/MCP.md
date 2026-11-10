@@ -24,21 +24,21 @@ StepEye 可把项目、标注和质量报告交给外部 Agent 只读查询，�
 
 ```powershell
 python -m venv .v0/mcp-venv
-.\.v0\mcp-venv\Scripts\python.exe -m pip install -r sop-vision/requirements-mcp.txt
+.\.v0\mcp-venv\Scripts\python.exe -m pip install -r requirements-mcp.txt
 ```
 
 Linux 对应：
 
 ```sh
 python3 -m venv .v0/mcp-venv
-.v0/mcp-venv/bin/python -m pip install -r sop-vision/requirements-mcp.txt
+.v0/mcp-venv/bin/python -m pip install -r requirements-mcp.txt
 ```
 
 固定官方 `mcp==1.30.0` 的仍维护 v1 分支，保留现有客户端的 `ClientSession` 握手。当前官方 v2 已改 API/协议，迁移另行验证；这不是第三方 `fastmcp` 包。MCP 环境不安装模型、不加载 cv2、不升级主环境的 FastAPI/Pydantic。[官方维护说明](https://github.com/modelcontextprotocol/python-sdk/tree/v1.x)、[v2 变更](https://py.sdk.modelcontextprotocol.io/whats-new/)。
 
 ### stdio（推荐）
 
-在 MCP 客户端配置中指定绝对 Python 路径，工作目录指向 `sop-vision`，启动参数为：
+在 MCP 客户端配置中指定绝对 Python 路径，工作目录指向仓库根目录，启动参数为：
 
 ```text
 -m visual.mcp_server
@@ -56,7 +56,7 @@ python3 -m venv .v0/mcp-venv
 
 ### 本机 Streamable HTTP
 
-同样注入上述变量，在 `sop-vision` 工作目录运行：
+同样注入上述变量，在 仓库根目录运行：
 
 ```text
 <MCP环境的Python绝对路径> -m visual.mcp_server --transport streamable-http --port 8766
@@ -107,7 +107,7 @@ python3 -m venv .v0/mcp-venv
 
 `bearer_env` 指定该外部服务的独立凭据变量名；不填表示明确匿名连接。不能借用 `STEPEYE_MCP_TOKEN`。文件里不写 token。配置应放在仅管理员可写的目录，Windows 设置 ACL，Linux 设置所有者和 `0600`；显式配置路径是本机信任边界，不能交给普通 Web 用户改。
 
-在 `sop-vision` 工作目录，用 MCP 环境的 Python：
+在 仓库根目录，用 MCP 环境的 Python：
 
 ```text
 -m visual.mcp_connectors --config <配置文件绝对路径> list-connectors
@@ -129,7 +129,7 @@ python3 -m venv .v0/mcp-venv
 
 ## 验证
 
-在 `sop-vision` 工作目录，用独立 MCP 环境执行（测试环境另装 pytest）：
+在 仓库根目录，用独立 MCP 环境执行（测试环境另装 pytest）：
 
 ```text
 <MCP环境Python> -m pip install pytest
@@ -140,7 +140,7 @@ python3 -m venv .v0/mcp-venv
 
 本轮还对实际运行的 StepEye REST 完成贯穿检查：管理员发放限定项目的令牌 → 官方 stdio 握手与 6 个工具发现 → 仅见授权项目 → 读取质量报告 → REST 撤销 → 后续工具调用拒绝。检查用令牌已撤销，不依赖固定账号或入库凭据。
 
-本机 Windows 的 SDK 契约测试通过不等于现场准确率、Linux 实机或任意第三方 MCP 服务兼容性验收；Linux 在独立 CI 环境验证同组测试。现场标注与工业验收见 [自动标注方案](AUTO-LABEL-MCP-PLAN.md)、[工业验收清单](INDUSTRIAL-ACCEPTANCE.md)。
+本机 Windows 的 SDK 契约测试通过不等于现场准确率、Linux 实机或任意第三方 MCP 服务兼容性验收；Linux 在独立 CI 环境验证同组测试。现场标注与工业验收按现场流程执行。
 
 ### 可选：智能体提交框建议
 

@@ -7,7 +7,7 @@
 - 异常、断连、超时、非有限数、越界或设备无效码 → `quality=invalid,value=null`，不伪造0。
 - SQLite持久序号，同状态文件只允许一个进程；默认禁用时不打开设备、数据库或线程。
 
-实现：[modbus_signal_bridge.py](../sop-vision/tools/modbus_signal_bridge.py)。仅用Python标准库及项目已有Pydantic，没有安装PyModbus或引入Docker。协议依据 [Modbus Application Protocol V1.1b3](https://modbus.org/docs/Modbus_Application_Protocol_V1_1b3.pdf) 的FC03/04及[官方地址示例](https://www.modbus.org/introduction-to-modbus)。这是小范围客户端，不是完整Modbus协议栈。
+实现：[modbus_signal_bridge.py](../tools/modbus_signal_bridge.py)。仅用Python标准库及项目已有Pydantic，没有安装PyModbus或引入Docker。协议依据 [Modbus Application Protocol V1.1b3](https://modbus.org/docs/Modbus_Application_Protocol_V1_1b3.pdf) 的FC03/04及[官方地址示例](https://www.modbus.org/introduction-to-modbus)。这是小范围客户端，不是完整Modbus协议栈。
 
 ## 1. 配置
 
@@ -109,7 +109,6 @@ $body = @{ username=$credential.UserName; password=$credential.GetNetworkCredent
 Invoke-RestMethod "$origin/api/auth/login" -Method Post -ContentType 'application/json' -Body $body -SessionVariable session | Out-Null
 $env:STEPEYE_BRIDGE_TOKEN = $session.Cookies.GetCookies([uri]$origin)['vsession'].Value
 Remove-Variable body,credential
-cd sop-vision
 python -m tools.modbus_signal_bridge --config ..\bridge.json --once
 python -m tools.modbus_signal_bridge --config ..\bridge.json
 Remove-Item Env:STEPEYE_BRIDGE_TOKEN
@@ -132,7 +131,6 @@ CLI只输出source/name、sequence、质量、错误码和HTTP状态，不输出
 ## 5. 本机实际验证
 
 ```powershell
-cd sop-vision
 python -m pytest -q tests/test_modbus_signal_bridge.py
 ```
 

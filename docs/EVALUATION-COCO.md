@@ -5,12 +5,11 @@
 - 工作点指标：指定置信度、IoU下的逐类TP/FP/FN、Precision、Recall及逐图明细。
 - AP：推理分数下限独立设为`min(0.001, 工作点置信度)`，不再先用0.25截掉低分框；每图最多100框。
 - 官方COCO bbox：12项AP/AR，包含small/medium/large及maxDets=1/10/100；面积按原图像素计算。没有对应真值返回null，页面显示「—」。
-- 精度对比：同模型的两份已复核报告比较逐类P/R；数据量不足单列，不自动回滚。见[精度对比](ACCURACY-COMPARISON.md)。
+- 精度对比：同模型的两份已复核报告比较逐类P/R；数据量不足单列，不自动回滚。在同一报告里可与历史报告比较。
 
 ## 可选依赖
 
 ```powershell
-cd sop-vision
 python -m pip install -r requirements-evaluation.txt
 ```
 

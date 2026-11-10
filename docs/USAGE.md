@@ -21,7 +21,6 @@
 ### 源码
 
 ```powershell
-cd sop-vision
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt

@@ -3,9 +3,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
-# 运行产物(SQLite、证据包、V0 冒烟输出)
-sop-vision/data/
+# 运行产物(SQLite、证据包、冒烟输出)
+data/
 .v0/
+
+# 设计与过程产物
+output/
+.workbuddy-ai/
 
 # 凭据 —— 绝不入库
 .env
