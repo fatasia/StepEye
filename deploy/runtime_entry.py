@@ -10,6 +10,7 @@ WORKERS = frozenset({
     'visual.gauge_worker', 'visual.holdout_worker', 'visual.mechanism_valve_worker', 'visual.pin_predict',
     'visual.mechanism_rul_worker', 'visual.notifications', 'visual.code_reader',
     'visual.training_worker', 'visual.documents_parse', 'visual.mcp_server',
+    'visual.source_probe', 'visual.onvif_worker',
 })
 
 

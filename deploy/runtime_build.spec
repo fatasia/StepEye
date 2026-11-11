@@ -15,6 +15,9 @@ if not (STAGE / 'web' / 'index.html').is_file():
 datas = [(str(STAGE / name), name) for name in
          ('web', 'configs', 'docs', 'models', 'deploy', 'visual') if (STAGE / name).is_dir()]
 datas += collect_data_files('rapidocr_onnxruntime')
+datas += collect_data_files('onvif')
+# Apprise discovers notification plugins by scanning files, not Python imports.
+datas += collect_data_files('apprise', include_py_files=True)
 def runtime_module(name):
     # Library unit tests and benchmarks are not inference entry points.
     return not {'test', 'tests', 'benchmark', 'benchmarks'}.intersection(name.split('.'))
@@ -22,7 +25,7 @@ def runtime_module(name):
 
 hidden = []
 for package in ('visual', 'mediapipe.tasks', 'rapidocr_onnxruntime',
-                'mcp', 'apprise', 'harvesters', 'websockets'):
+                'mcp', 'apprise', 'harvesters', 'websockets', 'onvif', 'wsdiscovery'):
     hidden += collect_submodules(package, filter=runtime_module)
 hidden += ['uvicorn.logging', 'uvicorn.loops.auto',
            'uvicorn.protocols.http.auto', 'uvicorn.protocols.websockets.auto',

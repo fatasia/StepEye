@@ -172,6 +172,8 @@ class StationManager:
         self.label_jobs = LabelJobs(data_dir / "labeling/jobs.db", self.labels, self.label_engines)
         from .training_jobs import TrainingJobs
         self.training = TrainingJobs.from_env(data_dir / "training", self.labels, self.label_engines)
+        from .setup_routes import apply_options
+        apply_options(self)
         self.evidence_root = data_dir / "evidence"
         self.runtimes: dict[str, StationRuntime] = {}
         self.paths: dict[str, Path] = {}
@@ -179,6 +181,8 @@ class StationManager:
         self._threads: dict[str, threading.Thread] = {}
         # 拍照即检:给了配置且有凭据才启用;没凭据时端点返回明确指引,而不是悄悄坏掉
         self.inspection: InspectionService | None = None
+        if inspection_config is None and (data_dir / 'inspection-scenes.yaml').exists():
+            inspection_config = data_dir / 'inspection-scenes.yaml'
         if inspection_config is not None:
             cfg = provider_cfg or ProviderConfig.from_env()
             self.inspection = InspectionService(
@@ -221,6 +225,10 @@ class StationManager:
         def fwd(kind: str, payload: dict[str, Any]) -> None:
             if kind in PUSH_KINDS:
                 self.hub.publish({"type": "event", "station": sid, "kind": kind, "data": payload})
+            apps = getattr(self, 'applications', None)
+            if apps is not None and kind in ('violation', 'safety') and not apps.publish_alerts(sid):
+                apps.record(sid, kind, payload)
+                return
             if kind == "violation":  # SOP 违规入告警中心(按周期+类型防重)
                 rec, new = self.alerts.create(sid, "sop", payload["kind"], payload["severity"],
                                               payload["message"], ref_id=f"{payload.get('cycle_id')}:{payload['kind']}")
@@ -300,6 +308,8 @@ class StationManager:
         rt.bind_calibrations(self.calibrations)
         rt.bind_ai_services(self.ai_services)
         rt.frame_observers.append(self.patrol.observe_runtime)
+        if hasattr(self, 'anomaly_service'):
+            rt.frame_observers.append(self.anomaly_service.observe)
         rt.bind_signal_inbox(SignalInbox(self.signal_store, scope=cfg.station))
         rt.listeners.append(self._forwarder(cfg.station))
         if cfg.source.shadow and self.shadow_store is None:
@@ -363,6 +373,8 @@ class StationManager:
         rt.bind_calibrations(self.calibrations)
         rt.bind_ai_services(self.ai_services)
         rt.frame_observers.append(self.patrol.observe_runtime)
+        if hasattr(self, "anomaly_service"):
+            rt.frame_observers.append(self.anomaly_service.observe)
         rt.bind_signal_inbox(SignalInbox(self.signal_store, scope=cfg.station))
         rt.listeners.append(self._forwarder(sid))
         self.runtimes[sid] = rt
@@ -413,6 +425,7 @@ class StationManager:
         self.patrol.close()
         self.geo.close()
         self.signal_store.close()
+        self.action_ledger.close()
         self.audit.close()
         if self._owns_alerts:
             self.alerts.close()
@@ -440,6 +453,11 @@ class ZonesBody(BaseModel):
 class LoginBody(BaseModel):
     username: str
     password: str
+
+
+class SetupAccountBody(BaseModel):
+    username: str = Field(min_length=1,max_length=64)
+    password: str = Field(min_length=8,max_length=256)
 
 
 class UserBody(BaseModel):
@@ -492,8 +510,8 @@ class OnvifDiscoverBody(BaseModel):
 class OnvifAdoptBody(BaseModel):
     host: str = Field(min_length=1, max_length=253, pattern=r"^[A-Za-z0-9_.:-]+$")
     port: int = Field(default=80, ge=1, le=65535)
-    user: str
-    password: str
+    user: str = Field(max_length=200)
+    password: str = Field(max_length=500)
 
 
 class TruthBody(BaseModel):
@@ -553,10 +571,14 @@ def _station_config_view(rt: StationRuntime, path: Path) -> dict[str, Any]:
 
 
 def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None) -> FastAPI:
+    from .applications import Applications
+    from .application_routes import router as application_router
+    manager.applications = Applications(manager)
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         hub.loop = asyncio.get_running_loop()
         manager.start()
+        await asyncio.to_thread(manager.applications.restore)
         task = asyncio.create_task(_push_states())
         try:
             yield
@@ -564,18 +586,29 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
             await asyncio.to_thread(app.state.media.close)
+            manager.anomaly_service.close()
             manager.stop()
+            manager.applications.close()
 
     async def _push_states() -> None:
         while True:
             await asyncio.sleep(0.5)
             if manager.release_monitor.active_scenes():
                 await asyncio.to_thread(manager.monitor_releases)
-            for sid, rt in manager.runtimes.items():
+            for sid, rt in list(manager.runtimes.items()):
                 if rt.state_cache or rt.thermal_service is not None:
                     hub.publish({"type": "state", "station": sid, "data": rt.public_state()})
 
     app = FastAPI(title="SOP Vision", lifespan=lifespan)
+    app.include_router(application_router(manager.applications))
+    from .anomaly_service import AnomalyService
+    from .anomaly_routes import router as anomaly_router
+    manager.anomaly_service = AnomalyService(manager)
+    app.include_router(anomaly_router(manager.anomaly_service))
+    from .step_editor import router as step_editor_router
+    app.include_router(step_editor_router(manager))
+    from .setup_routes import router as setup_router
+    app.include_router(setup_router(manager))
     app.state.manager = manager
     app.state.auth = auth
     app.state.media = MediaBridge.from_env()
@@ -584,7 +617,7 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
     app.state.recordings = RecordingIndex(Path(record_dir)) if record_dir else None
     app.include_router(label_router(manager.labels, manager.label_jobs, manager.label_engines))
     from .notification_routes import router as notification_router
-    app.include_router(notification_router(manager.notifications))
+    app.include_router(notification_router(manager))
     from .audit import router as audit_router
     app.include_router(audit_router(manager.audit))
     from .model_routes import router as model_router
@@ -817,6 +850,30 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
             raise HTTPException(e.status, str(e)) from e
         resp = Response(json.dumps({"ok": True, "username": body.username}), media_type="application/json")
         resp.set_cookie("vsession", token, httponly=True, samesite="lax", max_age=12 * 3600, path="/")
+        return resp
+
+    @app.post('/api/auth/setup')
+    def auth_setup(body: SetupAccountBody, request: Request):
+        nonlocal auth
+        if auth is not None:
+            raise HTTPException(409, '认证已经启用，请登录')
+        if request.client.host not in ('127.0.0.1','::1','testclient'):
+            raise HTTPException(403, '请在服务器本机完成首次初始化')
+        if request.headers.get('origin') and request.headers['origin'] != str(request.base_url).rstrip('/'):
+            raise HTTPException(403, '请从本机 StepEye 页面初始化')
+        store=AuthStore(manager.data_dir/'auth.db')
+        try:
+            if store.count()==0:store.set_user(body.username,body.password,'admin')
+            token=store.login(body.username,body.password)
+            AuthStore.check(store.verify_session(token),'admin')
+        except (ValueError,AuthError):
+            store.close()
+            raise HTTPException(400, '账号或密码无效；已有账号时请使用管理员凭据') from None
+        from .recipes import _atomic_write
+        _atomic_write(manager.data_dir/'auth-enabled',b'1')
+        auth=store;app.state.auth=store
+        resp=Response(json.dumps({'ok':True}),media_type='application/json')
+        resp.set_cookie('vsession',token,httponly=True,samesite='lax',max_age=12*3600,path='/')
         return resp
 
     @app.post("/api/auth/logout")
@@ -1271,6 +1328,20 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
         return {"ok": True}
 
     # ---- 相机接入:ONVIF / GB28181 ----
+    def run_onvif_worker(spec: dict, timeout: float) -> dict:
+        import subprocess
+        import sys
+        try:
+            process=subprocess.run([sys.executable,'-m','visual.onvif_worker'],input=json.dumps(spec),
+                text=True,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,timeout=timeout,
+                cwd=Path(__file__).resolve().parents[1],creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+            result=json.loads(process.stdout)
+            if process.returncode or not result.get('ok'):
+                raise ValueError('ONVIF 操作失败，请检查设备、网络和账号')
+            return result
+        except (OSError,subprocess.TimeoutExpired,ValueError):
+            raise HTTPException(400,'ONVIF 操作失败，请检查设备、网络和账号') from None
+
     @app.get("/api/cameras/onvif/status")
     def onvif_status() -> dict[str, Any]:
         import importlib.util
@@ -1279,35 +1350,28 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
 
     @app.post("/api/cameras/onvif/discover")
     def onvif_discover(body: OnvifDiscoverBody) -> dict[str, Any]:
-        from .onvif import wsdiscovery_probe
-        try:
-            return {"ok": True, "devices": wsdiscovery_probe(body.timeout_s)}
-        except RuntimeError as e:
-            raise HTTPException(400, str(e)) from e
+        return run_onvif_worker({'action':'discover','timeout_s':body.timeout_s},body.timeout_s+10)
 
     @app.post("/api/cameras/onvif/adopt")
     def onvif_adopt(body: OnvifAdoptBody) -> dict[str, Any]:
         """读相机 RTSP 主码流地址与 GeoLocation(若有);返回信息供向导/工位 source 使用。"""
-        from .onvif import device_rtsp_and_geo
-        try:
-            return {"ok": True, **device_rtsp_and_geo(body.host, body.port, body.user, body.password)}
-        except RuntimeError as e:
-            raise HTTPException(400, str(e)) from e
+        return run_onvif_worker({'action':'adopt',**body.model_dump()},30)
 
     @app.get("/api/cameras/gb28181/status")
     def gb28181_status() -> dict[str, Any]:
-        env = {**load_env_file(_default_env_path()), **os.environ}
-        return {"configured": bool(env.get("GB28181_WVP_URL")), "hint": "配置 GB28181_WVP_URL/USER/PASS 后启用;部署侧为 wvp-pro + ZLMediaKit"}
+        from .setup_routes import wvp_options
+        return {"configured": bool(wvp_options(manager)['url']), "hint": "在设置中配置 WVP；部署侧需要 wvp-pro 和媒体服务"}
 
     @app.post("/api/cameras/gb28181/sync")
     def gb28181_sync() -> dict[str, Any]:
         """从 wvp-pro 拉设备目录(含国标必选经纬度)→ GIS 点位库。"""
-        env = {**load_env_file(_default_env_path()), **os.environ}
-        if not env.get("GB28181_WVP_URL"):
-            raise HTTPException(400, "未配置 GB28181_WVP_URL(部署 wvp-pro + ZLMediaKit 后填写)")
+        from .setup_routes import wvp_options
+        cfg=wvp_options(manager)
+        if not cfg['url']:
+            raise HTTPException(400, "请先在设置中配置 WVP 平台")
         from .gb28181 import WvpClient
         from .geo import sync_from_device_list
-        c = WvpClient(env["GB28181_WVP_URL"], env.get("GB28181_USER", "admin"), env.get("GB28181_PASS", ""))
+        c = WvpClient(cfg['url'],cfg['username'],cfg['password'])
         try:
             devs = c.devices()
         except Exception:
@@ -1567,50 +1631,6 @@ def create_app(manager: StationManager, hub: Hub, auth: AuthStore | None = None)
             raise HTTPException(404, "抽帧不存在")
         return FileResponse(path, media_type="image/jpeg")
 
-    # ---- 免训练外观检测(AnomalyDINO 式) ----
-    @app.post("/api/anomaly/{scene}/register", status_code=201)
-    async def anomaly_register(scene: str, files: list[UploadFile] = File(...),
-                               threshold: float = Form(0.12)) -> dict[str, Any]:
-        """登记 OK 图:上传 1-8 张好品图建立外观记忆库(免训练免标注坏品)。"""
-        from .anomaly import AnomalyEngine
-        if not 1 <= len(files) <= 8:
-            raise HTTPException(400, "OK 图 1~8 张")
-        if not 0.02 <= threshold <= 1.0:
-            raise HTTPException(400, "threshold 需在 0.02~1.0")
-        d = manager.data_dir / "anomaly" / scene
-        eng = AnomalyEngine.load(d) if (d / "engine.json").is_file() else AnomalyEngine(threshold)
-        added = 0
-        for f in files:
-            data = await f.read()
-            arr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-            if arr is None:
-                raise HTTPException(400, f"{f.filename} 不是可解码图片")
-            eng.add_ok(arr)
-            added += 1
-        eng.save(d)
-        return {"ok": True, "scene": scene, "total_refs": eng.n_refs, "added": added}
-
-    @app.post("/api/anomaly/{scene}/inspect", status_code=201)
-    async def anomaly_inspect(scene: str, image: UploadFile = File(...)) -> dict[str, Any]:
-        """判定一张图;结果同步进影子库(供真值标注与漏检/误杀统计)。"""
-        from .anomaly import AnomalyEngine
-        d = manager.data_dir / "anomaly" / scene
-        if not (d / "engine.json").is_file():
-            raise HTTPException(409, "该场景尚未登记 OK 图,无法判定")
-        eng = AnomalyEngine.load(d)
-        data = await image.read()
-        arr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-        if arr is None:
-            raise HTTPException(400, "图片不可解码")
-        out = eng.inspect(arr)
-        rec, _ = manager.alerts.create(scene, "anomaly", out["verdict"] or "UNCERTAIN",
-                                       "warn", f"外观异常分 {out['score']}(阈值 {out['threshold']})",
-                                       ref_id=f"{int(time.time() * 1000)}")
-        if manager.shadow_store is not None:
-            manager.shadow_store.add("anomaly", scene, str(rec["id"]), out["verdict"], out["score"],
-                                     {"score": out["score"], "max_patch": out["max_patch"]})
-        return {"ok": True, "scene": scene, "alert_id": rec["id"], **out}
-
     # ---- 模板库 / 外部信号 ----
     @app.get("/api/templates")
     def templates() -> dict[str, Any]:
@@ -1772,6 +1792,8 @@ def build_app(config_paths: list[Path], data_dir: Path, inspection_config: Path 
               vlm_transport=None, provider_cfg: ProviderConfig | None = None,
               auth: AuthStore | None = None, alert_store: AlertStore | None = None,
               shadow: bool = False) -> FastAPI:
+    if auth is None and (data_dir/'auth-enabled').exists():
+        auth=AuthStore(data_dir/'auth.db')
     hub = Hub()
     return create_app(StationManager(config_paths, data_dir, hub, inspection_config, vlm_transport,
                                      provider_cfg, alert_store, shadow), hub, auth)

@@ -7,6 +7,6 @@ def router(dispatcher) -> APIRouter:
 
     @api.get("/api/notifications/status")
     def status() -> dict:
-        return dispatcher.snapshot()
+        return getattr(dispatcher, 'notifications', dispatcher).snapshot()
 
     return api

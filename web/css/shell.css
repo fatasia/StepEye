@@ -65,6 +65,8 @@
 .nav a.on { background: var(--accent-soft); color: var(--text-strong); }
 .nav a.on::before { content: ""; position: absolute; left: -8px; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--accent); }
 .nav a.on .ico { color: var(--accent); }
+.nav-primary { font-weight: 600; }
+.nav-primary + .nav-group { margin-top: var(--s-2); }
 /* 二级导航:组头折叠,子项缩进;当前页所在组自动展开 */
 .nav-group { display: flex; flex-direction: column; }
 .nav-head {
@@ -90,18 +92,7 @@
 @keyframes page-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* ---------- 响应式 ---------- */
-@media (max-width: 1279px) {
-  :root { --nav-w: 56px; }
-  .nav a span { display: none; }
-  .nav a { justify-content: center; padding: 0; }
-  .nav-head span, .nav-head .chev { display: none; }
-  .nav-head { justify-content: center; padding: 0; }
-  .nav-items a { padding-left: 0; }
-  .brand-sub { display: none; }
-  .brand { width: auto; }
-  .brand-name { display: none; }
-}
-@media (max-width: 799px) {
+@media (max-width: 1023px) {
   .app { grid-template-columns: minmax(0, 1fr); }
   .nav-toggle { display: inline-grid; }
   .brand-name { display: inline; }

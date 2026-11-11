@@ -17,7 +17,7 @@ def entry():
     'visual.action_predict','visual.label_predict','visual.classification_predict',
     'visual.gauge_worker','visual.holdout_worker','visual.mechanism_valve_worker','visual.pin_predict',
     'visual.mechanism_rul_worker','visual.notifications','visual.code_reader',
-    'visual.training_worker','visual.documents_parse','visual.mcp_server'])
+    'visual.training_worker','visual.documents_parse','visual.mcp_server','visual.onvif_worker'])
 def test_allowlisted_worker_arguments_and_restore(entry,monkeypatch,name):
     original=sys.argv;calls=[]
     def run(module,**kwargs):calls.append((module,kwargs,list(sys.argv)))
@@ -50,6 +50,13 @@ def test_argv_restored_on_worker_exit(entry,monkeypatch,error):
     monkeypatch.setattr(entry.runpy,'run_module',run)
     with pytest.raises(type(error)):entry.dispatch(['-m','visual.gauge_worker'])
     assert sys.argv is original
+
+
+def test_source_probe_is_explicitly_allowed_in_frozen_runtime(entry,monkeypatch):
+    calls=[]
+    monkeypatch.setattr(entry.runpy,'run_module',lambda module,**kwargs:calls.append(module))
+    assert entry.dispatch(['-m','visual.source_probe'])==0
+    assert calls==['visual.source_probe']
 
 
 def test_default_argv_and_cli_dispatch(entry,monkeypatch):

@@ -17,10 +17,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDE_DIRS = {".git", ".github", ".v0", "dist", "__pycache__", ".pytest_cache", "node_modules",
                 ".venv", "venv", "output", "test-videos", ".workbuddy-ai", "data", "build"}
-EXCLUDE_SUFFIX = {".pyc", ".pyo", ".zip", ".7z", ".exe", ".dll", ".pyd"}
+EXCLUDE_SUFFIX = {".pyc", ".pyo", ".zip", ".7z", ".exe", ".dll", ".pyd",
+                  ".key", ".pem", ".crt", ".pfx", ".p12", ".db", ".sqlite", ".sqlite3"}
 # 源码包只带入口文件与代码目录;模型目录单独按白名单收。
 TOP_FILES = ("README.md", ".env.example", "pytest.ini")
-TOP_DIRS = ("visual", "web", "configs", "deploy", "tools", "tests", "tests-js", "docs")
+TOP_DIRS = ("visual", "web", "configs", "deploy", "tools", "tests", "tests-js", "docs", "desktop")
+EXCLUDE_PATHS = {"desktop/src-tauri/runtime", "desktop/src-tauri/target", "desktop/src-tauri/gen"}
 # models/ 下只带演示所需模型与所有 JSON 注册表;训练/评测权重不进源码包。
 DEMO_MODELS = {"hand_landmarker.task", "pose_landmarker_lite.task", "efficientdet_lite0.tflite"}
 MODEL_SKIP_DIRS = {"community", "action", "mechanism"}
@@ -59,9 +61,15 @@ def add_tree(bundle: zipfile.ZipFile, source: Path, arc_root: str, *, filter_mod
     count = 0
     for current, dirs, files in os.walk(source):
         current_path = Path(current)
-        dirs[:] = sorted(d for d in dirs if d not in EXCLUDE_DIRS)
+        dirs[:] = sorted(d for d in dirs if d not in EXCLUDE_DIRS
+                         and not (current_path / d).is_symlink()
+                         and (current_path / d).relative_to(ROOT).as_posix() not in EXCLUDE_PATHS)
         for name in sorted(files):
             path = current_path / name
+            if path.is_symlink():
+                continue
+            if name.startswith('.env') or name.endswith('.env') or name.endswith(('-wal', '-shm')):
+                continue
             if path.suffix.lower() in EXCLUDE_SUFFIX:
                 continue
             if filter_models and not keep_model(path):

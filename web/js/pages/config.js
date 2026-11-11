@@ -2,6 +2,7 @@ import { openReferenceGallery } from "./action-references.js";
 import { openSafetySettings } from "./safety-config.js";
 import { openRecipeManagement } from "./recipe-management.js";
 import { openIndustryTemplates } from "./industry-templates.js";
+import { openStepEditor } from './step-editor.js';
 import { api } from "../api.js";
 import { icon } from "../icons.js";
 import { store, subscribe } from "../store.js";
@@ -89,7 +90,7 @@ function roiHtml(cfg, id, live) {
 export function render(root, params) {
   const id = params.id || store.metas[0]?.id;
   if (!id) {
-    root.innerHTML = emptyBlock("没有可配置的工位", "先用 python -m visual serve 配置文件.yaml 启动工位。");
+    root.innerHTML = emptyBlock("还没有工位", '在「我的应用」中创建应用并接入画面。') + '<a class="btn btn-primary" href="#/applications">新建应用</a>';
     return () => {};
   }
   let safetyDrawer = null;
@@ -194,7 +195,7 @@ export function render(root, params) {
         </section>
         <section class="panel cfg-detail">
           <header class="panel-head"><div class="tabs" role="tablist">${TABS.map(([k, t]) => `<button role="tab" data-tab="${k}" class="${k === tab ? "on" : ""}" aria-selected="${k === tab}">${t}</button>`).join("")}</div>
-            <span class="mono faint" title="规则指纹">${esc(cfg.meta.rules_hash)}</span></header>
+            ${cfg.cycle?'<button class="btn" data-edit-steps>编辑步骤</button>':''}</header>
           <div class="panel-body" data-r="pane"></div>
         </section>
       </div>`;
@@ -219,6 +220,7 @@ export function render(root, params) {
     };
     $("#sel", root).onchange = (e) => (location.hash = `#/config/${encodeURIComponent(e.target.value)}`);
     root.addEventListener("click", async (e) => {
+      if (e.target.closest('[data-edit-steps]')) { try { await openStepEditor(id); } catch(error) { toast(error.message, 'error'); } return; }
       if (e.target.closest("[data-action-references]")) {
         safetyDrawer?.close();
         safetyDrawer = openReferenceGallery(id);

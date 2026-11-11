@@ -22,7 +22,7 @@ const short = (sha) => (sha ? String(sha).slice(0, 10) + "…" : "—");
 
 /** 模型发布管理：评测报告 → 候选 → 审批 → 激活到场景 → 可回滚，一屏完成。
  * 运行监控由管理员显式启用，精度仍以独立评测为准。 */
-export function openReleaseManagement({ canWrite }) {
+export function openReleaseManagement({ canWrite, station = '', project = '' }) {
   let closed = false, reports = [], isAdmin = false;
   const drawer = openDrawer({
     title: "模型发布管理",
@@ -46,7 +46,7 @@ export function openReleaseManagement({ canWrite }) {
     const st = STATUS[r.status] || { text: r.status, tone: "muted" };
     const actions = [];
     if (canWrite && r.status === "candidate") actions.push(`<button class="btn btn-sm" data-rm-approve="${r.id}">审批</button>`);
-    if (canWrite && r.status === "approved") actions.push(`<span class="inline-flex" style="gap:6px"><input data-rm-scene="${r.id}" placeholder="场景 ID" style="width:110px;padding:4px 8px"><button class="btn btn-sm" data-rm-activate="${r.id}">激活</button></span>`);
+    if (canWrite && r.status === "approved") actions.push(`<span class="inline-flex" style="gap:6px"><input data-rm-scene="${r.id}" value="${esc(station)}" placeholder="选择应用后自动带入工位" ${station?'readonly':''} style="width:180px;padding:4px 8px"><button class="btn btn-sm" data-rm-activate="${r.id}">激活</button></span>`);
     if (canWrite && r.status === "active") actions.push(`<button class="btn btn-sm" data-rm-rollback="${r.id}">回滚</button>`);
     return `<tr><td><span class="badge tone-${st.tone}">${st.text}</span><br><span class="mono faint">${esc(r.id)}</span></td>
       <td>${esc(r.engine_id)}<br><span class="mono faint" title="${esc(r.model_sha256)}">${short(r.model_sha256)}</span></td>
@@ -63,7 +63,8 @@ export function openReleaseManagement({ canWrite }) {
         canWrite ? request("/api/evaluations/holdout") : Promise.resolve({ items: [] }),
       ]);
       if (closed) return;
-      reports = evals.items || [];
+      reports = (evals.items || []).filter(r=>!project || r.project_id===project);
+      if(project)listed.items=listed.items.filter(r=>r.scene===station||reports.some(report=>report.id===r.evaluation_id));
       const pick = $("[data-rm-report]", body);
       if (pick) {
         pick.innerHTML = reports.length

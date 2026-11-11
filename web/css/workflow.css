@@ -1,0 +1,25 @@
+/* 业务向导：单列字段、一个主动作，高级信息折叠。 */
+.workflow { display: grid; align-content: start; gap: 16px; }
+.workflow .field, .workflow fieldset { display: grid; gap: 8px; margin: 0; }
+.workflow .field { height: auto; padding: 0; border: 0; background: transparent; align-items: stretch; }
+.workflow fieldset { padding: 16px; border: 1px solid var(--line, #364348); border-radius: 8px; margin-bottom: 16px; }
+.workflow .field input, .workflow .field select, .workflow textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line, #364348); border-radius: 6px; background: transparent; color: inherit; }
+.workflow select option { background: var(--bg-panel, #132025); color: inherit; }
+.workflow .field span, .workflow p { line-height: 1.6; }
+.workflow details > .field { margin-top: 12px; }
+.workflow [role="alert"] { color: var(--danger, #ff9890); }
+.workflow [data-preview] { max-height: 400px; object-fit: contain; }
+.workflow [hidden] { display: none !important; }
+[data-app-list] button { white-space: normal; min-height: 100px; }
+[data-app-detail] { margin-top: 20px; }
+[data-app-body] > details { margin-top: 24px; }
+@media(max-width: 700px) { .workflow { gap: 12px; } [data-app-actions] .btn { width: 100%; } }
+.app-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; }
+.app-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 18px; text-align: left; color: var(--text); background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-panel); cursor: pointer; }
+.app-card:hover { border-color: var(--accent); background: var(--surface-2); }
+.app-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.app-card-top { display: flex; align-items: start; justify-content: space-between; gap: 12px; }
+.app-card-top strong { color: var(--text-strong); overflow-wrap: anywhere; }
+.app-card-state, .app-card-type { color: var(--text-muted); font-size: 12px; }
+.app-card-state { white-space: nowrap; }
+.app-card-next { margin-top: 8px; color: var(--accent); font-size: 13px; }

@@ -1,5 +1,7 @@
 # Windows便携运行包
 
+本文记录历史 v2 便携包；新版 Windows 桌面安装包使用 Tauri，运行包和桌面包分别由 `deploy/build_runtime.py`、`deploy/build_tauri.py` 构建。
+
 这是StepEye当前Web与CPU推理功能的Windows x64便携包，不是安装器。
 
 - 最终v2 ZIP **567,844,000字节（567.84MB）**；解压 **998,660,260字节**，1432个文件。

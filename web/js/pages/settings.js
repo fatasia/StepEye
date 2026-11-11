@@ -1,5 +1,6 @@
 import { openUserScope } from "./user-scope.js";
 import { mountAIServices } from "./ai-services.js";
+import { mountSetup } from './setup.js';
 import { icon } from "../icons.js";
 import { $, esc } from "../util.js";
 import { openDrawer, toast } from "../ui.js";
@@ -20,13 +21,13 @@ async function request(url, options = {}) {
   return data;
 }
 
-export function render(root) {
+export function render(root, params = {}) {
   root.innerHTML = `<div class="settings-workspace"><header class="settings-head"><span class="settings-kicker">工作空间 / 设置</span><h2>把使用习惯和访问权限，放在一起。</h2><p>外观保存在当前浏览器。账号与服务状态来自正在运行的 StepEye。</p></header>
     <div class="settings-layout"><nav class="settings-nav" aria-label="设置分类"><button data-settings-tab="general">${icon("palette", 16)}通用外观</button><button data-settings-tab="ai" data-settings-admin hidden>AI 服务</button><button data-settings-tab="users" data-settings-admin hidden>${icon("config", 16)}用户与权限</button><button data-settings-tab="notifications" data-settings-admin hidden>${icon("inbox", 16)}通知状态</button><button data-settings-tab="logs" data-settings-admin hidden>${icon("clock", 16)}操作日志</button><button data-settings-tab="operations">${icon("live", 16)}运行状态</button></nav>
       <div class="settings-content"><div class="settings-error" role="alert" data-settings-error hidden></div>
         <section data-settings-panel="general"><header><h3>通用外观</h3><p>即时生效，刷新后保留；不会改变其他用户的浏览器。</p></header><div class="settings-option"><div><b>界面主题</b><p>与顶部主题开关同步。</p></div><div class="settings-theme" role="group" aria-label="界面主题"><button data-settings-theme="dark">深色</button><button data-settings-theme="light">浅色</button></div></div><div class="settings-option"><div><b>强调色</b><p>用于选中状态、主要按钮与标记。</p></div><div class="settings-accents">${ACCENTS.map(([value, name]) => `<button data-settings-accent="${value}" style="--settings-accent:${value}" aria-label="强调色${name}" title="${name}"></button>`).join("")}</div></div><p class="settings-note" data-settings-session>正在读取访问模式…</p></section>
         <section data-settings-panel="ai" hidden><div data-ai-services></div></section><section data-settings-panel="users" hidden><header><div><h3>用户与权限</h3><p>角色修改必须同时设置新密码，旧会话与 MCP 授权随之撤销。</p></div><button class="btn btn-primary" data-settings-add-user>新增用户</button></header><div data-settings-users></div><p class="settings-note">只读：查看；操作员：业务操作；管理员：账号与系统管理。至少保留一个管理员。</p></section>
-        <section data-settings-panel="notifications" hidden><header><div><h3>通知状态</h3><p>查看已配置渠道的运行状态；地址与密钥不在这里显示。</p></div><button class="btn" data-settings-refresh-notifications>刷新</button></header><div data-settings-notifications></div><p class="settings-note">通知渠道由管理员在服务端配置。此处不提供渠道编辑或发送测试消息。</p></section>
+        <section data-settings-panel="notifications" hidden><header><div><h3>通知状态</h3><p>查看已配置渠道的运行状态；地址与密钥不在这里显示。</p></div><button class="btn" data-settings-refresh-notifications>刷新</button></header><div data-settings-notifications></div><p class="settings-note">在下方配置渠道或发送测试通知，已保存的密钥不回显。</p></section>
         <section data-settings-panel="logs" hidden><header><div><h3>操作日志</h3><p>仅记录业务写请求的账号、路由和响应状态，不含请求正文或密钥。</p></div><button class="btn" data-settings-refresh-logs>刷新</button></header><div data-settings-logs></div><button class="btn" data-settings-more-logs hidden>加载更早记录</button><p class="settings-note">这是请求级操作记录，不是系统日志或每条业务变更的前后对照。时间以 UTC 显示。</p></section><section data-settings-panel="operations" hidden><header><div><h3>运行状态</h3><p>按需查询，不增加后台监控线程。</p></div><button class="btn" data-settings-refresh-operations>刷新</button></header><div data-settings-operations></div><p class="settings-note">本页展示健康接口与已配置工位，不代表相机实时在线。系统日志、备份与恢复暂未在本页提供。</p></section>
       </div></div></div>`;
   let aiCleanup = null;
@@ -43,7 +44,7 @@ export function render(root) {
       el.textContent = message;
     }
   };
-  const isAdmin = () => health?.auth && me?.role === "admin";
+  const isAdmin = () => me?.role === "admin";
   let logRows = [],
     logBefore = null,
     logBusy = false;
@@ -280,8 +281,11 @@ export function render(root) {
       me = user;
       health = status;
       root.querySelectorAll("[data-settings-admin]").forEach((el) => (el.hidden = !isAdmin()));
+      root.querySelector('[data-settings-tab="users"]').hidden = !isAdmin() || !status.auth;
+      if (params.tab) tab(params.tab);
+      if (isAdmin()) mountSetup(root, status).catch(e=>showError(e.message));
       $("[data-settings-session]", root).textContent = !status.auth
-        ? "当前未启用认证，用户管理不可用。请先由管理员启用服务认证。"
+        ? "当前为本机模式，可在下方启用账号登录。"
         : `当前账号：${user.username} · ${ROLES[user.role] || user.role}${isAdmin() ? "" : "。用户管理和通知状态仅管理员可见。"}`;
     })
     .catch((e) => showError(e.message));

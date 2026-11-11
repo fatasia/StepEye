@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>StepEye</title>
+<style>
+  html, body { height: 100%; margin: 0; background: #0d1418; color: #e8eef2; font: 14px/1.6 "Segoe UI", system-ui, sans-serif; }
+  main { height: 100%; display: grid; place-content: center; gap: 14px; text-align: center; }
+  .dot { width: 34px; height: 34px; margin: 0 auto; border: 2px solid #2b3a42; border-top-color: #3ec6c1; border-radius: 50%; animation: spin 1s linear infinite; }
+  .failed .dot { border-color: #d88b72; animation: none; }
+  button { display: none; justify-self: center; border: 0; border-radius: 5px; padding: 9px 18px; background: #3ec6c1; color: #102326; cursor: pointer; }
+  .failed button { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  p { margin: 0; color: #8fa3ad; }
+</style>
+</head>
+<body>
+<main>
+  <div class="dot"></div>
+  <h1>StepEye</h1>
+  <p data-start-status role="status">正在启动本地服务…</p>
+  <button data-retry type="button">重新尝试</button>
+</main>
+<script>
+  document.querySelector('[data-retry]').onclick = async (event) => {
+    event.currentTarget.disabled = true;
+    try { await window.__TAURI_INTERNALS__.invoke('retry_start'); }
+    catch { document.querySelector('[data-start-status]').textContent = '重新启动失败，请关闭程序后重试。'; event.currentTarget.disabled = false; }
+  };
+</script>
+</body>
+</html>

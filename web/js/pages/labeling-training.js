@@ -76,7 +76,7 @@ export function openTraining({ project, engine, canWrite }) {
       <dl><dt>任务</dt><dd>${esc(job.id)}</dd><dt>数据版本</dt><dd>${esc(job.version_id || "待生成")}</dd></dl>
       ${job.error ? `<p class="label-training-error">${esc(job.error)}</p>` : ""}
       ${active(job) ? `<p class="label-help">实际训练进度由工作进程执行；此处不估算虚假百分比。</p>${canWrite ? `<button class="label-link" data-training-cancel="${esc(job.id)}">取消任务</button>` : ""}` : ""}
-      ${job.status === "candidate" ? `<p class="label-help">已生成候选，仍需独立评测和目标工位验证。</p><a class="btn" href="#/models">到视觉应用试跑候选</a><details><summary class="label-link">验证指标与模型指纹</summary><pre class="label-report-json">${esc(JSON.stringify({ metrics: job.metrics || {}, model_sha256: job.model_sha256, dataset_sha256: job.dataset_sha256 }, null, 2))}</pre></details>` : ""}
+      ${job.status === "candidate" ? `<p class="label-help">已生成候选，仍需独立评测和目标工位验证。</p><a class="btn" href="${project.scene_id ? `#/applications/${encodeURIComponent(project.scene_id)}?candidate=${encodeURIComponent("trained-"+job.id)}` : "#/models"}">${project.scene_id ? "回到应用验证与发布" : "到模型实验室试跑候选"}</a><details><summary class="label-link">验证指标与模型指纹</summary><pre class="label-report-json">${esc(JSON.stringify({ metrics: job.metrics || {}, model_sha256: job.model_sha256, dataset_sha256: job.dataset_sha256 }, null, 2))}</pre></details>` : ""}
       </article>`,
           )
           .join("")

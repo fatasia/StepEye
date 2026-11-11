@@ -444,7 +444,8 @@ class LabelStore:
         for i, asset in enumerate(assets): components.setdefault(find(i), []).append(asset)
         groups = {}
         for items in components.values():
-            key = hashlib.sha256(_json(sorted(a["id"] for a in items)).encode()).hexdigest()
+            # 分组抽样由内容决定，重新导入同一批图片产生的新 UUID 不改变划分。
+            key = hashlib.sha256(_json(sorted((a["image_sha256"], str(a["group_id"] or "")) for a in items)).encode()).hexdigest()
             groups[key] = {"asset_ids": sorted(a["id"] for a in items), "split": "train",
                            "synthetic": any(a["synthetic"] for a in items)}
         eligible = sorted(k for k, v in groups.items() if not v["synthetic"])

@@ -48,3 +48,12 @@ def test_camera_closes_on_error_and_exception_is_sanitized():
     with pytest.raises(RuntimeError) as e:
         device_rtsp_and_geo("lab", 80, "u", "p", Failed)
     assert Failed.closed and "secret" not in str(e.value)
+
+
+def test_stream_from_unrelated_host_is_rejected():
+    class BadStream(FakeCamera):
+        async def GetStreamUri(self,req):
+            return SimpleNamespace(Uri='rtsp://8.8.8.8/stream')
+    with pytest.raises(RuntimeError,match='同一设备'):
+        device_rtsp_and_geo('lab',80,'u','p',BadStream)
+    assert BadStream.closed

@@ -68,6 +68,89 @@ def test_engine_save_load_roundtrip(tmp_path):
     assert a["score"] == b["score"] and a["verdict"] == b["verdict"]  # 序列化后判定一致
 
 
+def test_exposure_correction_is_bounded_and_original_unchanged():
+    from visual.anomaly import normalize_exposure
+    dark=np.full((112,112,3),35,np.uint8)
+    original=dark.copy()
+    corrected,info=normalize_exposure(dark)
+    assert np.array_equal(dark,original)
+    assert corrected.mean()>dark.mean()
+    assert .5<=info['gain']<=2.0 and not info['unusable']
+    bright=np.full((112,112,3),230,np.uint8)
+    corrected,info=normalize_exposure(bright)
+    assert corrected.mean()<bright.mean() and info['gain']>=.5
+    assert normalize_exposure(np.zeros_like(dark))[1]['unusable']
+
+
+def test_exposure_mode_roundtrip_and_unusable_image(tmp_path):
+    eng=AnomalyEngine(lighting='auto')
+    eng.add_ok(_ok_img());eng.save(tmp_path)
+    restored=AnomalyEngine.load(tmp_path)
+    assert restored.lighting=='auto'
+    assert restored.inspect(np.zeros_like(_ok_img()))['verdict']=='UNCERTAIN'
+    assert restored.inspect(_ok_img())['verdict']=='PASS'
+
+
+def test_dinov2_exposure_on_local_video_if_available(monkeypatch):
+    from pathlib import Path
+    root=Path(__file__).resolve().parents[1]
+    model=root/'models/dinov2-vits14-patches.onnx'
+    video=root/'test-videos/FpTmB9IQdVo.mp4'
+    if not model.is_file() or not video.is_file():pytest.skip('本地 DINOv2 模型或样例视频未安装')
+    monkeypatch.setenv('STEPEYE_DINOV2_ONNX',str(model))
+    cap=cv2.VideoCapture(str(video))
+    try:
+        cap.set(cv2.CAP_PROP_POS_FRAMES,40);ok,frame=cap.read()
+    finally:cap.release()
+    assert ok
+    frame=cv2.resize(frame,(224,224));dark=np.clip(frame.astype(np.float32)*.55,0,255).astype(np.uint8)
+    baseline=AnomalyEngine(backend='dinov2',lighting='off');baseline.add_ok(frame)
+    corrected=AnomalyEngine(backend='dinov2',lighting='auto');corrected.add_ok(frame)
+    assert corrected.inspect(dark)['score'] < baseline.inspect(dark)['score'] * .5
+
+
+def test_dinov2_onnx_pipeline_and_model_binding(tmp_path, monkeypatch):
+    """以真实 ONNX Runtime 验证接口与指纹；模型为合成测试图，不是 DINOv2 权重。"""
+    onnx = pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+    from onnx import TensorProto, helper, numpy_helper
+    from visual.anomaly import _model_cache
+    image = helper.make_tensor_value_info("image", TensorProto.FLOAT, [1, 3, 224, 224])
+    output = helper.make_tensor_value_info("patch_tokens", TensorProto.FLOAT, [1, 256, 384])
+    weights = numpy_helper.from_array(np.ones((1, 256, 384), np.float32), name="weights")
+    nodes = [helper.make_node("ReduceMean", ["image"], ["mean"], keepdims=0),
+             helper.make_node("Mul", ["mean", "weights"], ["patch_tokens"])]
+    model = helper.make_model(helper.make_graph(nodes, "fixture", [image], [output], [weights]),
+                              opset_imports=[helper.make_opsetid("", 17)], ir_version=8)
+    path = tmp_path / "test.onnx"
+    onnx.save(model, path)
+    monkeypatch.setenv("STEPEYE_DINOV2_ONNX", str(path))
+    eng = AnomalyEngine(backend="dinov2")
+    assert eng.add_ok(_ok_img()) == 256
+    assert eng.inspect(_ok_img())["verdict"] == "PASS"
+    eng.save(tmp_path / "bank")
+    restored = AnomalyEngine.load(tmp_path / "bank")
+    assert restored.backend == "dinov2" and restored.inspect(_ok_img())["backend"] == "dinov2"
+    path.write_bytes(path.read_bytes() + b"changed")
+    with pytest.raises(ValueError, match="模型文件已变化"):
+        restored.inspect(_ok_img())
+    _model_cache.clear()
+
+
+def test_missing_dinov2_and_legacy_backend(tmp_path, monkeypatch):
+    monkeypatch.setenv("STEPEYE_DINOV2_ONNX", str(tmp_path / "missing.onnx"))
+    with pytest.raises(ValueError, match="模型未配置"):
+        AnomalyEngine(backend="dinov2")
+    eng = AnomalyEngine()
+    eng.add_ok(_ok_img())
+    eng.save(tmp_path)
+    import json
+    meta = json.loads((tmp_path / "engine.json").read_text(encoding="utf-8"))
+    meta.pop("backend"); meta.pop("model_sha")
+    (tmp_path / "engine.json").write_text(json.dumps(meta), encoding="utf-8")
+    assert AnomalyEngine.load(tmp_path).backend == "grid"
+
+
 def test_anomaly_api_register_and_inspect(tmp_path):
     """API 全流程:登记 OK 图 → 判定 → 影子库落样 + 告警入库。"""
     from fastapi.testclient import TestClient
@@ -85,6 +168,8 @@ def test_anomaly_api_register_and_inspect(tmp_path):
                           ("files", ("o2.jpg", buf_ok.tobytes(), "image/jpeg"))],
                    data={"threshold": "0.05"})
         assert r.status_code == 201 and r.json()["total_refs"] > 0
+        conflict = c.post("/api/anomaly/scratch/register", files=[("files", ("o.jpg", buf_ok.tobytes(), "image/jpeg"))], data={"backend": "dinov2"})
+        assert conflict.status_code == 409
         r2 = c.post("/api/anomaly/scratch/inspect",
                     files={"image": ("t.jpg", buf_ng.tobytes(), "image/jpeg")})
         assert r2.status_code == 201, r2.text

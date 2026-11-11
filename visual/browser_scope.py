@@ -44,12 +44,17 @@ async def check_request(request, user, manager):
         return  # Router checks every member before exposing or changing a group.
     if method == 'GET' and path in {
         '/api/label-projects', '/api/label-engines', '/api/models',
-        '/api/training/capabilities',
+        '/api/training/capabilities', '/api/applications', '/api/anomaly/scenes',
         '/api/stations', '/api/alerts', '/api/alerts/stats', '/api/alerts/false-positives',
     }:
         return  # 列表端点自身过滤；模型为共享运行资产。
     if method == 'POST' and re.fullmatch(r'/api/models/[^/]+/trial', path):
         return  # 单次上传试跑，不读取其他项目图片，也不写项目。
+    match = re.fullmatch(r'/api/(?:applications|anomaly)/([^/]+)(?:/.*)?', path)
+    if match:
+        if match[1] in station_ids(user, manager.labels):
+            return
+        raise HTTPException(403, '应用不在用户数据范围')
     match = re.fullmatch(r'/api/stations/([^/]+)(?:/.*)?', path)
     if match:
         if match[1] in station_ids(user, manager.labels):

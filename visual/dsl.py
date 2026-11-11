@@ -337,6 +337,7 @@ class StationConfig(BaseModel):
     name: str = ""
     line: str = ""
     source: SourceCfg = SourceCfg()
+    exposure_correction: Literal['off', 'auto'] = 'off'
     signal_sources: list[str] = Field(default_factory=list, max_length=32)
     zones: list[Zone]
     hands: HandsCfg = HandsCfg()
@@ -348,6 +349,7 @@ class StationConfig(BaseModel):
     ppe: PPECfg = Field(default_factory=PPECfg)
     thermal: ThermalCfg = Field(default_factory=ThermalCfg)
     roi_states: list[RoiStateCfg] = []
+    appearance_enabled: bool = False  # 外观任务由应用服务的帧观察器处理
     quality: QualityCfg = QualityCfg()
     action_shadow: ActionShadowCfg = Field(default_factory=ActionShadowCfg)
     cycle: CycleDef | None = None  # 纯安全岗(仅常驻规则)可不定义周期
@@ -356,7 +358,7 @@ class StationConfig(BaseModel):
 
     @model_validator(mode="after")
     def _check_refs(self) -> "StationConfig":
-        if not self.steps and not self.safety.rules and not (self.ehs.enabled and self.ehs.rules) and not self.proximity.enabled and not self.ppe.enabled and not (self.thermal.enabled and self.thermal.rules):
+        if not self.appearance_enabled and not self.steps and not self.safety.rules and not (self.ehs.enabled and self.ehs.rules) and not self.proximity.enabled and not self.ppe.enabled and not (self.thermal.enabled and self.thermal.rules):
             raise ValueError("工位至少要有 SOP 步骤或常驻安全规则之一")
         if self.steps and self.cycle is None:
             raise ValueError("有 SOP 步骤就必须定义 cycle(周期开始/结束条件)")

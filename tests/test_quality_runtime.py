@@ -73,6 +73,21 @@ def runtime(tmp_path):
         rt.stop(); rt.close()
 
 
+def test_exposure_correction_affects_inference_not_raw_or_quality(runtime):
+    rt=runtime()
+    rt.cfg.exposure_correction='auto'
+    class Capture:
+        def process(self,frame,ts,ctx):
+            self.seen=frame.copy()
+            return []
+    detector=Capture();rt.hands=detector
+    raw=image(40);original=raw.copy()
+    rt.process_frame(0,raw)
+    assert np.array_equal(raw,original) and np.array_equal(rt.raw,original)
+    assert detector.seen.mean()>original.mean()
+    assert abs(rt.quality.snapshot()['mean']-original.mean())<3
+
+
 def test_one_observed_bad_frame_cannot_advance_visual_step_before_alarm_confirmation(runtime):
     rt = runtime()
     rt.process_frame(0, image())

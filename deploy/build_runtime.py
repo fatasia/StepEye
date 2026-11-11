@@ -12,6 +12,10 @@ import subprocess
 import sys
 import time
 import zipfile
+try:
+    from .runtime_provenance import write_provenance
+except ImportError:
+    from runtime_provenance import write_provenance
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT
@@ -90,6 +94,7 @@ def asset_plan(root=ROOT, *, include_local_vlm=False, include_quality_extensions
     add(root / 'deploy/monibuca/config.yml', 'deploy/monibuca/config.yml', 'media_config', required=True)
     add(root / 'deploy/monibuca/runtime-v6.yaml', 'deploy/monibuca/runtime-v6.yaml', 'media_config')
     add(root / 'deploy/portable-README.md', 'deploy/portable-README.md', 'application')
+    add(root / 'requirements-training.txt', 'deploy/requirements-training.txt', 'application', required=True)
     if include_local_vlm:
         local = REPO / '.v0/qwen-local'
         for name in ['Qwen3VL-2B-Instruct-Q4_K_M.gguf', 'mmproj-Qwen3VL-2B-Instruct-F16.gguf']:
@@ -182,6 +187,7 @@ def main():
         return completed.returncode
     bundle = output / 'dist/stepeye-runtime'
     verified = verify_assets(plan, bundle / '_internal')
+    write_provenance(ROOT, bundle)
     readme = ROOT / 'deploy/portable-README.md'
     if readme.is_file(): shutil.copy2(readme, bundle / 'README.md')
     (output / 'assets-after.json').write_text(json.dumps(verified, indent=2), encoding='utf8')

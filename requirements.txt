@@ -8,3 +8,5 @@ python-multipart>=0.0.18  # FastAPI 图片/视频表单上传
 Pillow>=10          # 标注资源 EXIF 正向化与图像验证
 numpy>=1.26
 mediapipe>=1.2        # 手部检测（Tasks API）；同时会安装 opencv-contrib-python
+onvif-zeep-async==4.3.0
+WSDiscovery==2.1.2

@@ -138,15 +138,17 @@ export function render(root) {
   // V8:拍照即检与告警中心统计(数据源 /api/inspection/stats + /api/alerts/stats)
   (async () => {
     try {
-      const [insp, al] = await Promise.all([api.inspectionStats(), api.alertStats()]);
+      const [inspection, alerts] = await Promise.allSettled([api.inspectionStats(), api.alertStats()]);
+      const insp = inspection.status === "fulfilled" ? inspection.value : null;
+      const al = alerts.status === "fulfilled" ? alerts.value : null;
       const kv = (l, v) => `<div class="kv"><span class="muted">${l}</span><span class="num">${v}</span></div>`;
-      const done = insp.by_status?.done ?? 0, failed = insp.by_status?.failed ?? 0;
+      const done = insp?.by_status?.done ?? 0, failed = insp?.by_status?.failed ?? 0;
       setHTML($("#vstats", root), `<div class="kv-grid">
-        ${kv("检测任务", `${done}${failed ? ` <span class="faint">失败 ${failed}</span>` : ""}`)}
-        ${kv("NG 结论", `<span class="tone-danger-text">${insp.by_verdict?.NG ?? 0}</span>`)}
-        ${kv("待处理告警", `<span class="tone-warning-text">${al.pending}</span>`)}
-        ${kv("已核误报", al.false_alarm)}
-      </div>`);
+        ${kv("检测任务", insp ? `${done}${failed ? ` <span class="faint">失败 ${failed}</span>` : ""}` : "未启用")}
+        ${kv("NG 结论", insp ? `<span class="tone-danger-text">${insp.by_verdict?.NG ?? 0}</span>` : "—")}
+        ${kv("待处理告警", al ? `<span class="tone-warning-text">${al.pending}</span>` : "暂不可用")}
+        ${kv("已核误报", al ? al.false_alarm : "—")}
+      </div>${insp ? "" : '<a class="btn btn-sm" href="#/settings?tab=ai">配置拍照即检服务</a>'}`);
     } catch {
       setHTML($("#vstats", root), '<div class="inline-empty muted">统计暂不可用</div>');
     }

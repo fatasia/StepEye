@@ -6,7 +6,11 @@
 
 不接 PLC 也能跑。接了 PLC、Modbus、扭力枪或称重，设备信号会和视觉结果记在同一个周期里。
 
-当前版本 **v0.9.0**，安装包、便携包、源码包都在 [Releases](https://github.com/fatasia/StepEye/releases/tag/v0.9.0)。
+当前源码版本为 **v0.10.0**，发行文件见 [Releases](https://github.com/fatasia/StepEye/releases)。
+
+从「我的应用」开始：选任务 → 接画面 → 验证 → 启用。算法、训练和版本放在高级操作中。见[应用上手](docs/APPLICATION-WORKFLOW.md)。
+
+Windows 桌面端使用 Tauri；新版安装包由 `deploy/build_tauri.py` 构建。
 
 ## 演示视频
 
@@ -22,29 +26,21 @@
 
 | 方式 | 适合 | 入口 |
 |---|---|---|
-| Windows 安装包 | 装上就用，不碰命令行 | `StepEye-Setup-0.9.0.exe` |
-| 便携运行包 | 不写注册表，解压即用 | `stepeye-runtime-windows.zip` |
-| 源码包 | 改代码、接自己的模型 | `stepeye-source-0.9.0.zip` |
+| Windows 安装包 | 使用 Tauri 桌面程序 | 发布页中的 Windows 安装包 |
+| 便携运行包 | 不写注册表，解压后运行 | v0.9.0 发布页 |
+| 源码包 | 改代码、接自己的模型 | `stepeye-source-0.10.0.zip` |
 
 ### 安装包
 
-双击 `StepEye-Setup-0.9.0.exe`，一路下一步。装到 `%LOCALAPPDATA%\StepEye`，创建开始菜单和桌面快捷方式，不需要管理员权限。
+双击发布页的 Windows 安装包，按提示安装并从开始菜单打开 StepEye。
 
-从开始菜单打开 StepEye，会拉起演示工位，浏览器访问 <http://127.0.0.1:8000>。演示画面是仿真的，没有摄像头也能看完整流程：取线束、插连接器、锁两颗螺丝、贴标签。
+首次启动会打开演示工位。演示画面是仿真的，没有摄像头也能看操作流程。
 
-要开登录和多用户：
-
-```powershell
-cd "$env:LOCALAPPDATA\StepEye"
-.\stepeye-runtime.exe passwd admin --role admin --data data
-.\stepeye-runtime.exe serve .\_internal\configs\demo_sim.yaml --port 8000 --auth --data data
-```
-
-覆盖安装只替换程序文件，`data\` 原地保留；卸载同样保留数据，重装后接着用。
+需要登录和多用户时，在「设置 → 通用外观」创建管理员并启用登录。桌面端数据位于 `%APPDATA%\com.stepeye.desktop`；升级或移除程序前请先备份数据。
 
 ### 便携运行包
 
-解压到任意目录，`stepeye-runtime.exe` 就是完整服务。默认配置在 `_internal\configs\`，直接跑：
+v0.9.0 便携包解压到任意目录后使用；默认配置在 `_internal\configs\`：
 
 ```powershell
 .\stepeye-runtime.exe serve .\_internal\configs\demo_sim.yaml --port 8000 --data data

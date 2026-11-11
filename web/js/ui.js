@@ -3,6 +3,8 @@ import { esc } from "./util.js";
 
 /* ---------- Esc 栈：最上层的浮层先关闭 ---------- */
 const escStack = [];
+const drawerClosers = new Set();
+export function closeDrawers() { [...drawerClosers].forEach(close=>close()); }
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && escStack.length) {
     e.preventDefault();
@@ -56,6 +58,7 @@ export function openDrawer({ title, subtitle = "", html = "", onClose }) {
   function close() {
     if (closed) return;
     closed = true;
+    drawerClosers.delete(close);
     off();
     wrap.classList.remove("in");
     setTimeout(() => wrap.remove(), 380);
@@ -63,6 +66,7 @@ export function openDrawer({ title, subtitle = "", html = "", onClose }) {
     onClose?.();
   }
   wrap.querySelectorAll("[data-close]").forEach((b) => (b.onclick = close));
+  drawerClosers.add(close);
   wrap.querySelector(".drawer-head .icon-btn").focus();
   return { el: wrap, body: wrap.querySelector(".drawer-body"), close };
 }

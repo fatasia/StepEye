@@ -410,14 +410,19 @@ class StationRuntime:
             self._remember_signals(external)
         self.raw = frame
         self._apply_calibration(frame)
+        if self.cfg.exposure_correction == 'auto':
+            from .exposure import normalize_exposure
+            inference_frame, _ = normalize_exposure(frame)
+        else:
+            inference_frame = frame
         self.ctx.reset()
         events: list[Event] = []
         if self.hands is not None:
-            events += self.hands.process(frame, ts, self.ctx)
+            events += self.hands.process(inference_frame, ts, self.ctx)
         if self.persons is not None:
-            events += self.persons.process(frame, ts, self.ctx)
+            events += self.persons.process(inference_frame, ts, self.ctx)
         if self.detector is not None:
-            events += self.detector.process(frame, ts, self.ctx)
+            events += self.detector.process(inference_frame, ts, self.ctx)
         events += self.roi.process(frame, ts, self.ctx)
         quality_events = self.quality.process(frame, ts, self.ctx)
         blocked, gate_event = self._quality_gate(ts)
@@ -435,7 +440,7 @@ class StationRuntime:
             safety_alerts += self.ppe.process(self.ctx.object_tracks, ts,
                 available=self.detector is not None and hasattr(self.detector, "mot"))
         if self.helmet_shadow is not None and not blocked:
-            self.helmet_shadow.submit(frame, ts, self.ctx.object_tracks, self._vision_generation,
+            self.helmet_shadow.submit(inference_frame, ts, self.ctx.object_tracks, self._vision_generation,
                                       captured_mono=captured_mono)
             candidate = self.helmet_shadow.drain(self._vision_generation, ts, self.ctx.object_tracks)
             safety_alerts += self.helmet_samples.update(candidate, self._vision_generation, ts, self.ctx.object_tracks)
@@ -458,8 +463,8 @@ class StationRuntime:
         for alert in safety_alerts:
             self._emit_safety(alert)
         if not blocked:
-            self._vlm_drain(ts, frame)
-        self._action_observe(ts, frame, blocked)
+            self._vlm_drain(ts, inference_frame)
+        self._action_observe(ts, inference_frame, blocked)
         self.annotated = self._draw(frame, hud=True)
         self.stream = self._draw(frame, hud=False)
         self.recorder.flush()
@@ -540,7 +545,24 @@ class StationRuntime:
                 try:
                     self.action_shadow.close()
                 finally:
-                    self._close_helmet()
+                    try:
+                        self._close_helmet()
+                    finally:
+                        self._close_perception()
+
+    def _close_perception(self):
+        """在采集线程退出时显式释放原生模型，避免 GC 线程析构时等待 SDK 调度器。"""
+        if getattr(self, '_perception_closed', False):
+            return
+        self._perception_closed = True
+        for name in ('hands', 'persons', 'detector'):
+            component=getattr(self,name,None)
+            close=getattr(component,'close',None)
+            if close is not None:
+                try:
+                    close()
+                except Exception:
+                    self._health_errors += 1
 
     def _close_helmet(self):
         if self.helmet_shadow is not None:
@@ -563,6 +585,8 @@ class StationRuntime:
 
     def close(self) -> None:
         self.stop()
+        if not self._health_running:
+            self._close_perception()
         if self._owns_store:
             self.store.close()
 

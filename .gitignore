@@ -27,3 +27,13 @@ build/
 !deploy/runtime_build.spec
 *.onnx
 *.pt
+
+# Tauri 构建产物与暂存运行包
+desktop/src-tauri/target/
+desktop/src-tauri/runtime/
+desktop/src-tauri/gen/
+desktop/node_modules/
+
+# 本地媒体服务生成的证书和私钥
+/auto.crt
+/auto.key

@@ -5,7 +5,7 @@ import * as docscenter from "./pages/docs-center.js";
 import { icon, LOGO } from "./icons.js";
 import { api, ApiError } from "./api.js";
 import { bootstrap, connect, store, subscribe } from "./store.js";
-import { errorBlock, onEsc, watchFileInputs } from "./ui.js";
+import { errorBlock, onEsc, watchFileInputs, closeDrawers } from "./ui.js";
 import { $, fmtClock } from "./util.js";
 import * as overview from "./pages/overview.js";
 import * as live from "./pages/live.js";
@@ -23,17 +23,22 @@ import * as labeling from "./pages/labeling.js";
 import * as models from "./pages/models.js";
 import * as settings from "./pages/settings.js";
 
-const ROUTES = { mechanism, documents, docscenter, overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings, labeling, models, settings };
+import * as applications from './pages/applications.js';
+const ROUTES = { applications, mechanism, documents, docscenter, overview, live, trace, config, inspection, alerts, samples, timeline, sitemap, patrol, recordings, labeling, models, settings };
 const TITLES = { mechanism: "机理实验室", documents: "知识与文档", overview: "总览", live: "实时监控", trace: "追溯", config: "SOP 配置", inspection: "拍照即检", alerts: "告警中心", samples: "样本库", timeline: "时间轴标注", sitemap: "厂区图", patrol: "巡更到位", recordings: "录像回放", labeling: "标注工作台", models: "视觉应用", settings: "设置", docscenter: "文档中心" };
-const ROUTE_ICONS = { overview: "overview", live: "live", trace: "trace", inspection: "camera", alerts: "inbox", samples: "copy", models: "config", timeline: "clock", sitemap: "overview", patrol: "clock", recordings: "live", config: "config", documents: "copy", mechanism: "config", settings: "config" };
-// 二级导航:组头只负责折叠,子项才是页面;labeling 归入样本库所在组
+const ROUTE_ICONS = { overview: "overview", live: "live", trace: "trace", inspection: "camera", alerts: "inbox", samples: "copy", labeling: "copy", models: "config", timeline: "clock", sitemap: "overview", patrol: "clock", recordings: "live", config: "config", documents: "copy", docscenter: "copy", mechanism: "config", settings: "config" };
+// 保留原有业务分类；应用是日常入口，标注与训练从数据知识直接进入。
 const NAV_GROUPS = [
   ["ops", "运行监控", "overview", ["overview", "live", "alerts", "trace"]],
   ["video", "视频巡防", "live", ["recordings", "sitemap", "patrol"]],
   ["quality", "质量视觉", "camera", ["inspection", "models", "mechanism"]],
-  ["data", "数据知识", "copy", ["samples", "timeline", "documents", "config", "docscenter"]],
+  ["data", "数据知识", "copy", ["samples", "labeling", "timeline", "documents", "config", "docscenter"]],
 ];
 const NAV_BOTTOM = ["settings"];
+TITLES.applications = '我的应用';
+TITLES.models = '模型实验室';
+TITLES.labeling = '标注与训练';
+ROUTE_ICONS.applications = 'apps';
 const ACCENTS = [["#3ec6c1", "青"], ["#65aee8", "蓝"], ["#59c58d", "绿"], ["#d8ac52", "琥珀"], ["#b08cf0", "紫"]];
 const CONN = { open: ["实时连接", "success"], retry: ["连接中断，重连中…", "warning"], connecting: ["正在连接…", "info"] };
 
@@ -68,6 +73,7 @@ function paintGroups() {
     if (!el) return;
     el.classList.toggle("open", openGroups.has(id));
     el.querySelector(".nav-head").setAttribute("aria-expanded", String(openGroups.has(id)));
+    el.querySelector(".nav-items").inert = !openGroups.has(id);
   });
 }
 function setGroup(id, open) {
@@ -78,11 +84,12 @@ function setGroup(id, open) {
 
 function buildShell() {
   $("#brand").innerHTML = `${LOGO}<span class="brand-name">StepEye</span>`;
-  const navLink = (k) => `<a href="#/${k}" data-nav="${k}">${icon(ROUTE_ICONS[k], 18)}<span>${TITLES[k]}</span></a>`;
+  const navLink = (k, cls = "") => `<a href="#/${k}" data-nav="${k}" class="${cls}" title="${TITLES[k]}">${icon(ROUTE_ICONS[k], 18)}<span>${TITLES[k]}</span></a>`;
   $("#nav").innerHTML =
+    navLink("applications", "nav-primary") +
     NAV_GROUPS.map(([id, title, ic, items]) =>
-      `<div class="nav-group" data-group="${id}"><button class="nav-head" type="button" data-group-toggle="${id}" aria-expanded="false">${icon(ic, 18)}<span>${title}</span><span class="chev">${icon("chevron", 14)}</span></button><div class="nav-items"><div>${items.map(navLink).join("")}</div></div></div>`).join("") +
-    NAV_BOTTOM.map(navLink).join("");
+      `<div class="nav-group" data-group="${id}"><button class="nav-head" type="button" data-group-toggle="${id}" aria-expanded="false" title="${title}">${icon(ic, 18)}<span>${title}</span><span class="chev">${icon("chevron", 14)}</span></button><div class="nav-items"><div>${items.map(k => navLink(k)).join("")}</div></div></div>`).join("") +
+    NAV_BOTTOM.map(k => navLink(k)).join("");
   paintGroups();
   $("#accent-menu").innerHTML = `<div class="menu-title">主题色</div><div class="swatches">${ACCENTS.map(([c, n]) => `<button class="swatch" style="--c:${c}" data-accent="${c}" title="${n}" aria-label="主题色 ${n}"></button>`).join("")}</div>`;
   $("#accent-btn").innerHTML = icon("palette", 16);
@@ -136,7 +143,7 @@ function paintConn() {
 
 /* ---------- 路由 ---------- */
 function parseHash() {
-  const [path, qs = ""] = (location.hash.slice(2) || "overview").split("?");
+  const [path, qs = ""] = (location.hash.slice(2) || "applications").split("?");
   const [name, ...rest] = path.split("/");
   return { name: ROUTES[name] ? name : "overview", params: { id: rest[0] ? decodeURIComponent(rest[0]) : "", ...Object.fromEntries(new URLSearchParams(qs)) } };
 }
@@ -144,16 +151,16 @@ function parseHash() {
 function route() {
   const { name, params } = parseHash();
   cleanup();
+  closeDrawers();
   $("#page-title").textContent = TITLES[name];
   document.title = `${TITLES[name]} · StepEye`;
   document.querySelectorAll("[data-nav]").forEach((a) => {
-    const on = a.dataset.nav === name || (name === "labeling" && a.dataset.nav === "samples");
+    const on = a.dataset.nav === name;
     a.classList.toggle("on", on);
     on ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current");
   });
   // 当前页面所在组自动展开,组头随之点亮
-  const active = name === "labeling" ? "samples" : name;
-  const group = NAV_GROUPS.find(([, , , items]) => items.includes(active));
+  const group = NAV_GROUPS.find(([, , , items]) => items.includes(name));
   if (group && !openGroups.has(group[0])) setGroup(group[0], true);
   document.querySelectorAll(".nav-head").forEach((head) =>
     head.classList.toggle("has-active", !!group && head.dataset.groupToggle === group[0]));

@@ -38,17 +38,22 @@ if errorlevel 8 (
 if defined BACKUP if exist "%BACKUP%\data" (
   echo 保留原有数据目录...
   robocopy "%BACKUP%\data" "%TARGET%\data" /E /NFL /NDL /NJH /NJS /NP >nul
+  if errorlevel 8 (
+    echo 数据恢复失败，请从 "%BACKUP%\data" 恢复数据。
+    if not "%STEPEYE_SILENT%"=="1" pause
+    exit /b 1
+  )
 )
 
 powershell -NoProfile -Command "$v = @{ version = '%STEPEYE_VERSION%'; installed_at = (Get-Date).ToString('o') } | ConvertTo-Json; Set-Content -LiteralPath '%TARGET%\version.json' -Value $v -Encoding UTF8"
 
 if not "%STEPEYE_NO_SHORTCUT%"=="1" (
-  powershell -NoProfile -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Programs'), 'StepEye.lnk')); $s.TargetPath = '%TARGET%\stepeye-runtime.exe'; $s.WorkingDirectory = '%TARGET%'; $s.Save()"
+  powershell -NoProfile -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Programs'), 'StepEye.lnk')); $s.TargetPath = '%TARGET%\StepEye.vbs'; $s.WorkingDirectory = '%TARGET%'; $s.Save()"
   echo 已创建开始菜单快捷方式。
 )
 
 echo.
 echo 安装完成：%TARGET%
-echo 启动：双击开始菜单的 StepEye，或运行 "%TARGET%\stepeye-runtime.exe" serve .\_internal\configs\demo_sim.yaml --port 8000
+echo 启动：双击开始菜单的 StepEye，或运行 "%TARGET%\StepEye.vbs"
 if not "%STEPEYE_SILENT%"=="1" pause
 exit /b 0

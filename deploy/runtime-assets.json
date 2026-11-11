@@ -20,6 +20,7 @@
     "gauge-models.json"
   ],
   "extra_models": [
+    "models/dinov2-vits14-patches.onnx",
     "models/community/helmet.onnx",
     "models/action/videomaev2-small-k710.onnx",
     "models/action/videomaev2-small-k710.classes.json",

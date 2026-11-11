@@ -79,6 +79,12 @@ export function render(root) {
     </section>
     <section class="panel table-panel"><div class="table-wrap" id="i-tbl"><div class="skeleton-rows"></div></div><footer class="table-foot muted num" id="i-count-foot"></footer></section>`;
   const tbl = $("#i-tbl", root), foot = $("#i-count-foot", root), picker = $("#i-file", root);
+  const setupButton=document.createElement('button');setupButton.className='btn';setupButton.textContent='新建检查规则';
+  root.querySelector('.filters').append(setupButton);
+  setupButton.onclick=()=>{
+    const d=openDrawer({title:'新建拍照检查',subtitle:'写清检查什么、什么情况算异常',html:'<form><label class="field"><span>名称</span><input name="name" required maxlength="80"></label><label class="field"><span>检查要求</span><textarea name="instruction" required minlength="3" maxlength="1500" rows="4"></textarea></label><p>先在设置中绑定视觉辅助模型服务。</p><button class="btn btn-primary" type="submit">保存检查规则</button><p data-error role="alert"></p></form>'});
+    d.body.classList.add('workflow');d.body.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=e.target;try{const r=await fetch('/api/setup/inspection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:f.elements.name.value,instruction:f.elements.instruction.value})});const data=await r.json();if(!r.ok)throw new Error(typeof data.detail==='string'?data.detail:'无法保存');d.close();loadScenarios();load();}catch(error){f.querySelector('[data-error]').textContent=error.message;}};
+  };
   let files = [];
   let timer = null;
   let enabledScenarios = [];
@@ -92,7 +98,7 @@ export function render(root) {
       if (busy && !timer) timer = setInterval(load, 3000);
       if (!busy && timer) { clearInterval(timer); timer = null; }
     } catch (e) {
-      tbl.innerHTML = errorBlock(e.message);
+      tbl.innerHTML = emptyBlock('拍照即检尚未就绪','先绑定 AI 服务，再创建检查规则。')+'<a class="btn" href="#/settings?tab=ai">配置 AI 服务</a>';
       const retry = tbl.querySelector("[data-retry]");
       if (retry) retry.onclick = load;
       foot.textContent = "";
@@ -109,7 +115,7 @@ export function render(root) {
       $("#i-submit", root).disabled = !enabledScenarios.length || !files.length;
     } catch (e) {
       $("#i-note", root).hidden = false;
-      $("#i-note", root).innerHTML = errorBlock(e.message);
+      $("#i-note", root).innerHTML = '<span>尚未配置检查规则。</span> <a href="#/settings?tab=ai">配置 AI 服务</a>，然后点「新建检查规则」。';
     }
   };
 

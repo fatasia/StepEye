@@ -25,7 +25,7 @@ function download(value, filename) {
 }
 
 /** 固定模型 × 冻结数据版本的留出评测；同一实现也提供 CLI。发起前需要确认版数据集。 */
-export function openHoldoutEvaluation({ canWrite }) {
+export function openHoldoutEvaluation({ canWrite, project = '', engine = '' }) {
   let closed = false, options = null, busy = false, last = null;
   const drawer = openDrawer({
     title: "固定模型评测",
@@ -102,6 +102,8 @@ export function openHoldoutEvaluation({ canWrite }) {
       projects.innerHTML = options.projects.length
         ? options.projects.map((p) => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("")
         : `<option value="">没有含 val 分组的项目——先到样本库导出确认版数据集</option>`;
+      if(project) projects.value=project;
+      if(engine) models.value=engine;
       selectAdapter();
       fillVersions();
       sync();
@@ -162,6 +164,7 @@ export function openHoldoutEvaluation({ canWrite }) {
   async function loadHistory() {
     try {
       const rows = await request("/api/evaluations/holdout");
+      if(project)rows.items=rows.items.filter(r=>r.project_id===project);
       if (closed) return;
       $("[data-he-history]", body).innerHTML = rows.items.length
         ? rows.items.map((r) => `<button class="btn" style="display:block;width:100%;text-align:left;margin:8px 0" data-he-record="${esc(r.id)}">${esc(r.engine_name || r.engine_id)} × ${esc(r.dataset_version_id || "")} · ${fmtTime(r.created_at * 1000)} · P ${pct(r.summary?.precision)} / R ${pct(r.summary?.recall)}${r.accuracy_watch_status === "observed_drop" ? " · 精度观测下降" : ""}</button>`).join("")

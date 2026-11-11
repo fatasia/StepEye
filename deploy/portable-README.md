@@ -37,6 +37,6 @@ $env:M7S_ADMIN_DEV_MODE = '1'
 
 ## 外部组件
 
-训练仍使用管理员配置的 `STEPEYE_TRAIN_PYTHON` 隔离环境；包里不带torch/CUDA训练库。工业相机需要设备厂商的CTI/驱动。
+在「设置 → 运行状态」安装训练组件，需要 Python 3.10–3.13、网络和数 GB 磁盘空间；训练库不包含在主程序内。也可使用管理员配置的 `STEPEYE_TRAIN_PYTHON` 隔离环境。工业相机需要设备厂商的CTI/驱动。
 本地Qwen需要单独的GGUF、mmproj及llama-server运行库；云VLM需要自己的API配置。主程序包含这些入口，但没有把未配置服务当作已可用模型。
 不要把本机 `.env`、认证数据库、私钥或训练缓存复制给其他使用者。

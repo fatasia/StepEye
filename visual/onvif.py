@@ -124,6 +124,23 @@ def pin_service_xaddr(value: str, target: DeviceTarget, *, resolver=None) -> str
         raise OnvifPolicyError("设备声明了不允许的 ONVIF 服务地址，未继续访问") from None
 
 
+def pin_stream_url(value: str, target: DeviceTarget, *, resolver=None) -> str:
+    """只接收同一设备的 RTSP 地址，避免相机响应引导访问其他主机。"""
+    try:
+        parsed=urlsplit(value)
+        if parsed.scheme not in ('rtsp','rtsps') or not parsed.hostname or parsed.username or parsed.password or parsed.fragment:
+            raise ValueError
+        host=_host(parsed.hostname)
+        port=_port(parsed.port or 554)
+        if host not in (target.host,target.ip) and set(_addresses(host,port,resolver))!={target.ip}:
+            raise ValueError
+        authority=f'[{target.ip}]' if ':' in target.ip else target.ip
+        if parsed.port is not None:authority+=f':{port}'
+        return urlunsplit((parsed.scheme,authority,parsed.path or '/',parsed.query,''))
+    except (ValueError,TypeError,OnvifPolicyError):
+        raise OnvifPolicyError('相机返回的 RTSP 地址不是同一设备，请手动检查地址') from None
+
+
 class _DeviceSession:
     """限制库实际 SOAP 请求；不允许 HTTP 重定向绕过固定 IP 校验。"""
     def __init__(self, session, target: DeviceTarget):
@@ -226,7 +243,7 @@ def device_rtsp_and_geo(host: str, port: int, user: str, password: str,
                 uri = await media.GetStreamUri({"StreamSetup": {"Stream": "RTP-Unicast",
                                                                   "Transport": {"Protocol": "RTSP"}},
                                                 "ProfileToken": profiles[0].token})
-                stream_url = uri.Uri
+                stream_url = pin_stream_url(uri.Uri, target)
             geo = None
             try:
                 dev = await cam.create_devicemgmt_service()
