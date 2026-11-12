@@ -40,7 +40,16 @@ export async function openAnomaly(context={}) {
   }
   q('[data-scenes]').onchange=()=>{q('[data-scene]').value=q('[data-scenes]').value;q('[data-backend]').disabled=false;q('[data-refs]').innerHTML='';load().catch(showError);};
   function showError(e){if(!dead)q('[data-result]').textContent=e.message;}
-  async function act(fn){if(busy)return;busy=true;try{await fn();}catch(e){showError(e);}finally{busy=false;}}
+  async function act(fn){
+    if(busy)return;
+    busy=true;
+    const controls=[...d.body.querySelectorAll('button')].map(button=>[button,button.disabled]);
+    controls.forEach(([button])=>{button.disabled=true;});
+    try{await fn();}catch(e){showError(e);}finally{
+      busy=false;
+      controls.forEach(([button,disabled])=>{if(button.isConnected)button.disabled=disabled;});
+    }
+  }
   q('[data-register]').onclick=()=>act(async()=>{
     const files=[...q('[data-ok]').files];if(!files.length||files.length>8||!encode())throw new Error('请输入名称并选择1–8张良品');
     const form=new FormData();files.forEach(f=>form.append('files',f));form.append('backend',q('[data-backend]').value);form.append('threshold',q('[data-threshold]').value);form.append('lighting',q('[data-lighting]').value);
